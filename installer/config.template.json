@@ -1,0 +1,7 @@
+{
+  "ui_mode": "normal",
+  "startup_delay": 15,
+  "logging": {
+    "level": "info"
+  }
+}

@@ -63,7 +63,7 @@ def main():
     # optional /ping listener
     client.poll_commands(duration=30)
 
-    if not client.send_message(message, retries=5, delay=6):
+    if not client.send_message(get_system_info(), retries=5, delay=6):
         logger.error("Startup notification ultimately failed")
 
     logger.info("Application finished execution")

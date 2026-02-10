@@ -39,7 +39,7 @@ Name: "desktopicon"; Description: "Create Desktop Shortcut"; Flags: unchecked
 
 [Files]
 Source: "..\dist\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\config.template.json"; DestDir: "{commonappdata}\{#AppDirName}"; DestName: "config.json"; Flags: onlyifdoesntexist
+Source: ".\config.template.json"; DestDir: "{commonappdata}\{#AppDirName}"; DestName: "config.json"; Flags: onlyifdoesntexist
 
 [Dirs]
 Name: "{commonappdata}\{#AppDirName}"; Permissions: admins-full system-full

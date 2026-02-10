@@ -44,13 +44,24 @@ def main():
     # Give Defender + system some breathing room
     time.sleep(15)
 
-    # Wait for internet
+    # wait for internet
     if not wait_for_internet(timeout=90):
         logger.error("Startup aborted: No internet")
         return
 
     client = TelegramClient()
-    message = get_system_info()
+
+    # ✅ STARTUP MESSAGE FIRST
+    if not client.send_message(get_system_info(), retries=5, delay=6):
+        logger.error("Startup message failed after retries")
+    else:
+        logger.info("Startup message delivered successfully")
+
+    # cooldown before polling
+    time.sleep(20)
+
+    # optional /ping listener
+    client.poll_commands(duration=30)
 
     if not client.send_message(message, retries=5, delay=6):
         logger.error("Startup notification ultimately failed")

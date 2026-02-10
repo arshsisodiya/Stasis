@@ -3,7 +3,7 @@ name: Build & Release Installer
 on:
   push:
     branches:
-      - main
+      - master
 
 permissions:
   contents: write

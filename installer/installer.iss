@@ -38,8 +38,8 @@ Name: "hiddenmode"; Description: "Background Mode (runs silently at startup)"; F
 Name: "desktopicon"; Description: "Create Desktop Shortcut"; Flags: unchecked
 
 [Files]
-Source: "dist\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "config.template.json"; DestDir: "{commonappdata}\{#AppDirName}"; DestName: "config.json"; Flags: onlyifdoesntexist
+Source: "..\dist\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\config.template.json"; DestDir: "{commonappdata}\{#AppDirName}"; DestName: "config.json"; Flags: onlyifdoesntexist
 
 [Dirs]
 Name: "{commonappdata}\{#AppDirName}"; Permissions: admins-full system-full

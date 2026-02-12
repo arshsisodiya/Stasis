@@ -2,3 +2,4 @@ requests
 psutil
 Pillow
 pywin32
+opencv-python

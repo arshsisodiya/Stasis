@@ -1,5 +1,5 @@
 #define AppName "Startup Notifier"
-#define AppVersion GetEnv('APP_VERSION')
+#define AppVersion "2.2.2"
 #define AppPublisher "Arsh Sisodiya"
 #define AppExeName "StartupNotifier.exe"
 #define AppDirName "Startup Notifier"
@@ -53,10 +53,30 @@ Filename: "schtasks.exe"; \
 Parameters: "/create /f /sc onstart /ru SYSTEM /rl HIGHEST /tn {#TaskName} /tr """"{app}\{#AppExeName}"""""; \
 Flags: runhidden
 
+Filename: "{app}\{#AppExeName}"; \
+Flags: nowait; Tasks: normalmode
+
+Filename: "{app}\{#AppExeName}"; \
+Flags: nowait runhidden; Tasks: hiddenmode
+
+
 [UninstallRun]
+Filename: "taskkill.exe"; \
+Parameters: "/f /im {#AppExeName}"; \
+Flags: runhidden
+
+Filename: "taskkill.exe"; \
+Parameters: "/f /fi ""IMAGENAME eq {#AppExeName}"""; \
+Flags: runhidden
+
 Filename: "schtasks.exe"; \
 Parameters: "/delete /f /tn {#TaskName}"; \
 Flags: runhidden
+
+Filename: "cmd.exe"; \
+Parameters: "/c timeout /t 2 >nul"; \
+Flags: runhidden
+
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{commonappdata}\{#AppDirName}"
@@ -138,4 +158,3 @@ begin
     end;
   end;
 end;
-

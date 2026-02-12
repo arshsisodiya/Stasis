@@ -1,5 +1,5 @@
 #define AppName "Startup Notifier"
-#define AppVersion "2.2.2"
+#define AppVersion GetEnv('APP_VERSION')
 #define AppPublisher "Arsh Sisodiya"
 #define AppExeName "StartupNotifier.exe"
 #define AppDirName "Startup Notifier"

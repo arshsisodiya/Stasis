@@ -27,13 +27,9 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build portable EXE
+      - name: Build app EXE
         run: |
           pyinstaller --onefile --noconsole --name StartupNotifier main.py
-
-      - name: Rename portable EXE
-        run: |
-          Rename-Item dist\StartupNotifier.exe StartupNotifier-${{ env.APP_VERSION }}-portable.exe
 
       - name: Install Inno Setup
         run: |
@@ -43,13 +39,18 @@ jobs:
         run: |
           iscc installer\installer.iss
 
+      - name: Create portable EXE
+        run: |
+          Copy-Item "dist\StartupNotifier.exe" "dist\StartupNotifier-v${{ env.APP_VERSION }}-portable.exe"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION }}
           name: Startup Notifier v${{ env.APP_VERSION }}
           files: |
-            installer/output/*.exe
-            dist/*-portable.exe
+            installer/output/StartupNotifierSetup-*.exe
+            dist/StartupNotifier-v${{ env.APP_VERSION }}-portable.exe
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

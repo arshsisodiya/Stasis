@@ -6,9 +6,43 @@ import csv
 import time
 import os
 from url_sniffer import get_browser_url
+# 🚀 New import for input tracking
+from pynput import mouse, keyboard
 
 APP_NAME = "Startup Notifier"
 BASE_DIR = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), APP_NAME)
+
+
+# --- Input Tracking Logic ---
+class InputCounter:
+    def __init__(self):
+        self.kb_count = 0
+        self.mouse_count = 0
+
+        # Start listeners in background threads
+        self.kb_listener = keyboard.Listener(on_press=self._on_key_press)
+        self.mouse_listener = mouse.Listener(on_click=self._on_mouse_click)
+
+        self.kb_listener.start()
+        self.mouse_listener.start()
+
+    def _on_key_press(self, key):
+        self.kb_count += 1
+
+    def _on_mouse_click(self, x, y, button, pressed):
+        if pressed:
+            self.mouse_count += 1
+
+    def get_and_reset(self):
+        """Returns current counts and resets them for the next window session."""
+        counts = (self.kb_count, self.mouse_count)
+        self.kb_count = 0
+        self.mouse_count = 0
+        return counts
+
+
+# Initialize the global counter
+input_tracker = InputCounter()
 
 
 def get_daily_log_file():
@@ -39,8 +73,9 @@ def ensure_log_file(file_path):
     if not os.path.exists(file_path):
         with open(file_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            # 🚀 Column updated to reflect human-readable duration
-            writer.writerow(["Timestamp", "Application", "PID", "Window Title", "URL", "Duration"])
+            # 🚀 Added Keystrokes and Clicks columns
+            writer.writerow(
+                ["Timestamp", "Application", "PID", "Window Title", "URL", "Duration", "Keystrokes", "Clicks"])
 
 
 def get_active_window_info():
@@ -65,7 +100,7 @@ def get_active_window_info():
 
 
 def start_logging():
-    """Main loop: Detects changes and logs formatted duration."""
+    """Main loop: Detects changes and logs formatted duration with input counts."""
     last_info = None
     start_time = time.time()
 
@@ -80,15 +115,19 @@ def start_logging():
                 if last_info is None:
                     last_info = info
                     start_time = time.time()
+                    # Reset counter when we start the very first session
+                    input_tracker.get_and_reset()
 
                 elif (info["app_name"] != last_info["app_name"] or
                       info["pid"] != last_info["pid"] or
                       info["title"] != last_info["title"] or
                       info["url"] != last_info["url"]):
 
-                    # 🚀 Calculate and format duration
                     raw_seconds = time.time() - start_time
                     readable_duration = format_duration(raw_seconds)
+
+                    # 🚀 Retrieve and reset input counts for the finished session
+                    keys, clicks = input_tracker.get_and_reset()
 
                     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -100,7 +139,9 @@ def start_logging():
                             last_info["pid"],
                             last_info["title"],
                             last_info["url"],
-                            readable_duration
+                            readable_duration,
+                            keys,  # 🚀 Logged Keys
+                            clicks  # 🚀 Logged Clicks
                         ])
 
                     last_info = info
@@ -109,3 +150,7 @@ def start_logging():
             time.sleep(1)
         except Exception:
             time.sleep(1)
+
+
+if __name__ == "__main__":
+    start_logging()

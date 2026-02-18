@@ -1,229 +1,414 @@
 # StartupNotifier 🚀
 
-StartupNotifier is a lightweight Windows background application that sends you a Telegram message whenever your system starts.
-It also supports remote commands via Telegram, allowing you to ping the system or capture screenshots on demand.
+**StartupNotifier** is a Windows background utility designed for system telemetry, activity logging, and controlled remote interaction via a private Telegram Bot.
+
+It provides real-time boot notifications, remote system control, structured activity logging, and secure log retrieval — all accessible through Telegram.
 
 ---
 
-## Features
+## ⚠️ Ethical & Legal Notice
 
-* Runs silently in the background
-* Automatically starts with Windows boot
-* Sends instant startup notifications via Telegram
-* Supports Telegram commands:
+This project is developed strictly for:
 
-  * `/ping` – check if the system is online
-  * `/screenshot` – capture and send the current screen
-* Configurable startup delay
-* Minimal resource usage
-* No UI required (headless background app)
+* Educational purposes
+* Personal system monitoring
+* Cybersecurity research
+* Controlled lab environments
 
----
+Do **NOT** deploy this software on systems you do not own or do not have explicit written authorization to monitor.
 
-## How It Works
+Unauthorized surveillance or monitoring may be illegal in your jurisdiction.
 
-1. The app is registered to run on Windows startup.
-2. On boot, it waits for a configurable delay.
-3. Sends a startup notification to your Telegram chat.
-4. Listens for Telegram commands in the background.
-5. Executes allowed commands securely and responds via Telegram.
+You are solely responsible for how you use this software.
 
 ---
 
-## Tech Stack
+## 📦 Download
 
-* Python
-* Telegram Bot API
-* Windows Startup (Registry / Startup Folder)
-* PyInstaller (for `.exe` build)
+Download the latest builds from the Releases section:
 
----
+👉 [https://github.com/arshsisodiya/StartupNotifier/releases](https://github.com/your-username/StartupNotifier/releases)
 
-## Requirements
+Available builds:
 
-* Windows 10 / 11
-* Python 3.9+ (for development)
-* Telegram Bot Token
-* Telegram Chat ID
+* **Portable (.exe)** – Standalone executable
+* **Installer (.exe setup)** – Recommended for permanent installation
 
 ---
 
-## Setup Instructions
+## 🆚 Portable vs Installer
 
-### 1. Clone the Repository
+### 🔹 Portable Version
+
+* Single executable
+* No installation required
+* Manual startup configuration
+* Suitable for testing or temporary use
+
+### 🔹 Installer Version
+
+* Installs into Program Files
+* Automatically registers Windows startup
+* Allows Telegram credentials entry during installation
+* Clean uninstall via Control Panel
+* Recommended for long-term deployment
+
+---
+
+# 🚀 Core Capabilities
+
+## 📡 Telegram-Based Remote Control
+
+| Command       | Action                          | Confirmation Required     |
+| ------------- | ------------------------------- | ------------------------- |
+| `/ping`       | Check if system is online       | No                        |
+| `/screenshot` | Capture and send current screen | No                        |
+| `/camera`     | Capture webcam image            | No                        |
+| `/video`      | Record 10s webcam video         | No                        |
+| `/video 30`   | Record custom-duration video    | No                        |
+| `/lock`       | Lock Windows session            | No                        |
+| `/shutdown`   | Shutdown PC                     | Yes (`/shutdown confirm`) |
+| `/restart`    | Restart PC                      | Yes (`/restart confirm`)  |
+| `/log`        | Retrieve activity & file logs   | No                        |
+
+---
+
+## 📊 Activity Logging & System Telemetry
+
+StartupNotifier includes an advanced structured logging engine that records system interaction data locally in CSV format.
+
+---
+
+## 🖥️ Application Activity Log
+
+Tracks:
+
+* Active application name
+* Process ID (PID)
+* Window title
+* Visited URLs (supported browsers)
+* Session duration
+* Keystroke count
+* Mouse click count
+* Idle detection handling
+
+### 💤 Intelligent Idle Detection
+
+* If no keyboard or mouse input is detected for **2 minutes**, the system enters Idle Mode.
+* Idle time:
+
+  * Is not counted toward application usage
+  * Is automatically subtracted from total duration
+* Ensures realistic usage statistics.
+
+### 🎬 Media Exception Handling
+
+Idle detection is automatically disabled for media platforms such as:
+
+* YouTube
+* VLC Media Player
+* Other supported media applications
+
+This prevents video playback from being incorrectly classified as idle time.
+
+---
+
+### 📁 Activity Log CSV Format
+
+| Timestamp | Application | PID | Window Title | URL | Duration | Keystrokes | Clicks |
+| --------- | ----------- | --- | ------------ | --- | -------- | ---------- | ------ |
+
+**Field Explanation:**
+
+* **Timestamp** – Session start time
+* **Application** – Executable name
+* **PID** – Process ID
+* **Window Title** – Active window
+* **URL** – Browser URL (if detected)
+* **Duration** – Active time (Idle excluded)
+* **Keystrokes** – Total key presses
+* **Clicks** – Mouse clicks
+
+This provides deep insight into:
+
+* Application usage duration
+* Interaction intensity
+* Browsing behavior
+* True active vs idle time
+
+---
+
+## 📂 Global File System Monitor
+
+Monitors file system events across connected drives.
+
+### 📌 Tracked Events
+
+* File Created
+* File Modified
+* File Deleted
+* File Renamed
+
+---
+
+### 📁 File Monitor CSV Format
+
+| Timestamp | Action | File Path |
+| --------- | ------ | --------- |
+
+**Field Explanation:**
+
+* **Timestamp** – Time of event
+* **Action** – Created / Modified / Deleted / Renamed
+* **File Path** – Full file path
+
+---
+
+## 📥 Remote Log Retrieval
+
+Using the Telegram command:
 
 ```
+/log
+```
+
+You can retrieve:
+
+* Activity logs (application usage)
+* File monitoring logs
+
+Logs are sent directly to your Telegram chat as CSV files for download and analysis.
+
+This allows remote review without direct system access.
+
+---
+
+# ⚙️ Configuration
+
+StartupNotifier uses `config.json`.
+
+If setting up manually:
+
+Rename:
+
+```
+config.template.json → config.json
+```
+
+---
+
+## 🔑 How to Get Telegram Bot Token
+
+1. Open Telegram
+2. Search **@BotFather**
+3. Send:
+
+```
+/newbot
+```
+
+4. Follow instructions
+5. Copy the generated Bot Token
+
+Example:
+
+```
+123456789:AAExampleGeneratedToken
+```
+
+---
+
+## 🆔 How to Get Chat ID
+
+1. Start chat with your bot
+2. Send any message
+3. Open:
+
+```
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
+```
+
+4. Find:
+
+```
+"chat": {
+  "id": 123456789
+}
+```
+
+That is your Chat ID.
+
+---
+
+### Example config.json
+
+```json
+{
+  "ui_mode": "normal",
+  "startup_delay": 15,
+  "logging": {
+    "level": "info",
+    "monitor_windows": true,
+    "monitor_files": true
+  },
+  "telegram": {
+    "bot_token": "YOUR_BOT_TOKEN",
+    "chat_id": "YOUR_CHAT_ID"
+  }
+}
+```
+
+---
+
+# 🛠 Developer Setup
+
+## 📁 Project Structure
+
+```
+StartupNotifier/
+│
+├── src/
+│   └── main.py
+│
+├── assets/
+├── config.template.json
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## 1️⃣ Clone Repository
+
+```bash
 git clone https://github.com/your-username/StartupNotifier.git
 cd StartupNotifier
 ```
 
 ---
 
-### 2. Create a Telegram Bot
+## 2️⃣ Create Virtual Environment
 
-* Open Telegram and search for **@BotFather**
-* Create a new bot
-* Copy the **Bot Token**
-
----
-
-### 3. Get Your Chat ID
-
-* Start a chat with your bot
-* Send any message
-* Use Telegram Bot API or a helper script to fetch your `chat_id`
-
----
-
-### 4. Configure the App (`config.json`)
-
-StartupNotifier uses a **JSON-based configuration file**.
-
-Create or edit `config.json` in the project root:
-
-```json
-{
-  "ui_mode": "normal",
-  "startup_delay": 15,
-
-  "logging": {
-    "level": "info"
-  },
-
-  "telegram": {
-    "bot_token": "PASTE_YOUR_TELEGRAM_BOT_TOKEN_HERE",
-    "chat_id": "PASTE_YOUR_CHAT_ID_HERE"
-  }
-}
-```
-
-#### Configuration Options
-
-* **ui_mode**
-
-  * `normal` – background mode (recommended)
-* **startup_delay**
-
-  * Delay (in seconds) before sending startup notification
-* **logging.level**
-
-  * `info`, `debug`, `error`
-* **telegram.bot_token**
-
-  * Your Telegram bot token
-* **telegram.chat_id**
-
-  * Your personal or group chat ID
-
----
-
-### 5. Run the App (Development)
-
-```
-python main.py
+```bash
+python -m venv venv
+venv\Scripts\activate
 ```
 
 ---
 
-### 6. Build Windows Executable
+## 3️⃣ Install Dependencies
 
+If requirements.txt exists:
+
+```bash
+pip install -r requirements.txt
 ```
-pyinstaller --onefile --noconsole main.py
-```
 
-The executable will be generated inside the `dist/` folder.
+Otherwise:
 
----
-
-### 7. Add to Windows Startup
-
-#### Startup Folder (Recommended)
-
-* Press `Win + R`
-* Type `shell:startup`
-* Paste the `.exe` or its shortcut
-
-#### Registry (Advanced)
-
-Add an entry under:
-
-```
-HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run
+```bash
+pip install requests opencv-python pyautogui watchdog pyinstaller
 ```
 
 ---
 
-## Telegram Commands
+## 4️⃣ Configure
 
-### `/ping`
-
-Checks whether the system is online and responsive.
-
-**Response example:**
+Rename:
 
 ```
-✅ System is online
-Uptime: 2h 14m
+config.template.json → config.json
 ```
+
+Insert Telegram credentials.
 
 ---
 
-### `/screenshot`
+## 5️⃣ Run in Development
 
-Captures the current screen and sends it directly to your Telegram chat.
-
-**Use cases:**
-
-* Remote monitoring
-* Checking system state
-* Verifying active sessions
-
----
-
-## Example Startup Notification
-
-```
-🖥️ System Startup Alert
-Your PC has started successfully.
+```bash
+python src/main.py
 ```
 
 ---
 
-## Use Cases
+# 🔨 Building Executables
 
-* Detect unauthorized system access
-* Monitor remote PCs
-* Track unexpected restarts
-* Remote system visibility via Telegram
-* Personal automation experiments
+## Option A — Single File (`--onefile`)
 
----
+```bash
+pyinstaller --onefile --noconsole --name StartupNotifier --icon=assets/icon.ico src/main.py
+```
 
-## Security Notes
+Output:
 
-* Keep your bot token private
-* Do not commit `config.json` with real credentials
-* Add `config.json` to `.gitignore`
-* Only predefined commands are supported
+```
+dist/StartupNotifier.exe
+```
 
 ---
 
-## Future Enhancements
+## Option B — One Directory (`--onedir`)
 
-* Shutdown notifications
-* System info in startup message
-* Multi-user access control
-* Command permission levels
-* Auto-update support
+```bash
+pyinstaller --onedir --noconsole --name StartupNotifier --icon=assets/icon.ico src/main.py
+```
+
+Output:
+
+```
+dist/StartupNotifier/
+```
+
+Use `--onedir` for:
+
+* Faster startup time
+* Easier debugging
+* Reduced antivirus false positives
+* Cleaner dependency layout
 
 ---
 
-## License
+## Installer Build
+
+Use your Inno Setup `.iss` script to generate installer package.
+
+---
+
+# 🔐 Security & Transparency Documentation
+
+### Command Restrictions
+
+* Only configured Chat ID is allowed.
+* Critical commands require confirmation.
+* No arbitrary shell execution.
+
+### Credential Protection
+
+* `config.json` must be added to `.gitignore`.
+* Bot token is never stored remotely.
+* No external server communication except Telegram API.
+
+### Hardware Transparency
+
+* Webcam LED activates during capture.
+* Application is visible in Task Manager.
+* No hidden persistence mechanisms.
+
+### Logging Scope
+
+* Window logger tracks titles only (not content).
+* File monitor logs file events (not file contents).
+* URL logging is browser-based and local.
+* Logs are stored locally and retrievable via `/log`.
+
+---
+
+## 📄 License
 
 MIT License
 
 ---
 
+**Developed by Arsh**
 Made with ❤️ for automation, security, and peace of mind.
-
----

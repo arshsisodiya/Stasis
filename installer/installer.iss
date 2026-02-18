@@ -1,5 +1,5 @@
 #define AppName "Startup Notifier"
-#define AppVersion "2.1.10"
+#define AppVersion GetEnv('APP_VERSION')
 #define AppPublisher "Arsh Sisodiya"
 #define AppExeName "StartupNotifier.exe"
 #define AppDirName "Startup Notifier"
@@ -63,16 +63,16 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 ; RUN AFTER INSTALL
 ; =============================
 
+
 [Run]
 
-; Create scheduled task
 Filename: "schtasks.exe"; \
 Parameters: "/create /f /sc onlogon /tn ""{#TaskName}"" /tr """"{app}\{#AppExeName}"""""; \
 Flags: runhidden
 
-; Launch app
 Filename: "{app}\{#AppExeName}"; \
-Flags: nowait postinstall skipifsilent
+Flags: nowait runascurrentuser
+
 
 ; =============================
 ; UNINSTALL SECTION

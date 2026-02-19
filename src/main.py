@@ -1,5 +1,4 @@
 # main.py
-
 import sys
 import os
 import time
@@ -7,7 +6,6 @@ import socket
 import platform
 import threading
 from datetime import datetime
-
 from src.core.single_instance import ensure_single_instance
 from src.core.file_monitor import start_file_watchdog
 from src.services.telegram_client import TelegramClient
@@ -16,7 +14,7 @@ from src.core.startup import add_to_startup
 from src.core.network import wait_for_internet
 from src.core.activity_logger import start_logging
 from src.services.update_manager import UpdateManager
-
+from src.database.database import init_db
 logger = setup_logger()
 ENABLE_UPDATER = True
 
@@ -70,6 +68,9 @@ def safe_file_watchdog():
 def main():
     logger.info("Application started")
 
+    # Initialize database
+    init_db()
+    exe_path = get_executable_path()
     # Register startup only when running as packaged EXE
     exe_path = get_executable_path()
     if getattr(sys, "frozen", False):

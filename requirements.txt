@@ -6,3 +6,5 @@ opencv-python
 watchdog
 pywinauto
 pynput
+flask
+flask-cors

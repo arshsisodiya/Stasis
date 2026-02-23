@@ -10,7 +10,7 @@ def get_wellbeing_file_path():
     return os.path.join(get_data_dir(), f"daily_wellbeing_{date_str}.csv")
 
 
-def calculate_daily_wellbeing():
+def calculate_daily_wellbeing(cursor):
     today = datetime.datetime.now().strftime("%Y-%m-%d")
 
     try:

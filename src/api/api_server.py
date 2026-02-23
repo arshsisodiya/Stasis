@@ -10,6 +10,14 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from src.database.database import get_connection
 import datetime
+from src.database.database import (
+    set_app_limit,
+    get_all_limits,
+    toggle_limit,
+    remove_blocked_app,
+    get_blocked_apps,
+delete_app_limit
+)
 
 app = Flask(__name__)
 CORS(app)  # Allow React frontend to connect
@@ -281,6 +289,81 @@ def focus():
 
     finally:
         conn.close()
+
+@app.route("/limits/set", methods=["POST"])
+def api_set_limit():
+    data = request.json
+    app_name = data.get("app_name")
+    limit_seconds = data.get("limit_seconds")
+
+    if not app_name or not limit_seconds:
+        return jsonify({"error": "Invalid data"}), 400
+
+    set_app_limit(app_name, int(limit_seconds))
+    return jsonify({"status": "success"})
+
+@app.route("/limits/all", methods=["GET"])
+def api_get_limits():
+    limits = get_all_limits()
+
+    result = []
+    for row in limits:
+        result.append({
+            "id": row[0],
+            "app_name": row[1],
+            "daily_limit_seconds": row[2],
+            "is_enabled": bool(row[3])
+        })
+
+    return jsonify(result)
+
+@app.route("/limits/toggle", methods=["POST"])
+def api_toggle_limit():
+    data = request.json
+    app_name = data.get("app_name")
+    enabled = data.get("enabled")
+
+    toggle_limit(app_name, bool(enabled))
+    return jsonify({"status": "updated"})
+
+from src.database.database import set_temporary_unblock
+
+@app.route("/limits/unblock", methods=["POST"])
+def api_unblock():
+    data = request.json
+
+    app_name = data.get("app_name")
+    minutes = data.get("minutes")
+
+    if not app_name or not minutes:
+        return jsonify({"error": "app_name and minutes required"}), 400
+
+    set_temporary_unblock(app_name, int(minutes))
+
+    return jsonify({
+        "status": "temporarily_unblocked",
+        "minutes": minutes
+    })
+
+@app.route("/limits/delete", methods=["POST"])
+def api_delete_limit():
+    data = request.json
+    app_name = data.get("app_name")
+
+    if not app_name:
+        return jsonify({"error": "app_name required"}), 400
+
+    delete_app_limit(app_name)
+
+    return jsonify({
+        "status": "limit_deleted",
+        "app_name": app_name
+    })
+@app.route("/limits/blocked", methods=["GET"])
+def api_blocked_apps():
+    blocked = get_blocked_apps()
+    return jsonify(blocked)
+
 
 # ===============================
 # Health Check

@@ -15,6 +15,7 @@ from src.core.network import wait_for_internet
 from src.core.activity_logger import start_logging
 from src.services.update_manager import UpdateManager
 from src.database.database import init_db
+from src.services.blocking_service import BlockingService
 logger = setup_logger()
 ENABLE_UPDATER = True
 
@@ -73,6 +74,10 @@ def main():
     exe_path = get_executable_path()
     # Register startup only when running as packaged EXE
     exe_path = get_executable_path()
+    # Run Blocking services
+    blocking_service = BlockingService()
+    blocking_service.start()
+    logger.info("Blocking Service is started")
     if getattr(sys, "frozen", False):
         add_to_startup(exe_path)
 

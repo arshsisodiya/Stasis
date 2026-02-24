@@ -5,7 +5,6 @@ import socket
 import psutil
 from datetime import datetime
 
-
 def get_uptime():
     boot_time = datetime.fromtimestamp(psutil.boot_time())
     delta = datetime.now() - boot_time

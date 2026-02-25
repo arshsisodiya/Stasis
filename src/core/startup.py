@@ -6,7 +6,7 @@ from src.utils.logger import setup_logger
 logger = setup_logger()
 
 RUN_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
-APP_REG_NAME = "StartupNotifier"
+APP_REG_NAME = "Stasis"
 
 
 def add_to_startup(exe_path: str):

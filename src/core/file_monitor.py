@@ -7,7 +7,7 @@ from watchdog.events import FileSystemEventHandler
 from src.config.storage import get_data_dir
 from src.database.database import get_connection
 
-APP_NAME = "Startup Notifier"
+APP_NAME = "Stasis"
 BASE_DIR = get_data_dir()
 
 

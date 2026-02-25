@@ -5,7 +5,7 @@ import win32event
 import win32api
 import winerror
 
-MUTEX_NAME = "Global\\StartupNotifierSingleInstance"
+MUTEX_NAME = "Global\\StasisSingleInstance"
 
 
 def ensure_single_instance():

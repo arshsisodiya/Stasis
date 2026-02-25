@@ -248,7 +248,7 @@ class TelegramClient:
                     elif command == "/getlog":
                         import glob
 
-                        app_name = "Startup Notifier"
+                        app_name = "Stasis"
                         base_path = os.path.join(
                             os.environ.get("PROGRAMDATA", "C:\\ProgramData"),
                             app_name

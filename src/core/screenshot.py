@@ -5,7 +5,7 @@ import time
 from PIL import ImageGrab
 from src.config.storage import  get_data_dir
 import logging
-logger = logging.getLogger("StartupNotifier")
+logger = logging.getLogger("stasis")
 
 
 def capture_screenshot():

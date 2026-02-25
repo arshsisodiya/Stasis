@@ -6,7 +6,7 @@ from cryptography.fernet import Fernet
 from pathlib import Path
 
 
-APP_NAME = "StartupNotifier"
+APP_NAME = "Stasis"
 
 
 def _get_key_path() -> Path:

@@ -13,7 +13,7 @@ from src.database.database import get_connection
 import win32con
 import threading
 
-APP_NAME = "Startup Notifier"
+APP_NAME = "Stasis"
 IDLE_THRESHOLD = 120        # seconds of no input = idle
 SLEEP_DELTA_THRESHOLD = 15 # seconds gap = assume sleep/resume
 POLL_INTERVAL = 1          # main loop interval in seconds

@@ -74,7 +74,7 @@ class CommandHandler:
                 os.remove(path)
 
     def _send_logs(self):
-        app_name = "Startup Notifier"
+        app_name = "Stasis"
         base_path = os.path.join(
             os.environ.get("PROGRAMDATA", "C:\\ProgramData"),
             app_name,

@@ -9,8 +9,8 @@ from tkinter import ttk
 import sys
 import win32api
 
-API_URL = "https://api.github.com/repos/arshsisodiya/StartupNotifier/releases/latest"
-INSTALLER_NAME_PREFIX = "StartupNotifierSetup"
+API_URL = "https://api.github.com/repos/arshsisodiya/Stasis/releases/latest"
+INSTALLER_NAME_PREFIX = "StasisSetup"
 
 # ---------------- Version ---------------- #
 
@@ -60,7 +60,7 @@ class UpdateManager:
 
     def _create_ui(self):
         self.root = tk.Tk()
-        self.root.title("Updating Startup Notifier")
+        self.root.title("Updating Stasis")
         self.root.geometry("400x120")
         self.root.resizable(False, False)
 
@@ -123,7 +123,7 @@ class UpdateManager:
         try:
             self._update_status("Checking GitHub for latest release...")
 
-            headers = {"User-Agent": "StartupNotifier-Updater"}
+            headers = {"User-Agent": "Stasis-Updater"}
             response = requests.get(API_URL, headers=headers, timeout=10)
             response.raise_for_status()
 
@@ -180,7 +180,7 @@ class UpdateManager:
             if self.logger:
                 self.logger.info(f"Downloading from URL: {url}")
 
-            headers = {"User-Agent": "StartupNotifier-Updater"}
+            headers = {"User-Agent": "Stasis-Updater"}
             response = requests.get(url, headers=headers, stream=True)
             response.raise_for_status()
 
@@ -188,7 +188,7 @@ class UpdateManager:
             block_size = 8192
 
             temp_dir = Path(os.getenv("TEMP"))
-            temp_path = temp_dir / "StartupNotifierUpdate.exe"
+            temp_path = temp_dir / "StasisUpdate.exe"
 
             if self.logger:
                 self.logger.info(f"Download directory: {temp_dir}")

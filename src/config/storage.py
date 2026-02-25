@@ -2,7 +2,7 @@
 
 import os
 
-APP_NAME = "Startup Notifier"
+APP_NAME = "Stasis"
 
 def get_base_dir():
     base = os.path.join(os.environ["LOCALAPPDATA"], APP_NAME)

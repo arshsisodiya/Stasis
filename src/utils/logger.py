@@ -12,7 +12,7 @@ def cleanup_old_logs(log_dir):
     cutoff = datetime.now() - timedelta(days=LOG_RETENTION_DAYS)
 
     for file in os.listdir(log_dir):
-        if file.startswith("startup_") and file.endswith(".log"):
+        if file.startswith("stasis_") and file.endswith(".log"):
             path = os.path.join(log_dir, file)
             try:
                 file_time = datetime.fromtimestamp(os.path.getmtime(path))
@@ -26,9 +26,9 @@ def setup_logger():
     log_dir = get_logs_dir()
 
     today = datetime.now().strftime("%Y-%m-%d")
-    log_file = os.path.join(log_dir, f"startup_{today}.log")
+    log_file = os.path.join(log_dir, f"stasis_{today}.log")
 
-    logger = logging.getLogger("startup_notifier")
+    logger = logging.getLogger("stasis")
     logger.setLevel(logging.INFO)
     logger.propagate = False
 

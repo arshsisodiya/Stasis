@@ -1,6 +1,6 @@
-# StartupNotifier 🚀
+# Stasis 🚀
 
-**StartupNotifier** is a Windows background utility designed for system telemetry, activity logging, and controlled remote interaction via a private Telegram Bot.
+**Stasis** is a Windows background utility designed for system telemetry, activity logging, and controlled remote interaction via a private Telegram Bot.
 
 It provides real-time boot notifications, remote system control, structured activity logging, and secure log retrieval — all accessible through Telegram.
 
@@ -27,7 +27,7 @@ You are solely responsible for how you use this software.
 
 Download the latest builds from the Releases section:
 
-👉 [https://github.com/arshsisodiya/StartupNotifier/releases](https://github.com/your-username/StartupNotifier/releases)
+👉 [https://github.com/arshsisodiya/Stasis/releases](https://github.com/arshsisodiya/Stasis/releases)
 
 Available builds:
 
@@ -75,7 +75,7 @@ Available builds:
 
 ## 📊 Activity Logging & System Telemetry
 
-StartupNotifier includes an advanced structured logging engine that records system interaction data locally in CSV format.
+Stasis includes an advanced structured logging engine that records system interaction data locally in CSV format.
 
 ---
 
@@ -185,7 +185,7 @@ This allows remote review without direct system access.
 
 # ⚙️ Configuration
 
-StartupNotifier uses `config.json`.
+Stasis uses `config.json`.
 
 If setting up manually:
 
@@ -265,7 +265,7 @@ That is your Chat ID.
 ## 📁 Project Structure
 
 ```
-StartupNotifier/
+Stasis/
 │
 ├── src/
 │   └── main.py
@@ -281,8 +281,8 @@ StartupNotifier/
 ## 1️⃣ Clone Repository
 
 ```bash
-git clone https://github.com/your-username/StartupNotifier.git
-cd StartupNotifier
+git clone https://github.com/arshsisodiya/Stasis.git
+cd Stasis
 ```
 
 ---
@@ -337,13 +337,13 @@ python src/main.py
 ## Option A — Single File (`--onefile`)
 
 ```bash
-pyinstaller --onefile --noconsole --name StartupNotifier --icon=assets/icon.ico src/main.py
+pyinstaller --onefile --noconsole --name Stasis --icon=assets/icon.ico src/main.py
 ```
 
 Output:
 
 ```
-dist/StartupNotifier.exe
+dist/Stasis.exe
 ```
 
 ---
@@ -351,13 +351,13 @@ dist/StartupNotifier.exe
 ## Option B — One Directory (`--onedir`)
 
 ```bash
-pyinstaller --onedir --noconsole --name StartupNotifier --icon=assets/icon.ico src/main.py
+pyinstaller --onedir --noconsole --name Stasis --icon=assets/icon.ico src/main.py
 ```
 
 Output:
 
 ```
-dist/StartupNotifier/
+dist/Stasis/
 ```
 
 Use `--onedir` for:

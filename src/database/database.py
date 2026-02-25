@@ -2,7 +2,7 @@ import sqlite3
 import os
 from src.config.storage import get_data_dir
 from datetime import datetime, timedelta
-DB_PATH = os.path.join(get_data_dir(), "startup_notifier.db")
+DB_PATH = os.path.join(get_data_dir(), "stasis.db")
 
 
 def get_connection():
@@ -15,12 +15,6 @@ def get_connection():
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
-    # Add unblock_until column if not exists
-    try:
-        cursor.execute("ALTER TABLE app_limits ADD COLUMN unblock_until TEXT")
-    except sqlite3.OperationalError:
-        pass
-
     # ===============================
     # RAW ACTIVITY LOGS
     # ===============================
@@ -78,9 +72,16 @@ def init_db():
         app_name TEXT UNIQUE NOT NULL,
         daily_limit_seconds INTEGER NOT NULL,
         is_enabled INTEGER DEFAULT 1,
-        created_at TEXT
+        created_at TEXT,
+        unblock_until TEXT
     )
     """)
+
+    # Add unblock_until column if not exists (for backwards compatibility)
+    try:
+        cursor.execute("ALTER TABLE app_limits ADD COLUMN unblock_until TEXT")
+    except sqlite3.OperationalError:
+        pass
 
     # ===============================
     # BLOCKED APPS

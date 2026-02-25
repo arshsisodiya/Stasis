@@ -1,9 +1,9 @@
-#define AppName "Startup Notifier"
-#define AppVersion "2.1.14"
+#define AppName "Stasis"
+#define AppVersion GetEnv('APP_VERSION')
 #define AppPublisher "Arsh Sisodiya"
-#define AppExeName "StartupNotifier.exe"
-#define AppDirName "Startup Notifier"
-#define TaskName "StartupNotifierTask"
+#define AppExeName "Stasis.exe"
+#define AppDirName "Stasis"
+#define TaskName "StasisTask"
 
 [Setup]
 AppId={{3c6f81ac-25dd-43a5-84b6-8b77764c9434}}
@@ -14,7 +14,7 @@ DefaultDirName={pf}\{#AppDirName}
 DisableDirPage=yes
 DefaultGroupName={#AppName}
 OutputDir=output
-OutputBaseFilename=StartupNotifierSetup-{#AppVersion}
+OutputBaseFilename=StasisSetup-{#AppVersion}
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
@@ -39,7 +39,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 ; Copy entire onedir folder
-Source: "..\dist\StartupNotifier\*"; \
+Source: "..\dist\Stasis\*"; \
     DestDir: "{app}"; \
     Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -49,7 +49,7 @@ Source: "..\dist\StartupNotifier\*"; \
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
-    ValueName: "StartupNotifier"; \
+    ValueName: "Stasis"; \
     Flags: deletevalue uninsdeletevalue
 
 ; =============================
@@ -84,13 +84,13 @@ Flags: nowait runascurrentuser
 Filename: "taskkill.exe"; \
 Parameters: "/f /im {#AppExeName}"; \
 Flags: runhidden; \
-RunOnceId: "KillStartupNotifier"
+RunOnceId: "KillStasis"
 
 ; Delete scheduled task
 Filename: "schtasks.exe"; \
 Parameters: "/delete /f /tn ""{#TaskName}"""; \
 Flags: runhidden; \
-RunOnceId: "DeleteStartupNotifierTask"
+RunOnceId: "DeleteStasisTask"
 
 ; =============================
 ; OPTIONAL DATA DELETE PROMPT

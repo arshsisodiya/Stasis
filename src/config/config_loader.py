@@ -105,7 +105,7 @@ def prompt_for_config():
         root.destroy()
 
     root = tk.Tk()
-    root.title("Startup Notifier Setup")
+    root.title("Stasis Setup")
     root.geometry("440x260")
     root.resizable(False, False)
     root.configure(bg="#1e1e1e")

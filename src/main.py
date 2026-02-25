@@ -1,18 +1,20 @@
 # main.py
-import sys
 import os
-import time
+import sys
 import threading
-from src.core.single_instance import ensure_single_instance
-from src.core.file_monitor import start_file_watchdog
-from src.utils.logger import setup_logger
-from src.core.startup import add_to_startup
+import time
+
+from src.api.api_server import APIServer
 from src.core.activity_logger import start_logging
-from src.services.update_manager import UpdateManager
+from src.core.app_controller import AppController
+from src.core.file_monitor import start_file_watchdog
+from src.core.single_instance import ensure_single_instance
+from src.core.startup import add_to_startup
 from src.database.database import init_db
 from src.services.blocking_service import BlockingService
-from src.core.app_controller import AppController
-from src.api.api_server import APIServer
+from src.services.update_manager import UpdateManager
+from src.utils.logger import setup_logger
+
 logger = setup_logger()
 ENABLE_UPDATER = True
 
@@ -51,21 +53,20 @@ def main():
     if not mutex:
         logger.warning("Another instance is already running. Exiting.")
         sys.exit(0)
+    # Initialize App Controller (handles Telegram + config + internet internally)
+    app_controller = AppController()
+    app_controller.initialize()
 
     def safe_api_server():
         try:
             logger.info("API server thread started")
-            server = APIServer()
-            server.start()
+            api_server = APIServer(app_controller)
+            api_server.start()
         except Exception:
             logger.exception("API server crashed unexpectedly")
 
     # Initialize database
     init_db()
-
-    # Initialize App Controller (handles Telegram + config + internet internally)
-    app_controller = AppController()
-    app_controller.initialize()
 
     # Register startup only when running as packaged EXE
     if getattr(sys, "frozen", False):

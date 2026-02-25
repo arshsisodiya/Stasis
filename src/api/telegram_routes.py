@@ -36,8 +36,12 @@ logger = logging.getLogger(__name__)
 
 telegram_bp = Blueprint("telegram", __name__)
 
-app_controller = AppController()
-app_controller.initialize()
+app_controller = None
+
+
+def set_app_controller(controller):
+    global app_controller
+    app_controller = controller
 
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -65,7 +69,7 @@ def _mask(value: str, keep: int = 6) -> str | None:
 
 def _has_credentials() -> bool:
     """True only if both encrypted token and chat_id are non-empty in DB."""
-    token   = SettingsManager.get("telegram_token")
+    token = SettingsManager.get("telegram_token")
     chat_id = SettingsManager.get("telegram_chat_id")
     return bool(token and token.strip() and chat_id and chat_id.strip())
 
@@ -73,10 +77,10 @@ def _has_credentials() -> bool:
 def _get_stored_credentials() -> tuple[str | None, str | None]:
     """Decrypt and return (token, chat_id). Returns (None, None) if missing."""
     token_enc = SettingsManager.get("telegram_token")
-    chat_enc  = SettingsManager.get("telegram_chat_id")
+    chat_enc = SettingsManager.get("telegram_chat_id")
     return (
-        decrypt(token_enc)  if token_enc  else None,
-        decrypt(chat_enc)   if chat_enc   else None,
+        decrypt(token_enc) if token_enc else None,
+        decrypt(chat_enc) if chat_enc else None,
     )
 
 
@@ -92,59 +96,59 @@ def _state_string(enabled: bool, running: bool, has_creds: bool) -> str:
 @telegram_bp.route("/api/telegram/status", methods=["GET"])
 def telegram_status():
     """Lightweight status poll — safe to call frequently."""
-    enabled   = SettingsManager.get_bool("telegram_enabled")
-    running   = app_controller.is_telegram_running()
+    enabled = SettingsManager.get_bool("telegram_enabled")
+    running = app_controller.is_telegram_running()
     has_creds = _has_credentials()
 
     return jsonify({
-        "enabled":  enabled,
-        "running":  running,
-        "state":    _state_string(enabled, running, has_creds),
+        "enabled": enabled,
+        "running": running,
+        "state": _state_string(enabled, running, has_creds),
     })
 
 
 @telegram_bp.route("/api/telegram/config", methods=["GET"])
 def telegram_config():
     """Returns masked credentials. Raw values are never returned."""
-    enabled   = SettingsManager.get_bool("telegram_enabled")
+    enabled = SettingsManager.get_bool("telegram_enabled")
     has_creds = _has_credentials()
 
     token_masked = chat_masked = None
     if has_creds:
         token, chat_id = _get_stored_credentials()
-        token_masked   = _mask(token,   keep=6)
-        chat_masked    = _mask(chat_id, keep=4)
+        token_masked = _mask(token, keep=6)
+        chat_masked = _mask(chat_id, keep=4)
 
     return jsonify({
-        "enabled":         enabled,
+        "enabled": enabled,
         "has_credentials": has_creds,
-        "token":           token_masked,
-        "chat_id":         chat_masked,
-        "bot_username":    SettingsManager.get("telegram_bot_username"),
+        "token": token_masked,
+        "chat_id": chat_masked,
+        "bot_username": SettingsManager.get("telegram_bot_username"),
     })
 
 
 @telegram_bp.route("/api/telegram/full-status", methods=["GET"])
 def telegram_full_status():
     """Combined status + config. Use on settings page load."""
-    enabled   = SettingsManager.get_bool("telegram_enabled")
-    running   = app_controller.is_telegram_running()
+    enabled = SettingsManager.get_bool("telegram_enabled")
+    running = app_controller.is_telegram_running()
     has_creds = _has_credentials()
 
     token_masked = chat_masked = None
     if has_creds:
         token, chat_id = _get_stored_credentials()
-        token_masked   = _mask(token,   keep=6)
-        chat_masked    = _mask(chat_id, keep=4)
+        token_masked = _mask(token, keep=6)
+        chat_masked = _mask(chat_id, keep=4)
 
     return jsonify({
-        "enabled":         enabled,
-        "running":         running,
+        "enabled": enabled,
+        "running": running,
         "has_credentials": has_creds,
-        "state":           _state_string(enabled, running, has_creds),
-        "token":           token_masked,
-        "chat_id":         chat_masked,
-        "bot_username":    SettingsManager.get("telegram_bot_username"),
+        "state": _state_string(enabled, running, has_creds),
+        "token": token_masked,
+        "chat_id": chat_masked,
+        "bot_username": SettingsManager.get("telegram_bot_username"),
     })
 
 
@@ -154,7 +158,7 @@ def validate_telegram():
     Validates a bot token against Telegram API. Does NOT store anything.
     Returns bot username on success so UI can display it.
     """
-    data  = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or {}
     token = (data.get("token") or "").strip()
 
     if not token:
@@ -163,9 +167,9 @@ def validate_telegram():
     bot_info = _get_bot_info(token)
     if bot_info is not None:
         return jsonify({
-            "valid":    True,
+            "valid": True,
             "username": bot_info.get("username"),
-            "name":     bot_info.get("first_name"),
+            "name": bot_info.get("first_name"),
         })
 
     return jsonify({
@@ -186,8 +190,8 @@ def enable_telegram():
       → Decrypts stored credentials, restarts bot without re-validation.
       (Credentials were already validated during first setup.)
     """
-    data    = request.get_json(silent=True) or {}
-    token   = (data.get("token")   or "").strip()
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip()
     chat_id = (data.get("chat_id") or "").strip()
 
     # ── MODE B: Re-enable with stored credentials ──────────────────────────
@@ -220,7 +224,7 @@ def enable_telegram():
 
     # ── MODE A: First-time setup with explicit credentials ─────────────────
     errors = {}
-    if not token:   errors["token"]   = "Required"
+    if not token:   errors["token"] = "Required"
     if not chat_id: errors["chat_id"] = "Required"
     if errors:
         return jsonify({"error": "Missing credentials", "fields": errors}), 422
@@ -243,8 +247,8 @@ def enable_telegram():
         SettingsManager.set("telegram_bot_username", f"@{bot_info.get('username', '')}")
 
         return jsonify({
-            "success":      True,
-            "message":      "Telegram integration enabled",
+            "success": True,
+            "message": "Telegram integration enabled",
             "bot_username": f"@{bot_info.get('username', '')}",
         })
     except Exception:

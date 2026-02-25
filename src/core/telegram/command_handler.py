@@ -2,14 +2,31 @@
 
 import os
 import glob
+import json
+from datetime import datetime
 from src.core.system_status import get_status_text
 from src.core.screenshot import capture_screenshot
 from src.core.system_actions import shutdown_system, restart_system, lock_system
 from src.core.webcam import capture_webcam, record_video
+from src.config.settings_manager import SettingsManager
 
 class CommandHandler:
     def __init__(self, api):
         self.api = api
+
+    def _log_command(self, cmd: str):
+        try:
+            val = SettingsManager.get("telegram_recent_commands")
+            cmds = json.loads(val) if val else []
+        except Exception:
+            cmds = []
+        
+        cmds.insert(0, {
+            "cmd": cmd,
+            "timestamp": datetime.now().isoformat()
+        })
+        cmds = cmds[:5] # Keep last 5 commands
+        SettingsManager.set("telegram_recent_commands", json.dumps(cmds))
 
     def handle(self, message: dict):
         text = message.get("text", "").strip()
@@ -19,6 +36,8 @@ class CommandHandler:
             return
 
         command = text.lower()
+        if command:
+            self._log_command(command)
 
         if command == "/ping":
             self.api.send_message(get_status_text())

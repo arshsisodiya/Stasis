@@ -25,6 +25,7 @@ Bug fixes vs previous version:
 """
 
 import logging
+import json
 from flask import Blueprint, jsonify, request
 import requests
 
@@ -118,6 +119,12 @@ def telegram_config():
         token, chat_id = _get_stored_credentials()
         token_masked = _mask(token, keep=6)
         chat_masked = _mask(chat_id, keep=4)
+        
+    val = SettingsManager.get("telegram_recent_commands")
+    try:
+        recent_cmds = json.loads(val) if val else []
+    except Exception:
+        recent_cmds = []
 
     return jsonify({
         "enabled": enabled,
@@ -125,6 +132,7 @@ def telegram_config():
         "token": token_masked,
         "chat_id": chat_masked,
         "bot_username": SettingsManager.get("telegram_bot_username"),
+        "recent_commands": recent_cmds,
     })
 
 
@@ -140,6 +148,12 @@ def telegram_full_status():
         token, chat_id = _get_stored_credentials()
         token_masked = _mask(token, keep=6)
         chat_masked = _mask(chat_id, keep=4)
+        
+    val = SettingsManager.get("telegram_recent_commands")
+    try:
+        recent_cmds = json.loads(val) if val else []
+    except Exception:
+        recent_cmds = []
 
     return jsonify({
         "enabled": enabled,
@@ -149,6 +163,7 @@ def telegram_full_status():
         "token": token_masked,
         "chat_id": chat_masked,
         "bot_username": SettingsManager.get("telegram_bot_username"),
+        "recent_commands": recent_cmds,
     })
 
 

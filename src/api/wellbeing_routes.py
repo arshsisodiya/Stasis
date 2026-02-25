@@ -455,6 +455,13 @@ def clear_data():
             "error": str(e)
         }), 500
 
+import sys
+import subprocess
+import os
+import threading
+import time
+
+
 @wellbeing_bp.route("/api/factory-reset", methods=["DELETE"])
 def reset_everything():
     confirm = request.headers.get("X-Confirm-Reset")
@@ -466,11 +473,26 @@ def reset_everything():
         }), 400
 
     try:
+        # 1️⃣ Wipe database
         factory_reset()
 
+        # 2️⃣ Trigger restart AFTER response is sent
+        def delayed_restart():
+            time.sleep(1)  # allow response to flush
+
+            subprocess.Popen(
+                [sys.executable, "-m", "src.main"],
+                cwd=os.getcwd()
+            )
+
+            os._exit(0)
+
+        threading.Thread(target=delayed_restart, daemon=True).start()
+
+        # 3️⃣ Return success immediately
         return jsonify({
             "success": True,
-            "message": "Factory reset completed successfully."
+            "message": "Factory reset completed. Restarting..."
         }), 200
 
     except Exception as e:

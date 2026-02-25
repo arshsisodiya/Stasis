@@ -14,7 +14,9 @@ from src.database.database import (
     toggle_limit,
     get_blocked_apps,
     delete_app_limit,
-    set_temporary_unblock
+    set_temporary_unblock,
+    clear_all_tracked_events,
+    factory_reset
 )
 
 wellbeing_bp = Blueprint("wellbeing", __name__)
@@ -425,3 +427,54 @@ def api_delete_limit():
 @wellbeing_bp.route("/limits/blocked", methods=["GET"])
 def api_blocked_apps():
     return jsonify(get_blocked_apps())
+# =====================================
+# Danger
+# =====================================
+
+@wellbeing_bp.route("/api/clear-data", methods=["DELETE"])
+def clear_data():
+    confirm = request.headers.get("X-Confirm-Clear")
+
+    if confirm != "true":
+        return jsonify({
+            "success": False,
+            "error": "Confirmation header missing."
+        }), 400
+
+    try:
+        clear_all_tracked_events()
+
+        return jsonify({
+            "success": True,
+            "message": "All tracked data permanently deleted."
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@wellbeing_bp.route("/api/factory-reset", methods=["DELETE"])
+def reset_everything():
+    confirm = request.headers.get("X-Confirm-Reset")
+
+    if confirm != "RESET_ALL":
+        return jsonify({
+            "success": False,
+            "error": "Reset confirmation missing."
+        }), 400
+
+    try:
+        factory_reset()
+
+        return jsonify({
+            "success": True,
+            "message": "Factory reset completed successfully."
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500

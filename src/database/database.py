@@ -279,6 +279,56 @@ def clear_expired_unblocks():
         WHERE unblock_until IS NOT NULL
         AND unblock_until <= ?
     """, (now_iso,))
-
     conn.commit()
     conn.close()
+
+def clear_all_tracked_events():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Clear only historical tracking data
+        cursor.execute("DELETE FROM activity_logs")
+        cursor.execute("DELETE FROM daily_stats")
+        cursor.execute("DELETE FROM file_logs")
+
+        conn.commit()
+        return True
+
+    except Exception as e:
+        conn.rollback()
+        raise e
+
+    finally:
+        conn.close()
+
+def factory_reset():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Begin explicit transaction
+        cursor.execute("BEGIN")
+
+        # Clear all tracked data
+        cursor.execute("DELETE FROM activity_logs")
+        cursor.execute("DELETE FROM daily_stats")
+        cursor.execute("DELETE FROM file_logs")
+
+        # Clear configuration tables
+        cursor.execute("DELETE FROM app_settings")
+        cursor.execute("DELETE FROM app_limits")
+        cursor.execute("DELETE FROM blocked_apps")
+
+        # Reset auto-increment counters
+        cursor.execute("DELETE FROM sqlite_sequence")
+
+        conn.commit()
+        return True
+
+    except Exception as e:
+        conn.rollback()
+        raise e
+
+    finally:
+        conn.close()

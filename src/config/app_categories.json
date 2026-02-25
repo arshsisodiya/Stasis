@@ -1,70 +1,342 @@
 {
   "apps": {
-    "code.exe": { "main": "productive", "sub": "coding" },
-    "pycharm64.exe": { "main": "productive", "sub": "coding" },
-    "idea64.exe": { "main": "productive", "sub": "coding" },
-    "notepad++.exe": { "main": "productive", "sub": "coding" },
-    "sublime_text.exe": { "main": "productive", "sub": "coding" },
-
-    "cmd.exe": { "main": "productive", "sub": "development_tools" },
-    "powershell.exe": { "main": "productive", "sub": "development_tools" },
-    "git-bash.exe": { "main": "productive", "sub": "development_tools" },
-    "docker.exe": { "main": "productive", "sub": "development_tools" },
-
-    "chrome.exe": { "main": "neutral", "sub": "browser" },
-    "firefox.exe": { "main": "neutral", "sub": "browser" },
-    "msedge.exe": { "main": "neutral", "sub": "browser" },
-
-    "spotify.exe": { "main": "entertainment", "sub": "music" },
-    "vlc.exe": { "main": "entertainment", "sub": "video_player" },
-    "obs64.exe": { "main": "productive", "sub": "content_creation" },
-
-    "telegram.exe": { "main": "social", "sub": "messaging" },
-    "whatsapp.exe": { "main": "social", "sub": "messaging" },
-    "discord.exe": { "main": "social", "sub": "community" },
-
-    "premiere.exe": { "main": "productive", "sub": "video_editing" },
-    "photoshop.exe": { "main": "productive", "sub": "design" },
-
-    "steam.exe": { "main": "entertainment", "sub": "gaming" },
-    "epicgameslauncher.exe": { "main": "entertainment", "sub": "gaming" }
+    "code.exe": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "cursor.exe": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "pycharm64.exe": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "idea64.exe": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "rider64.exe": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "webstorm64.exe": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "clion64.exe": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "notepad++.exe": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "sublime_text.exe": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "devenv.exe": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "androidstudio64.exe": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "cmd.exe": {
+      "main": "productive",
+      "sub": "development_tools"
+    },
+    "powershell.exe": {
+      "main": "productive",
+      "sub": "development_tools"
+    },
+    "windowsterminal.exe": {
+      "main": "productive",
+      "sub": "development_tools"
+    },
+    "wt.exe": {
+      "main": "productive",
+      "sub": "development_tools"
+    },
+    "git-bash.exe": {
+      "main": "productive",
+      "sub": "development_tools"
+    },
+    "docker.exe": {
+      "main": "productive",
+      "sub": "development_tools"
+    },
+    "postman.exe": {
+      "main": "productive",
+      "sub": "development_tools"
+    },
+    "winword.exe": {
+      "main": "productive",
+      "sub": "office"
+    },
+    "excel.exe": {
+      "main": "productive",
+      "sub": "office"
+    },
+    "powerpnt.exe": {
+      "main": "productive",
+      "sub": "office"
+    },
+    "onenote.exe": {
+      "main": "productive",
+      "sub": "office"
+    },
+    "notion.exe": {
+      "main": "productive",
+      "sub": "office"
+    },
+    "obsidian.exe": {
+      "main": "productive",
+      "sub": "office"
+    },
+    "photoshop.exe": {
+      "main": "productive",
+      "sub": "design"
+    },
+    "illustrator.exe": {
+      "main": "productive",
+      "sub": "design"
+    },
+    "figma.exe": {
+      "main": "productive",
+      "sub": "design"
+    },
+    "premiere.exe": {
+      "main": "productive",
+      "sub": "video_editing"
+    },
+    "obs64.exe": {
+      "main": "productive",
+      "sub": "content_creation"
+    },
+    "obs32.exe": {
+      "main": "productive",
+      "sub": "content_creation"
+    },
+    "chrome.exe": {
+      "main": "other",
+      "sub": "browser"
+    },
+    "firefox.exe": {
+      "main": "other",
+      "sub": "browser"
+    },
+    "msedge.exe": {
+      "main": "other",
+      "sub": "browser"
+    },
+    "opera.exe": {
+      "main": "other",
+      "sub": "browser"
+    },
+    "brave.exe": {
+      "main": "other",
+      "sub": "browser"
+    },
+    "vivaldi.exe": {
+      "main": "other",
+      "sub": "browser"
+    },
+    "spotify.exe": {
+      "main": "entertainment",
+      "sub": "music"
+    },
+    "vlc.exe": {
+      "main": "entertainment",
+      "sub": "video_player"
+    },
+    "steam.exe": {
+      "main": "entertainment",
+      "sub": "gaming"
+    },
+    "epicgameslauncher.exe": {
+      "main": "entertainment",
+      "sub": "gaming"
+    },
+    "origin.exe": {
+      "main": "entertainment",
+      "sub": "gaming"
+    },
+    "battle.net.exe": {
+      "main": "entertainment",
+      "sub": "gaming"
+    },
+    "telegram.exe": {
+      "main": "communication",
+      "sub": "messaging"
+    },
+    "whatsapp.exe": {
+      "main": "communication",
+      "sub": "messaging"
+    },
+    "signal.exe": {
+      "main": "communication",
+      "sub": "messaging"
+    },
+    "discord.exe": {
+      "main": "communication",
+      "sub": "community"
+    },
+    "slack.exe": {
+      "main": "communication",
+      "sub": "work_chat"
+    },
+    "teams.exe": {
+      "main": "communication",
+      "sub": "work_chat"
+    },
+    "zoom.exe": {
+      "main": "communication",
+      "sub": "video_calls"
+    },
+    "skype.exe": {
+      "main": "communication",
+      "sub": "video_calls"
+    },
+    "outlook.exe": {
+      "main": "communication",
+      "sub": "email"
+    },
+    "thunderbird.exe": {
+      "main": "communication",
+      "sub": "email"
+    },
+    "explorer.exe": {
+      "main": "system",
+      "sub": "file_manager"
+    },
+    "taskmgr.exe": {
+      "main": "system",
+      "sub": "system_tools"
+    },
+    "control.exe": {
+      "main": "system",
+      "sub": "system_tools"
+    },
+    "regedit.exe": {
+      "main": "system",
+      "sub": "system_tools"
+    }
   },
-
   "url_rules": {
-    "github.com": { "main": "productive", "sub": "coding" },
-    "gitlab.com": { "main": "productive", "sub": "coding" },
-    "bitbucket.org": { "main": "productive", "sub": "coding" },
-
-    "stackoverflow.com": { "main": "productive", "sub": "learning" },
-    "geeksforgeeks.org": { "main": "productive", "sub": "learning" },
-    "w3schools.com": { "main": "productive", "sub": "learning" },
-    "developer.mozilla.org": { "main": "productive", "sub": "learning" },
-    "docs.python.org": { "main": "productive", "sub": "learning" },
-    "kotlinlang.org": { "main": "productive", "sub": "learning" },
-    "react.dev": { "main": "productive", "sub": "learning" },
-
-    "coursera.org": { "main": "productive", "sub": "learning" },
-    "udemy.com": { "main": "productive", "sub": "learning" },
-    "edx.org": { "main": "productive", "sub": "learning" },
-
-    "youtube.com/watch?v=": { "main": "neutral", "sub": "mixed_content" },
-    "youtube.com/results?search_query=programming": { "main": "productive", "sub": "learning" },
-    "youtube.com": { "main": "entertainment", "sub": "video" },
-
-    "twitter.com": { "main": "social", "sub": "scrolling" },
-    "x.com": { "main": "social", "sub": "scrolling" },
-    "instagram.com": { "main": "social", "sub": "scrolling" },
-    "reddit.com": { "main": "social", "sub": "discussion" },
-    "linkedin.com": { "main": "productive", "sub": "professional_networking" },
-
-    "chat.openai.com": { "main": "productive", "sub": "ai_learning" },
-    "openai.com": { "main": "productive", "sub": "ai_learning" },
-    "claude.ai": { "main": "productive", "sub": "ai_learning" },
-
-    "netflix.com": { "main": "entertainment", "sub": "streaming" },
-    "primevideo.com": { "main": "entertainment", "sub": "streaming" },
-
-    "medium.com": { "main": "productive", "sub": "reading" },
-    "substack.com": { "main": "productive", "sub": "reading" }
+    "github.com": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "gitlab.com": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "bitbucket.org": {
+      "main": "productive",
+      "sub": "coding"
+    },
+    "stackoverflow.com": {
+      "main": "productive",
+      "sub": "learning"
+    },
+    "geeksforgeeks.org": {
+      "main": "productive",
+      "sub": "learning"
+    },
+    "w3schools.com": {
+      "main": "productive",
+      "sub": "learning"
+    },
+    "developer.mozilla.org": {
+      "main": "productive",
+      "sub": "learning"
+    },
+    "docs.python.org": {
+      "main": "productive",
+      "sub": "learning"
+    },
+    "react.dev": {
+      "main": "productive",
+      "sub": "learning"
+    },
+    "coursera.org": {
+      "main": "productive",
+      "sub": "learning"
+    },
+    "udemy.com": {
+      "main": "productive",
+      "sub": "learning"
+    },
+    "edx.org": {
+      "main": "productive",
+      "sub": "learning"
+    },
+    "chat.openai.com": {
+      "main": "productive",
+      "sub": "ai_tools"
+    },
+    "openai.com": {
+      "main": "productive",
+      "sub": "ai_tools"
+    },
+    "claude.ai": {
+      "main": "productive",
+      "sub": "ai_tools"
+    },
+    "medium.com": {
+      "main": "productive",
+      "sub": "reading"
+    },
+    "substack.com": {
+      "main": "productive",
+      "sub": "reading"
+    },
+    "linkedin.com": {
+      "main": "productive",
+      "sub": "networking"
+    },
+    "youtube.com/watch?v=": {
+      "main": "entertainment",
+      "sub": "video"
+    },
+    "youtube.com": {
+      "main": "entertainment",
+      "sub": "video"
+    },
+    "netflix.com": {
+      "main": "entertainment",
+      "sub": "streaming"
+    },
+    "primevideo.com": {
+      "main": "entertainment",
+      "sub": "streaming"
+    },
+    "twitch.tv": {
+      "main": "entertainment",
+      "sub": "streaming"
+    },
+    "twitter.com": {
+      "main": "communication",
+      "sub": "social_media"
+    },
+    "x.com": {
+      "main": "communication",
+      "sub": "social_media"
+    },
+    "instagram.com": {
+      "main": "communication",
+      "sub": "social_media"
+    },
+    "reddit.com": {
+      "main": "communication",
+      "sub": "social_media"
+    },
+    "facebook.com": {
+      "main": "communication",
+      "sub": "social_media"
+    }
   }
 }

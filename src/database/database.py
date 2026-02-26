@@ -52,16 +52,63 @@ def init_db():
     CREATE TABLE IF NOT EXISTS daily_stats (
         date TEXT NOT NULL,
         app_name TEXT NOT NULL,
-        main_category TEXT,
+        main_category TEXT NOT NULL DEFAULT 'other',
         sub_category TEXT,
         active_seconds INTEGER DEFAULT 0,
         idle_seconds INTEGER DEFAULT 0,
         sessions INTEGER DEFAULT 0,
         keystrokes INTEGER DEFAULT 0,
         clicks INTEGER DEFAULT 0,
-        PRIMARY KEY (date, app_name)
+        PRIMARY KEY (date, app_name, main_category)
     )
     """)
+
+    # ── Migration: old schema had PK (date, app_name) without main_category.
+    # Detect that by checking if the old unique index still exists and,
+    # if so, rebuild the table with the new composite key so that browser
+    # sessions are tracked PER-CATEGORY instead of collapsing into one row.
+    try:
+        cursor.execute("PRAGMA table_info(daily_stats)")
+        cols = [r[1] for r in cursor.fetchall()]
+        # Check the current PK columns via the index list
+        cursor.execute("PRAGMA index_list(daily_stats)")
+        indexes = cursor.fetchall()
+        pk_cols = []
+        for idx in indexes:
+            if idx[2] == 1:  # unique
+                cursor.execute(f"PRAGMA index_info('{idx[1]}')") 
+                pk_cols = [r[2] for r in cursor.fetchall()]
+                break
+        # If old PK was only (date, app_name) (2 cols) migrate to 3-col PK
+        if set(pk_cols) == {"date", "app_name"}:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS daily_stats_new (
+                    date TEXT NOT NULL,
+                    app_name TEXT NOT NULL,
+                    main_category TEXT NOT NULL DEFAULT 'other',
+                    sub_category TEXT,
+                    active_seconds INTEGER DEFAULT 0,
+                    idle_seconds INTEGER DEFAULT 0,
+                    sessions INTEGER DEFAULT 0,
+                    keystrokes INTEGER DEFAULT 0,
+                    clicks INTEGER DEFAULT 0,
+                    PRIMARY KEY (date, app_name, main_category)
+                )
+            """)
+            cursor.execute("""
+                INSERT OR IGNORE INTO daily_stats_new
+                    (date, app_name, main_category, sub_category,
+                     active_seconds, idle_seconds, sessions, keystrokes, clicks)
+                SELECT date, app_name,
+                       COALESCE(main_category, 'other'),
+                       sub_category, active_seconds, idle_seconds,
+                       sessions, keystrokes, clicks
+                FROM daily_stats
+            """)
+            cursor.execute("DROP TABLE daily_stats")
+            cursor.execute("ALTER TABLE daily_stats_new RENAME TO daily_stats")
+    except Exception as _mig_err:
+        pass  # migration is best-effort; new installs are already correct
 
     # ===============================
     # APP USAGE LIMITS

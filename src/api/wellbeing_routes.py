@@ -1,4 +1,4 @@
-"""
+﻿"""
 Wellbeing API Routes
 --------------------
 All dashboard, stats, focus, limits endpoints.
@@ -221,10 +221,11 @@ def wellbeing():
         productive = safe(cursor.fetchone()[0])
 
         cursor.execute("""
-            SELECT app_name
+            SELECT app_name, SUM(active_seconds) AS total
             FROM daily_stats
             WHERE date = ?
-            ORDER BY active_seconds DESC
+            GROUP BY app_name
+            ORDER BY total DESC
             LIMIT 1
         """, (selected_date,))
         top_app_row = cursor.fetchone()
@@ -257,30 +258,34 @@ def daily_stats():
     cursor = conn.cursor()
 
     try:
+        # Each (app_name, main_category) pair is a separate row now.
+        # Return them all — the donut chart groups by main_category while
+        # the Apps tab groups by app_name (summing across categories).
         cursor.execute("""
             SELECT
                 app_name,
                 main_category,
                 sub_category,
-                active_seconds,
-                idle_seconds,
-                keystrokes,
-                clicks
+                SUM(active_seconds)  AS active,
+                SUM(idle_seconds)    AS idle,
+                SUM(keystrokes)      AS keys,
+                SUM(clicks)          AS clicks
             FROM daily_stats
             WHERE date = ?
-            ORDER BY active_seconds DESC
+            GROUP BY app_name, main_category
+            ORDER BY active DESC
         """, (selected_date,))
 
         rows = cursor.fetchall()
 
         return jsonify([
             {
-                "app": r[0],
-                "main": r[1],
-                "sub": r[2],
+                "app":    r[0],
+                "main":   r[1],
+                "sub":    r[2],
                 "active": safe(r[3]),
-                "idle": safe(r[4]),
-                "keys": safe(r[5]),
+                "idle":   safe(r[4]),
+                "keys":   safe(r[5]),
                 "clicks": safe(r[6]),
             }
             for r in rows
@@ -421,43 +426,55 @@ def dashboard():
         total_sessions = safe(row[4])
 
         cursor.execute("""
-            SELECT app_name
+            SELECT app_name, SUM(active_seconds) AS total
             FROM daily_stats
             WHERE date = ?
-            ORDER BY active_seconds DESC
+            GROUP BY app_name
+            ORDER BY total DESC
             LIMIT 1
         """, (selected_date,))
         top_app_row = cursor.fetchone()
         top_app = top_app_row[0] if top_app_row else "N/A"
 
-        # APPS
+        # APPS: return per-(app_name, main_category) rows for the donut chart;
+        # the frontend Apps tab will group by app and pick the dominant category.
         cursor.execute("""
             SELECT
                 app_name,
                 main_category,
                 sub_category,
-                active_seconds,
-                idle_seconds,
-                keystrokes,
-                clicks
+                SUM(active_seconds)  AS active,
+                SUM(idle_seconds)    AS idle,
+                SUM(keystrokes)      AS keys,
+                SUM(clicks)          AS clicks
             FROM daily_stats
             WHERE date = ?
-            ORDER BY active_seconds DESC
+            GROUP BY app_name, main_category
+            ORDER BY active DESC
         """, (selected_date,))
         apps_rows = cursor.fetchall()
 
-        apps = [
-            {
-                "app": r[0],
-                "main": r[1],
-                "sub": r[2],
-                "active": safe(r[3]),
-                "idle": safe(r[4]),
-                "keys": safe(r[5]),
-                "clicks": safe(r[6]),
-            }
-            for r in apps_rows
-        ]
+        # Build per-app aggregated view for the Apps tab list
+        app_map = {}
+        for r in apps_rows:
+            aname = r[0]
+            if aname not in app_map:
+                app_map[aname] = {"app": aname, "main": r[1], "sub": r[2],
+                                  "active": 0, "idle": 0, "keys": 0, "clicks": 0}
+            app_map[aname]["active"] += safe(r[3])
+            app_map[aname]["idle"]   += safe(r[4])
+            app_map[aname]["keys"]   += safe(r[5])
+            app_map[aname]["clicks"] += safe(r[6])
+            # Update dominant category if this category has more active time
+            if safe(r[3]) > app_map[aname].get("_dom_secs", 0):
+                app_map[aname]["main"] = r[1]
+                app_map[aname]["sub"]  = r[2]
+                app_map[aname]["_dom_secs"] = safe(r[3])
+
+        apps = sorted(
+            [{k: v for k, v in a.items() if k != "_dom_secs"} for a in app_map.values()],
+            key=lambda a: a["active"], reverse=True
+        )
 
         # HOURLY
         cursor.execute("""

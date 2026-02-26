@@ -121,27 +121,27 @@
       "sub": "content_creation"
     },
     "chrome.exe": {
-      "main": "other",
+      "main": "neutral",
       "sub": "browser"
     },
     "firefox.exe": {
-      "main": "other",
+      "main": "neutral",
       "sub": "browser"
     },
     "msedge.exe": {
-      "main": "other",
+      "main": "neutral",
       "sub": "browser"
     },
     "opera.exe": {
-      "main": "other",
+      "main": "neutral",
       "sub": "browser"
     },
     "brave.exe": {
-      "main": "other",
+      "main": "neutral",
       "sub": "browser"
     },
     "vivaldi.exe": {
-      "main": "other",
+      "main": "neutral",
       "sub": "browser"
     },
     "spotify.exe": {
@@ -223,6 +223,38 @@
     "regedit.exe": {
       "main": "system",
       "sub": "system_tools"
+    },
+    "arc.exe": {
+      "main": "neutral",
+      "sub": "browser"
+    },
+    "thorium.exe": {
+      "main": "neutral",
+      "sub": "browser"
+    },
+    "waterfox.exe": {
+      "main": "neutral",
+      "sub": "browser"
+    },
+    "librewolf.exe": {
+      "main": "neutral",
+      "sub": "browser"
+    },
+    "floorp.exe": {
+      "main": "neutral",
+      "sub": "browser"
+    },
+    "zen.exe": {
+      "main": "neutral",
+      "sub": "browser"
+    },
+    "chromium.exe": {
+      "main": "neutral",
+      "sub": "browser"
+    },
+    "iexplore.exe": {
+      "main": "neutral",
+      "sub": "browser"
     }
   },
   "url_rules": {

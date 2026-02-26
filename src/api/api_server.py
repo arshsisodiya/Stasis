@@ -2,9 +2,8 @@ from flask import Flask
 from flask_cors import CORS
 from werkzeug.serving import make_server
 
-from src.api.telegram_routes import telegram_bp
-from src.api.wellbeing_routes import wellbeing_bp
 from src.api.telegram_routes import telegram_bp, set_app_controller
+from src.api.wellbeing_routes import wellbeing_bp
 
 
 def create_app(app_controller):

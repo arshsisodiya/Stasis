@@ -3,9 +3,10 @@
 import os
 import time
 from PIL import ImageGrab
-from src.config.storage import  get_data_dir
-import logging
-logger = logging.getLogger("stasis")
+from src.config.storage import get_data_dir
+from src.utils.logger import setup_logger
+
+logger = setup_logger()
 
 
 def capture_screenshot():

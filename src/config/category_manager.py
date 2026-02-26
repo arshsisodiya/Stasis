@@ -1,6 +1,6 @@
 import json
 import os
-from src.config.storage import get_data_dir
+from functools import lru_cache
 
 CATEGORY_FILE = os.path.join(
     os.path.dirname(__file__),
@@ -10,6 +10,7 @@ CATEGORY_FILE = os.path.join(
 DEFAULT_CATEGORY = "other"
 
 
+@lru_cache(maxsize=1)
 def load_categories():
     if not os.path.exists(CATEGORY_FILE):
         return {}

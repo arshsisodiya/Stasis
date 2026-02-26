@@ -1,7 +1,7 @@
 import threading
 import time
 import psutil
-from datetime import datetime
+from datetime import datetime, timezone
 from src.database.database import (
     get_all_limits,
     add_blocked_app,
@@ -55,16 +55,12 @@ class BlockingService:
             # Skip if temporary override active
             if unblock_until:
                 try:
-                    from datetime import timezone
-                    try:
-                        unblock_time = datetime.fromisoformat(unblock_until)
-                        if datetime.now() < unblock_time:
-                            continue
-                    except Exception as e:
-                        print("Invalid unblock_until format:", e)
+                    unblock_time = datetime.fromisoformat(unblock_until)
+                    if datetime.now() < unblock_time:
                         continue
-                except:
-                    pass
+                except Exception as e:
+                    print("Invalid unblock_until format:", e)
+                    continue
 
             usage = get_today_usage(app_name)
 

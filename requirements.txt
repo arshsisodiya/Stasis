@@ -2,9 +2,12 @@ requests
 psutil
 Pillow
 pywin32
-opencv-python
+opencv-python-headless
 watchdog
-pywinauto
 pynput
 flask
 flask-cors
+cryptography
+comtypes
+packaging
+winsdk

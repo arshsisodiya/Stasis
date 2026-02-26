@@ -1,5 +1,4 @@
 import datetime
-from src.database.database import get_connection
 from src.config.category_manager import get_category
 
 

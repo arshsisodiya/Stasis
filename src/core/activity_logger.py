@@ -495,7 +495,7 @@ def flush_session(session: SessionState, cursor) -> bool:
         ))
 
         update_daily_stats(cursor, info["app_name"], info["url"], active_secs, idle_secs, keys, clicks)
-        calculate_daily_wellbeing(cursor)
+        calculate_daily_wellbeing()
         return True
 
     except Exception as e:

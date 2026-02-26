@@ -4,6 +4,11 @@ Wellbeing API Routes
 All dashboard, stats, focus, limits endpoints.
 """
 
+import sys
+import subprocess
+import os
+import threading
+import time
 from flask import Blueprint, jsonify, request
 import datetime
 
@@ -63,6 +68,117 @@ def available_dates():
         cursor.execute("SELECT DISTINCT date FROM daily_stats ORDER BY date DESC")
         dates = [row[0] for row in cursor.fetchall()]
         return jsonify(dates)
+    finally:
+        conn.close()
+
+
+# =====================================
+# Heatmap Data (per-date intensity)
+# =====================================
+
+@wellbeing_bp.route("/api/heatmap")
+def heatmap():
+    """Returns lightweight per-date stats for the calendar heatmap dots."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT
+                date,
+                SUM(active_seconds)                                         AS screen_time,
+                SUM(CASE WHEN main_category = 'productive' THEN active_seconds ELSE 0 END) AS productive_time
+            FROM daily_stats
+            GROUP BY date
+            ORDER BY date DESC
+            LIMIT 60
+        """)
+        rows = cursor.fetchall()
+        result = {}
+        for row in rows:
+            date, screen, prod = row
+            pct = round((safe(prod) / safe(screen, 1)) * 100) if screen else 0
+            result[date] = {"screenTime": safe(screen), "productivityPct": pct}
+        return jsonify(result)
+    finally:
+        conn.close()
+
+
+# =====================================
+# Session Timeline (raw activity rows)
+# =====================================
+
+@wellbeing_bp.route("/api/sessions")
+def sessions():
+    """
+    Returns activity_logs rows for a date, enriched with category.
+    Each row = one tracker tick. Frontend groups these into session blocks.
+    """
+    selected_date = get_selected_date()
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT
+                al.timestamp,
+                al.app_name,
+                al.active_seconds,
+                al.idle_seconds,
+                al.keystrokes,
+                al.clicks,
+                ds.main_category
+            FROM activity_logs al
+            LEFT JOIN daily_stats ds
+                ON  ds.date      = ?
+                AND ds.app_name  = al.app_name
+            WHERE al.timestamp LIKE ?
+              AND al.active_seconds > 0
+            ORDER BY al.timestamp ASC
+        """, (selected_date, selected_date + "%"))
+        rows = cursor.fetchall()
+        return jsonify([
+            {
+                "ts":     r[0],
+                "app":    r[1],
+                "active": safe(r[2]),
+                "idle":   safe(r[3]),
+                "keys":   safe(r[4]),
+                "clicks": safe(r[5]),
+                "cat":    r[6] or "other",
+            }
+            for r in rows
+        ])
+    finally:
+        conn.close()
+
+
+# =====================================
+# Weekly Trend (interactive line graph)
+# =====================================
+
+@wellbeing_bp.route("/api/weekly-trend")
+def weekly_trend():
+    """Last 14 days of daily screen time + productivity % for the line graph."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT
+                date,
+                SUM(active_seconds) AS screen_time,
+                SUM(CASE WHEN main_category = 'productive' THEN active_seconds ELSE 0 END) AS prod_time
+            FROM daily_stats
+            GROUP BY date
+            ORDER BY date DESC
+            LIMIT 14
+        """)
+        rows = cursor.fetchall()
+        result = []
+        for row in rows:
+            date, screen, prod = row
+            pct = round((safe(prod) / max(safe(screen), 1)) * 100)
+            result.append({"date": date, "screenTime": safe(screen), "productivityPct": pct})
+        result.reverse()   # oldest → newest
+        return jsonify(result)
     finally:
         conn.close()
 
@@ -455,11 +571,7 @@ def clear_data():
             "error": str(e)
         }), 500
 
-import sys
-import subprocess
-import os
-import threading
-import time
+
 
 
 @wellbeing_bp.route("/api/factory-reset", methods=["DELETE"])

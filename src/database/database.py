@@ -99,6 +99,7 @@ def init_db():
 
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_time ON activity_logs(timestamp)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_app ON activity_logs(app_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_app_date ON activity_logs(app_name, timestamp)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_date ON daily_stats(date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_active ON daily_stats(active_seconds)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_limit_app ON app_limits(app_name)")

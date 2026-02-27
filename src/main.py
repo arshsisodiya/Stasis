@@ -66,6 +66,7 @@ def main():
     init_db()
 
     # Register startup only when running as packaged EXE
+    # We now let the backend register itself so it can run independently of the UI.
     if getattr(sys, "frozen", False):
         add_to_startup(get_executable_path())
 

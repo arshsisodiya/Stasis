@@ -31,11 +31,45 @@ class AdvancedActivityHandler(FileSystemEventHandler):
 
     def __init__(self):
         self.last_logged = {}
+        self.settings_cache = {
+            "enabled": True,
+            "essential_only": True,
+            "last_fetched": 0
+        }
+
+    def update_settings(self):
+        now = time.time()
+        if now - self.settings_cache["last_fetched"] > 10:
+            from src.config.settings_manager import SettingsManager
+            self.settings_cache["enabled"] = SettingsManager.get_bool("file_logging_enabled", default=True)
+            self.settings_cache["essential_only"] = SettingsManager.get_bool("file_logging_essential_only", default=True)
+            self.settings_cache["last_fetched"] = now
 
     def should_ignore(self, path):
+        self.update_settings()
+        
+        if not self.settings_cache["enabled"]:
+            return True
+
         if path.startswith(BASE_DIR):
             return True
-        return any(k.lower() in path.lower() for k in IGNORE_KEYWORDS)
+            
+        if any(k.lower() in path.lower() for k in IGNORE_KEYWORDS):
+            return True
+            
+        if self.settings_cache["essential_only"]:
+            ext = path.split('.')[-1].lower() if '.' in path else ''
+            # Only track standard document, code, and media types
+            essential_exts = {
+                'pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt', 'csv', 'md',
+                'mp4', 'mkv', 'avi', 'mp3', 'wav', 'png', 'jpg', 'jpeg', 'gif', 'webp',
+                'exe', 'msi', 'zip', 'rar', '7z', 'apk',
+                'py', 'js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'yml', 'yaml', 'c', 'cpp', 'h', 'java'
+            }
+            if ext not in essential_exts:
+                return True
+                
+        return False
 
     def log_event(self, action, path):
         now = time.time()

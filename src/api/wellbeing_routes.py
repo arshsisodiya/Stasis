@@ -51,9 +51,35 @@ def get_selected_date():
 # Health
 # =====================================
 
+from src.config.settings_manager import SettingsManager
+
 @wellbeing_bp.route("/api/health")
 def health():
     return jsonify({"status": "running"})
+
+# =====================================
+# Settings
+# =====================================
+
+@wellbeing_bp.route("/api/settings", methods=["GET"])
+def get_settings():
+    return jsonify({
+        "file_logging_enabled": SettingsManager.get_bool("file_logging_enabled", True),
+        "file_logging_essential_only": SettingsManager.get_bool("file_logging_essential_only", True)
+    })
+
+@wellbeing_bp.route("/api/settings/update", methods=["POST"])
+def update_settings():
+    data = request.json
+    if "file_logging_enabled" in data:
+        val = "true" if data["file_logging_enabled"] else "false"
+        SettingsManager.set("file_logging_enabled", val)
+    
+    if "file_logging_essential_only" in data:
+        val = "true" if data["file_logging_essential_only"] else "false"
+        SettingsManager.set("file_logging_essential_only", val)
+        
+    return jsonify({"status": "updated"})
 
 
 # =====================================

@@ -22,7 +22,9 @@ class SettingsManager:
         defaults = {
             "telegram_enabled": "false",
             "telegram_token": None,
-            "telegram_chat_id": None
+            "telegram_chat_id": None,
+            "file_logging_enabled": "true",
+            "file_logging_essential_only": "true"
         }
 
         for key, value in defaults.items():
@@ -95,11 +97,11 @@ class SettingsManager:
     # ---------------------
 
     @staticmethod
-    def get_bool(key: str) -> bool:
+    def get_bool(key: str, default: bool = False) -> bool:
         value = SettingsManager.get(key)
 
         if value is None:
-            return False
+            return default
 
         if isinstance(value, bool):
             return value

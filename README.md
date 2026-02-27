@@ -1,414 +1,122 @@
-# Stasis 🚀
-
-**Stasis** is a Windows background utility designed for system telemetry, activity logging, and controlled remote interaction via a private Telegram Bot.
-
-It provides real-time boot notifications, remote system control, structured activity logging, and secure log retrieval — all accessible through Telegram.
-
----
-
-## ⚠️ Ethical & Legal Notice
-
-This project is developed strictly for:
-
-* Educational purposes
-* Personal system monitoring
-* Cybersecurity research
-* Controlled lab environments
-
-Do **NOT** deploy this software on systems you do not own or do not have explicit written authorization to monitor.
-
-Unauthorized surveillance or monitoring may be illegal in your jurisdiction.
-
-You are solely responsible for how you use this software.
+<div align="center">
+  <h1>🚀 Stasis</h1>
+  <p><b>Digital Wellbeing & System Telemetry</b></p>
+  <p><i>It started as a simple startup notifier app and has now evolved into a full Digital Wellbeing app with Telegram integration!</i></p>
+</div>
 
 ---
 
-## 📦 Download
+**Stasis** is an advanced Windows background utility designed for active productivity tracking, system telemetry, and controlled remote interaction via a private Telegram Bot. It provides real-time boot notifications, detailed activity logging, and remote management—all accessible seamlessly through Telegram.
 
-Download the latest builds from the Releases section:
+## 📸 Screenshots
 
-👉 [https://github.com/arshsisodiya/Stasis/releases](https://github.com/arshsisodiya/Stasis/releases)
+*(We will add UI screenshots later)*
+<div align="center">
+  <img src="https://via.placeholder.com/800x450?text=UI+Screenshot+Placeholder" alt="UI Placeholder 1">
+  <br><br>
+  <img src="https://via.placeholder.com/800x450?text=Telegram+Integration+Placeholder" alt="UI Placeholder 2">
+</div>
 
-Available builds:
+## ✨ Features
 
-* **Portable (.exe)** – Standalone executable
-* **Installer (.exe setup)** – Recommended for permanent installation
+- **📱 Telegram-Based Remote Control:** Manage your PC from anywhere using simple Telegram commands.
+- **📊 Advanced Activity Logging:** Track active applications, window titles, URLs visited, session durations, keystrokes, and mouse clicks.
+- **🧠 Intelligent Idle Detection:** Automatically subtracts idle time (no input for 2 minutes) from usage metrics, ensuring your productivity stats are realistic.
+- **🎬 Media Exception Handling:** Prevents video playback (YouTube, VLC, etc.) from being incorrectly classified as idle time.
+- **📂 Global File System Monitor:** Monitors file creations, modifications, deletions, and renames across connected drives.
+- **📥 Remote Log Retrieval:** Instantly trigger log dumps via Telegram (`/log`) to receive formatted CSV files of your activity directly to your phone.
 
----
+## ⚙️ How It Works
 
-## 🆚 Portable vs Installer
+Stasis is built to run reliably in the background while keeping a minimal footprint:
 
-### 🔹 Portable Version
+1. **Activity Monitoring:** Using minimal system hooks, Stasis observes which application currently has focus, alongside logging keystroke/mouse click intensity.
+2. **Idle & Media States:** When no interaction is detected for a period, it transitions to "Idle Mode". If media is playing (such as YouTube), it actively overrides the idle state so your data reflects true ongoing usage.
+3. **Local Architecture:** All gathered data is organized locally into CSV files and databases. Your tracked files never leave your machine unless specifically requested.
+4. **Secure Telegram Long-Polling:** A secure pipeline connects Stasis to the Telegram API. Your configured Telegram Bot acts as your private interface to issue commands and request data payloads anywhere in the world.
 
-* Single executable
-* No installation required
-* Manual startup configuration
-* Suitable for testing or temporary use
+## 💻 Developer Setup & Build Instructions
 
-### 🔹 Installer Version
+Want to dig into the code or build Stasis locally? Follow these simple steps.
 
-* Installs into Program Files
-* Automatically registers Windows startup
-* Allows Telegram credentials entry during installation
-* Clean uninstall via Control Panel
-* Recommended for long-term deployment
+### Prerequisites
+To build the full project (which includes the Tauri frontend and the Python backend), you need the following tools installed and added to your system PATH:
+- **Python 3.8+** (with `pyinstaller` installed via `pip install pyinstaller`)
+- **Node.js & npm**
+- **Rust** (stable, via rustup)
+- **NSIS**
+- **Git**
+- *(Optional)* **UPX** for backend executable compression
 
----
-
-# 🚀 Core Capabilities
-
-## 📡 Telegram-Based Remote Control
-
-| Command       | Action                          | Confirmation Required     |
-| ------------- | ------------------------------- | ------------------------- |
-| `/ping`       | Check if system is online       | No                        |
-| `/screenshot` | Capture and send current screen | No                        |
-| `/camera`     | Capture webcam image            | No                        |
-| `/video`      | Record 10s webcam video         | No                        |
-| `/video 30`   | Record custom-duration video    | No                        |
-| `/lock`       | Lock Windows session            | No                        |
-| `/shutdown`   | Shutdown PC                     | Yes (`/shutdown confirm`) |
-| `/restart`    | Restart PC                      | Yes (`/restart confirm`)  |
-| `/log`        | Retrieve activity & file logs   | No                        |
-
----
-
-## 📊 Activity Logging & System Telemetry
-
-Stasis includes an advanced structured logging engine that records system interaction data locally in CSV format.
-
----
-
-## 🖥️ Application Activity Log
-
-Tracks:
-
-* Active application name
-* Process ID (PID)
-* Window title
-* Visited URLs (supported browsers)
-* Session duration
-* Keystroke count
-* Mouse click count
-* Idle detection handling
-
-### 💤 Intelligent Idle Detection
-
-* If no keyboard or mouse input is detected for **2 minutes**, the system enters Idle Mode.
-* Idle time:
-
-  * Is not counted toward application usage
-  * Is automatically subtracted from total duration
-* Ensures realistic usage statistics.
-
-### 🎬 Media Exception Handling
-
-Idle detection is automatically disabled for media platforms such as:
-
-* YouTube
-* VLC Media Player
-* Other supported media applications
-
-This prevents video playback from being incorrectly classified as idle time.
-
----
-
-### 📁 Activity Log CSV Format
-
-| Timestamp | Application | PID | Window Title | URL | Duration | Keystrokes | Clicks |
-| --------- | ----------- | --- | ------------ | --- | -------- | ---------- | ------ |
-
-**Field Explanation:**
-
-* **Timestamp** – Session start time
-* **Application** – Executable name
-* **PID** – Process ID
-* **Window Title** – Active window
-* **URL** – Browser URL (if detected)
-* **Duration** – Active time (Idle excluded)
-* **Keystrokes** – Total key presses
-* **Clicks** – Mouse clicks
-
-This provides deep insight into:
-
-* Application usage duration
-* Interaction intensity
-* Browsing behavior
-* True active vs idle time
-
----
-
-## 📂 Global File System Monitor
-
-Monitors file system events across connected drives.
-
-### 📌 Tracked Events
-
-* File Created
-* File Modified
-* File Deleted
-* File Renamed
-
----
-
-### 📁 File Monitor CSV Format
-
-| Timestamp | Action | File Path |
-| --------- | ------ | --------- |
-
-**Field Explanation:**
-
-* **Timestamp** – Time of event
-* **Action** – Created / Modified / Deleted / Renamed
-* **File Path** – Full file path
-
----
-
-## 📥 Remote Log Retrieval
-
-Using the Telegram command:
-
-```
-/log
-```
-
-You can retrieve:
-
-* Activity logs (application usage)
-* File monitoring logs
-
-Logs are sent directly to your Telegram chat as CSV files for download and analysis.
-
-This allows remote review without direct system access.
-
----
-
-# ⚙️ Configuration
-
-Stasis uses `config.json`.
-
-If setting up manually:
-
-Rename:
-
-```
-config.template.json → config.json
-```
-
----
-
-## 🔑 How to Get Telegram Bot Token
-
-1. Open Telegram
-2. Search **@BotFather**
-3. Send:
-
-```
-/newbot
-```
-
-4. Follow instructions
-5. Copy the generated Bot Token
-
-Example:
-
-```
-123456789:AAExampleGeneratedToken
-```
-
----
-
-## 🆔 How to Get Chat ID
-
-1. Start chat with your bot
-2. Send any message
-3. Open:
-
-```
-https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
-```
-
-4. Find:
-
-```
-"chat": {
-  "id": 123456789
-}
-```
-
-That is your Chat ID.
-
----
-
-### Example config.json
-
-```json
-{
-  "ui_mode": "normal",
-  "startup_delay": 15,
-  "logging": {
-    "level": "info",
-    "monitor_windows": true,
-    "monitor_files": true
-  },
-  "telegram": {
-    "bot_token": "YOUR_BOT_TOKEN",
-    "chat_id": "YOUR_CHAT_ID"
-  }
-}
-```
-
----
-
-# 🛠 Developer Setup
-
-## 📁 Project Structure
-
-```
-Stasis/
-│
-├── src/
-│   └── main.py
-│
-├── assets/
-├── config.template.json
-├── requirements.txt
-└── README.md
-```
-
----
-
-## 1️⃣ Clone Repository
-
+### 1️⃣ Clone the Repository
 ```bash
 git clone https://github.com/arshsisodiya/Stasis.git
 cd Stasis
 ```
 
----
+### 2️⃣ Configuration
+Before running, you must define your credentials. Rename the provided configuration template:
+```bash
+mv config.template.json config.json  # Or rename manually
+```
+Open `config.json` and insert your **Telegram Bot Token** and your **Chat ID**.
 
-## 2️⃣ Create Virtual Environment
+### 🔨 Building the Full Application (Recommended)
+Stasis features a modern **React/Vite Tauri frontend** seamlessly bundled with its **Python background telemetry engine**. We provide an automated PowerShell script to handle compiling both and generating a cohesive NSIS installer.
 
+From the project root, open PowerShell and run:
+```powershell
+.\build.ps1
+```
+
+#### What `build.ps1` Does:
+1. Evaluates your system to ensure all prerequisites are met.
+2. Compiles the Python backend into a standalone `.exe` via `PyInstaller`.
+3. Moves the backend executable to the Tauri binaries folder (`frontend/src-tauri/bin/`).
+4. Runs `npm install` inside the `frontend/` directory.
+5. Executes `npm run tauri:build` to build the Vite interface and Rust shell, outputting the final user installers.
+
+> **Output Location:** Once finished, your packaged `.exe` installers will be sitting in `frontend\src-tauri\target\release\bundle\`.
+
+### 🛠 Manual Developer Setup (Testing the Python Backend Only)
+If you just want to run the python telemetry instance without the frontend UI:
 ```bash
 python -m venv venv
 venv\Scripts\activate
-```
-
----
-
-## 3️⃣ Install Dependencies
-
-If requirements.txt exists:
-
-```bash
 pip install -r requirements.txt
-```
-
-Otherwise:
-
-```bash
-pip install requests opencv-python pyautogui watchdog pyinstaller
-```
-
----
-
-## 4️⃣ Configure
-
-Rename:
-
-```
-config.template.json → config.json
-```
-
-Insert Telegram credentials.
-
----
-
-## 5️⃣ Run in Development
-
-```bash
 python src/main.py
 ```
 
 ---
 
-# 🔨 Building Executables
+## 🤖 Telegram Commands Reference
 
-## Option A — Single File (`--onefile`)
-
-```bash
-pyinstaller --onefile --noconsole --name Stasis --icon=assets/icon.ico src/main.py
-```
-
-Output:
-
-```
-dist/Stasis.exe
-```
-
----
-
-## Option B — One Directory (`--onedir`)
-
-```bash
-pyinstaller --onedir --noconsole --name Stasis --icon=assets/icon.ico src/main.py
-```
-
-Output:
-
-```
-dist/Stasis/
-```
-
-Use `--onedir` for:
-
-* Faster startup time
-* Easier debugging
-* Reduced antivirus false positives
-* Cleaner dependency layout
+| Command       | Description                     | Confirmation Required |
+| ------------- | ------------------------------- | --------------------- |
+| `/ping`       | Check if system is online       | No                    |
+| `/screenshot` | Capture and send current screen | No                    |
+| `/camera`     | Capture webcam image            | No                    |
+| `/video [s]`  | Record webcam video (def: 10s)  | No                    |
+| `/lock`       | Lock Windows session            | No                    |
+| `/shutdown`   | Shutdown PC                     | Yes                   |
+| `/restart`    | Restart PC                      | Yes                   |
+| `/log`        | Retrieve activity & file logs   | No                    |
 
 ---
 
-## Installer Build
+## 📦 Download
 
-Use your Inno Setup `.iss` script to generate installer package.
-
----
-
-# 🔐 Security & Transparency Documentation
-
-### Command Restrictions
-
-* Only configured Chat ID is allowed.
-* Critical commands require confirmation.
-* No arbitrary shell execution.
-
-### Credential Protection
-
-* `config.json` must be added to `.gitignore`.
-* Bot token is never stored remotely.
-* No external server communication except Telegram API.
-
-### Hardware Transparency
-
-* Webcam LED activates during capture.
-* Application is visible in Task Manager.
-* No hidden persistence mechanisms.
-
-### Logging Scope
-
-* Window logger tracks titles only (not content).
-* File monitor logs file events (not file contents).
-* URL logging is browser-based and local.
-* Logs are stored locally and retrievable via `/log`.
+Download the latest builds from the Releases section: 👉 [https://github.com/arshsisodiya/Stasis/releases](https://github.com/arshsisodiya/Stasis/releases)
 
 ---
 
-## 📄 License
+## ⚠️ Ethical & Legal Notice
 
-MIT License
+This project is developed strictly for **educational purposes, personal system monitoring, and controlled lab reference**. Do **NOT** deploy this software on systems you do not own or do not have explicit written authorization to monitor. Unauthorized surveillance may be illegal in your jurisdiction.
 
 ---
 
-**Developed by Arsh**
-Made with ❤️ for automation, security, and peace of mind.
+<div align="center">
+  <b>Developed by Arsh</b><br>
+  Made with ❤️ for automation, digital wellbeing, and peace of mind.<br>
+</div>

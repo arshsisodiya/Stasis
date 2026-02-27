@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const BASE_URL = "http://localhost:7432";
+const BASE_URL = "http://127.0.0.1:7432";
 
 const C = {
   bg: "#080b14",

@@ -14,14 +14,14 @@
  *
  * PROPS:
  *   onReady       — called once the backend health check succeeds
- *   healthUrl     — endpoint to poll (default: "http://localhost:7432/api/health")
+ *   healthUrl     — endpoint to poll (default: "http://127.0.0.1:7432/api/health")
  *   retryInterval — ms between polls (default: 1500)
  *   maxRetries    — give up and show error after N failures (default: 40 = 60s)
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
 
-const HEALTH_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:7432'}/api/health`;
+const HEALTH_URL = `${import.meta.env.VITE_API_URL || 'http://127.0.0.1:7432'}/api/health`;
 const RETRY_INTERVAL = 1500;
 const MAX_RETRIES = 40;
 

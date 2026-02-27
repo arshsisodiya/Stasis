@@ -29,3 +29,4 @@ src-tauri/bin/*
 src-tauri/binaries/*
 src-tauri/check.log
 !src-tauri/bin/.keep
+src-tauri/gen

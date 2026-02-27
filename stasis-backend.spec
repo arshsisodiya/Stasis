@@ -5,7 +5,7 @@ a = Analysis(
     ['src\\main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('src\\config\\app_categories.json', 'src\\config')],
     hiddenimports=[
         'flask',
         'flask_cors',

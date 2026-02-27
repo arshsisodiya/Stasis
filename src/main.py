@@ -16,7 +16,7 @@ from src.services.update_manager import UpdateManager
 from src.utils.logger import setup_logger
 
 logger = setup_logger()
-ENABLE_UPDATER = True
+ENABLE_UPDATER = False
 
 
 # ===============================

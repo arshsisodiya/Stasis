@@ -30,5 +30,11 @@ def update_daily_stats(cursor, app_name, url, active_seconds, idle_seconds, keys
             int(keys),
             int(clicks)
         ))
-    except Exception:
-        pass
+    except Exception as e:
+        import traceback
+        import os
+        from src.config.storage import get_logs_dir
+        err_path = os.path.join(get_logs_dir(), "daily_stats_fatal.log")
+        with open(err_path, "a") as f:
+            f.write(f"\\n[{datetime.datetime.now()}] Error updating daily_stats:\\n")
+            traceback.print_exc(file=f)

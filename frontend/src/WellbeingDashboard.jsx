@@ -22,9 +22,15 @@ function fmtTimeFull(sec) {
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
+function localYMD(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 function yesterday(dateStr) {
   const d = new Date(dateStr + "T12:00:00"); d.setDate(d.getDate() - 1);
-  return d.toISOString().split("T")[0];
+  return localYMD(d);
 }
 function trendPct(today, prev) {
   if (!prev || prev === 0) return null;
@@ -142,7 +148,7 @@ function useCountUp(target, duration = 1400, key = "") {
 
 function useLiveClock(selectedDate) {
   const [elapsed, setElapsed] = useState(0);
-  const isToday = selectedDate === new Date().toISOString().split("T")[0];
+  const isToday = selectedDate === localYMD();
   useEffect(() => {
     if (!isToday) return;
     const tick = () => {
@@ -670,14 +676,14 @@ function SectionCard({ title, children, style = {}, className = "" }) {
 
 // ─── DATE NAVIGATOR ───────────────────────────────────────────────────────────
 function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = localYMD();
   const dateSet = new Set(availableDates);
   const sorted = [...availableDates].sort();
   const days = Array.from({ length: 14 }, (_, i) => {
     const we = new Date(selectedDate + "T12:00:00"); we.setDate(we.getDate() + 6);
     const ce = we > new Date(today + "T12:00:00") ? new Date(today + "T12:00:00") : we;
     const s = new Date(ce); s.setDate(s.getDate() - 13 + i);
-    return s.toISOString().split("T")[0];
+    return localYMD(s);
   });
   const prev = () => { const e = sorted.filter(d => d < selectedDate); if (e.length) onChange(e[e.length - 1]); };
   const next = () => { const l = sorted.filter(d => d > selectedDate && d <= today); if (l.length) onChange(l[0]); };
@@ -1795,7 +1801,7 @@ function EmptyState() {
 
 // ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
 export default function WellbeingDashboard({ onDisconnect }) {
-  const BASE = import.meta.env.VITE_API_URL || "http://localhost:7432";
+  const BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:7432";
   const [data, setData] = useState(null);
   const [stats, setStats] = useState([]);
   const [prevStats, setPrevStats] = useState([]);
@@ -1807,7 +1813,7 @@ export default function WellbeingDashboard({ onDisconnect }) {
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   const [showSettings, setShowSettings] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState(localYMD());
   const [availableDates, setAvailableDates] = useState([]);
   const { elapsed, isToday } = useLiveClock(selectedDate);
   const [trackedSeconds, setTrackedSeconds] = useState(0);
@@ -1835,7 +1841,7 @@ export default function WellbeingDashboard({ onDisconnect }) {
   // Load available dates on mount
   useEffect(() => {
     fetch(`${BASE}/api/available-dates`).then(r => r.json()).then(d => setAvailableDates(d))
-      .catch(() => setAvailableDates([new Date().toISOString().split("T")[0]]));
+      .catch(() => setAvailableDates([localYMD()]));
     // Load heatmap data once (lightweight — last 60 days of per-date summaries)
     fetch(`${BASE}/api/heatmap`).then(r => r.json()).then(d => setHeatmapData(d)).catch(() => { });
   }, []);
@@ -1843,8 +1849,14 @@ export default function WellbeingDashboard({ onDisconnect }) {
   // Apply cached data to state
   const applyData = useCallback((entry) => {
     const { wb, ds, hr, fc, prev, lim } = entry;
-    if (!wb || wb.error || (!wb.totalScreenTime && !ds.length)) {
-      setNoData(true); setLoading(false); return;
+    if (!wb || wb.error || wb.totalScreenTime === 0 || (!wb.totalScreenTime && !ds.length)) {
+      // Still show the dashboard, just inject an empty scaffold.
+      setData({ totalScreenTime: 0, totalIdleTime: 0, totalKeystrokes: 0, totalClicks: 0, totalSessions: 0, productivityPercent: 0, mostUsedApp: 'N/A' });
+      setStats([]); setHourly(new Array(24).fill(0)); setFocusData({ score: 0 });
+      setPrevStats([]); setLimits([]); setTrackedSeconds(0);
+      setNoData(false); setLoading(false);
+      setTimeout(() => setMounted(true), 100);
+      return;
     }
     setNoData(false);
     setData(wb); setStats(ds); setHourly(hr); setFocusData(fc);
@@ -1893,7 +1905,7 @@ export default function WellbeingDashboard({ onDisconnect }) {
 
   // Main effect: runs when selectedDate changes
   useEffect(() => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = localYMD();
     const isToday = selectedDate === today;
     // Cache TTL: today refreshes every 60s, historical dates are immutable (cache forever)
     const CACHE_TTL = isToday ? 60_000 : Infinity;
@@ -1927,7 +1939,7 @@ export default function WellbeingDashboard({ onDisconnect }) {
 
   // Live refresh for today every 60s (update cache + re-apply)
   useEffect(() => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = localYMD();
     if (selectedDate !== today) return; // Only run for today
     const iv = setInterval(async () => {
       try {

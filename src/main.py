@@ -49,7 +49,7 @@ def main():
     logger.info("Application started")
 
     # 🔒 Ensure single instance (exits internally if duplicate is detected)
-    ensure_single_instance()
+    _app_mutex = ensure_single_instance()
     # Initialize App Controller (handles Telegram + config + internet internally)
     app_controller = AppController()
     app_controller.initialize()

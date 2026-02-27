@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from src.database.database import (
     get_all_limits,
     add_blocked_app,
+    remove_blocked_app,
     get_today_usage,
     clear_expired_unblocks,
     get_connection,
@@ -50,6 +51,7 @@ class BlockingService:
             unblock_until = limit[4]  # new column
 
             if not is_enabled:
+                remove_blocked_app(app_name)
                 continue
 
             # Skip if temporary override active
@@ -57,6 +59,7 @@ class BlockingService:
                 try:
                     unblock_time = datetime.fromisoformat(unblock_until)
                     if datetime.now() < unblock_time:
+                        remove_blocked_app(app_name)
                         continue
                 except Exception as e:
                     print("Invalid unblock_until format:", e)
@@ -66,6 +69,8 @@ class BlockingService:
 
             if usage >= daily_limit:
                 add_blocked_app(app_name)
+            else:
+                remove_blocked_app(app_name)
 
     # 🔹 Kill blocked apps continuously
     def enforce_blocks(self):

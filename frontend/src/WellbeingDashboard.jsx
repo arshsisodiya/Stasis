@@ -833,10 +833,10 @@ function LimitRing({ used, limit, size = 64, stroke = 6 }) {
 }
 
 // ─── LIMIT CARD ───────────────────────────────────────────────────────────────
-function LimitCard({ limit, onToggle, onEdit, onDelete, onUnblock, todayUsage }) {
+function LimitCard({ limit, onToggle, onEdit, onDelete, onUnblock, todayUsage, isBlocked }) {
   const [hov, setHov] = useState(false);
   const used = todayUsage[limit.app_name] || 0;
-  const isOver = used >= limit.daily_limit_seconds;
+  const isOver = isBlocked;
   const isWarn = !isOver && used >= limit.daily_limit_seconds * 0.8;
   const pct = limit.daily_limit_seconds > 0 ? Math.min(used / limit.daily_limit_seconds, 1) : 0;
   const sc = isOver ? "#f87171" : isWarn ? "#fbbf24" : limit.is_enabled ? "#4ade80" : "#475569";
@@ -1095,7 +1095,7 @@ function LimitsTab({ BASE, stats }) {
   const [view, setView] = useState("limits");
   const [loadingL, setLoadingL] = useState(true);
   const [toast, setToast] = useState(null);
-  const usage = stats.reduce((a, s) => { a[s.app] = s.active; return a; }, {});
+  const usage = stats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
   const showT = (msg, type = "success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
   const fetchAll = useCallback(async () => {
     try {
@@ -1112,8 +1112,8 @@ function LimitsTab({ BASE, stats }) {
   const toggle = async (name, en) => { await fetch(`${BASE}/limits/toggle`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ app_name: name, enabled: en }) }); await fetchAll(); showT(en ? `Enabled` : `Paused`); };
   const del = async (name) => { await fetch(`${BASE}/limits/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ app_name: name }) }); await fetchAll(); showT(`Limit removed`, "warn"); };
   const unblock = async (name, minutes) => { await fetch(`${BASE}/limits/unblock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ app_name: name, minutes }) }); await fetchAll(); showT(`Unblocked for ${minutes}m`, "warn"); };
-  const knownApps = stats.map(s => s.app).filter(a => !limits.find(l => l.app_name === a));
-  const blockedNow = limits.filter(l => (usage[l.app_name] || 0) >= l.daily_limit_seconds && l.is_enabled);
+  const knownApps = Array.from(new Set(stats.map(s => s.app))).filter(a => !limits.find(l => l.app_name === a));
+  const blockedNow = limits.filter(l => blocked.includes(l.app_name) && l.is_enabled);
   const nearLimit = limits.filter(l => { const u = usage[l.app_name] || 0; return u >= l.daily_limit_seconds * 0.8 && u < l.daily_limit_seconds; });
   const displayList = view === "blocked" ? blockedNow : limits;
   return (
@@ -1187,7 +1187,7 @@ function LimitsTab({ BASE, stats }) {
             {displayList.map(l => (
               <LimitCard key={l.app_name} limit={l} onToggle={toggle}
                 onEdit={t => { setEditTarget(t); setShowModal(true); }} onDelete={del}
-                onUnblock={n => setUnblockTarget(n)} todayUsage={usage} />
+                onUnblock={n => setUnblockTarget(n)} todayUsage={usage} isBlocked={blocked.includes(l.app_name)} />
             ))}
           </div>
         )}
@@ -1949,8 +1949,8 @@ export default function WellbeingDashboard({ onDisconnect }) {
   const cats = stats.reduce((a, s) => { a[s.main] = (a[s.main] || 0) + s.active; return a; }, {});
   const appsByCategory = stats.reduce((a, s) => { if (!a[s.main]) a[s.main] = []; a[s.main].push(s); return a; }, {});
   const totA = Object.values(cats).reduce((a, b) => a + b, 0);
-  const prevMap = prevStats.reduce((a, s) => { a[s.app] = s.active; return a; }, {});
-  const usage = stats.reduce((a, s) => { a[s.app] = s.active; return a; }, {});
+  const prevMap = prevStats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
+  const usage = stats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
   const peakHour = hourly.reduce((pi, v, i) => v > hourly[pi] ? i : pi, 0);
 
   const countKey = `${selectedDate}-${activeTab}`;

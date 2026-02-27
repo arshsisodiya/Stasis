@@ -1,0 +1,52 @@
+STASIS – DIGITAL WELLBEING FOR WINDOWS
+PRIVACY POLICY
+
+Last Updated: January 2026
+
+This Privacy Policy describes how Stasis collects, uses, and protects your information.
+
+1. INFORMATION WE COLLECT
+Stasis may collect:
+- Application usage statistics
+- System uptime information
+- Configuration settings
+- Optional Telegram integration data (if enabled)
+
+Stasis DOES NOT collect:
+- Personal files
+- Passwords
+- Browsing history
+- Keystrokes
+- Sensitive personal information
+
+2. HOW INFORMATION IS USED
+Collected information is used strictly to:
+- Provide digital wellbeing insights
+- Enable blocking features
+- Generate reports
+- Improve performance and reliability
+
+3. DATA STORAGE
+All data is stored locally on your device unless you explicitly enable cloud or remote features.
+
+4. DATA SHARING
+Stasis does not sell, rent, or share personal data with third parties.
+
+5. SECURITY
+Reasonable technical safeguards are implemented to protect stored data from unauthorized access.
+
+6. TELEGRAM INTEGRATION
+If Telegram integration is enabled:
+- Bot token and chat ID are encrypted before storage.
+- Messages are sent only to configured accounts.
+
+7. USER CONTROL
+You may:
+- Disable features at any time
+- Clear collected data from within the application
+- Uninstall the software to remove local data
+
+8. POLICY CHANGES
+This Privacy Policy may be updated from time to time. Continued use of the Software indicates acceptance of updated terms.
+
+If you do not agree with this Privacy Policy, please do not install or use the Software.

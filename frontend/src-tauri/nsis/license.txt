@@ -1,0 +1,38 @@
+STASIS – DIGITAL WELLBEING FOR WINDOWS
+END USER LICENSE AGREEMENT (EULA)
+
+Last Updated: January 2026
+
+IMPORTANT: PLEASE READ THIS LICENSE AGREEMENT CAREFULLY BEFORE INSTALLING OR USING THE SOFTWARE.
+
+By installing, copying, or otherwise using Stasis ("Software"), you agree to be bound by the terms of this Agreement.
+
+1. LICENSE GRANT
+Stasis grants you a limited, non-exclusive, non-transferable, revocable license to install and use the Software for personal or internal business use.
+
+2. RESTRICTIONS
+You may not:
+- Reverse engineer, decompile, or disassemble the Software.
+- Modify, adapt, or create derivative works.
+- Resell, rent, lease, sublicense, or distribute the Software without written permission.
+- Use the Software for unlawful purposes.
+
+3. INTELLECTUAL PROPERTY
+The Software and all associated intellectual property rights remain the sole property of Stasis and its licensors.
+
+4. SYSTEM ACCESS
+Stasis may access certain system-level information (such as application usage data) solely for the purpose of providing digital wellbeing features. No personal files are accessed.
+
+5. DISCLAIMER OF WARRANTIES
+The Software is provided "AS IS" without warranty of any kind, express or implied. Stasis does not guarantee uninterrupted or error-free operation.
+
+6. LIMITATION OF LIABILITY
+In no event shall Stasis be liable for any indirect, incidental, special, or consequential damages arising out of the use or inability to use the Software.
+
+7. TERMINATION
+This Agreement is effective until terminated. It will terminate automatically if you fail to comply with any term.
+
+8. GOVERNING LAW
+This Agreement shall be governed by and construed in accordance with applicable laws.
+
+By clicking "I Agree", you acknowledge that you have read and understood this Agreement and agree to be bound by its terms.

@@ -159,9 +159,29 @@ fn stop_backend(app: &AppHandle) {
     let mut guard = state.0.lock().unwrap();
 
     if let Some(mut child) = guard.take() {
-        println!("Stopping backend...");
+        println!("Stopping backend immediate child...");
         let _ = child.kill();
         let _ = child.wait();
-        println!("Backend stopped.");
     }
+
+    println!("Force killing any independent stasis-backend.exe instances...");
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "stasis-backend.exe", "/T"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("pkill")
+            .arg("-f")
+            .arg("stasis-backend")
+            .output();
+    }
+    
+    println!("Backend fully stopped.");
 }

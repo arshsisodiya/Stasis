@@ -102,6 +102,12 @@ FunctionEnd
 
 Section "Uninstall"
 
+  ; ---- Kill running backend ----
+  nsExec::ExecToStack 'taskkill /IM stasis-backend.exe /F'
+  nsExec::ExecToStack 'taskkill /IM Stasis.exe /F'
+
+  Sleep 1000
+
   Delete "$DESKTOP\Stasis.lnk"
   Delete "$SMPROGRAMS\Stasis\Stasis.lnk"
   RMDir "$SMPROGRAMS\Stasis"
@@ -110,6 +116,8 @@ Section "Uninstall"
   DeleteRegKey HKLM "Software\Stasis"
 
   Delete "$INSTDIR\Uninstall.exe"
+
+  ; ---- Remove full install directory ----
   RMDir /r "$INSTDIR"
 
 SectionEnd

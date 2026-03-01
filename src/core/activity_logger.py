@@ -315,8 +315,6 @@ def is_media_active(info: dict) -> bool:
     return info["title"].startswith("▶")
 
 
-
-
 def get_active_window_info() -> dict | None:
     try:
         hwnd = win32gui.GetForegroundWindow()

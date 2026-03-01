@@ -1978,6 +1978,7 @@ export default function WellbeingDashboard({ onDisconnect }) {
   const [trackedSeconds, setTrackedSeconds] = useState(0);
   const [appFilter, setAppFilter] = useState("all");
   const [heatmapData, setHeatmapData] = useState({});
+  const [ignoredApps, setIgnoredApps] = useState(new Set());
   // Keyboard shortcuts
   useEffect(() => {
     const TABS = ["overview", "apps", "activity", "limits"];
@@ -2003,6 +2004,12 @@ export default function WellbeingDashboard({ onDisconnect }) {
       .catch(() => setAvailableDates([localYMD()]));
     // Load heatmap data once (lightweight — last 60 days of per-date summaries)
     fetch(`${BASE}/api/heatmap`).then(r => r.json()).then(d => setHeatmapData(d)).catch(() => { });
+
+    // Load dynamically configured ignored system apps
+    fetch(`${BASE}/api/ignored-apps`).then(r => r.json()).then(d => {
+      const lowercasedSet = new Set((Array.isArray(d) ? d : []).map(a => a.toLowerCase()));
+      setIgnoredApps(lowercasedSet);
+    }).catch(() => { });
   }, []);
 
   // Apply cached data to state
@@ -2463,9 +2470,11 @@ export default function WellbeingDashboard({ onDisconnect }) {
               })}
             </div>
             {(() => {
-              // Group all stats by app to unify fragmented entries (e.g. Firefox split by categories)
+              // Group all stats by app to unify fragmented entries
               const groupedAppsMap = {};
               for (const s of stats) {
+                if (ignoredApps.has(s.app.toLowerCase())) continue;
+
                 if (!groupedAppsMap[s.app]) {
                   groupedAppsMap[s.app] = { ...s, active: 0, idle: 0, categories: new Set(), browsers: [] };
                 }

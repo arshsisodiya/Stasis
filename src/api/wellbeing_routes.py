@@ -52,10 +52,27 @@ def get_selected_date():
 # =====================================
 
 from src.config.settings_manager import SettingsManager
+import json
 
 @wellbeing_bp.route("/api/health")
 def health():
     return jsonify({"status": "running"})
+
+# =====================================
+# Ignored Apps
+# =====================================
+
+@wellbeing_bp.route("/api/ignored-apps")
+def ignored_apps():
+    try:
+        config_path = os.path.join(os.path.dirname(__file__), "..", "config", "ignored_apps.json")
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return jsonify(data.get("ignore_processes", []))
+    except Exception as e:
+        print(f"Error loading ignored apps: {e}")
+    return jsonify([])
 
 # =====================================
 # Settings

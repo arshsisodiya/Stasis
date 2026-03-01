@@ -4,15 +4,12 @@ import threading
 import subprocess
 from packaging import version
 from pathlib import Path
-import tkinter as tk
-from tkinter import ttk
 import sys
 import win32api
+import logging
+import json
 
 API_URL = "https://api.github.com/repos/arshsisodiya/Stasis/releases/latest"
-INSTALLER_NAME_PREFIX = "StasisSetup"
-
-# ---------------- Version ---------------- #
 
 def get_current_version(logger=None):
     try:
@@ -24,11 +21,20 @@ def get_current_version(logger=None):
         if logger:
             logger.info(f"Reading version from: {exe_path}")
 
-        info = win32api.GetFileVersionInfo(exe_path, "\\")
-        ms = info['FileVersionMS']
-        ls = info['FileVersionLS']
-
-        version_str = f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}"
+        try:
+            info = win32api.GetFileVersionInfo(exe_path, "\\")
+            ms = info['FileVersionMS']
+            ls = info['FileVersionLS']
+            version_str = f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}"
+        except:
+            # Fallback if GetFileVersionInfo fails (e.g. while testing)
+            try:
+                tauri_conf_path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "src-tauri", "tauri.conf.json")
+                with open(tauri_conf_path, "r", encoding="utf-8") as f:
+                    conf_data = json.load(f)
+                    version_str = conf_data.get("version", "1.0.0")
+            except:
+                version_str = "1.0.0"
 
         if logger:
             logger.info(f"Detected application version: {version_str}")
@@ -38,150 +44,93 @@ def get_current_version(logger=None):
     except Exception as e:
         if logger:
             logger.error(f"Failed to read EXE version: {e}")
-        return "0.0.0"
-
-
-# ---------------- Update Manager ---------------- #
+        return "1.0.0"
 
 class UpdateManager:
+    _instance = None
+    _lock = threading.Lock()
 
-    def __init__(self, silent=False, logger=None, shutdown_event=None):
-        self.shutdown_event = shutdown_event
-        self.silent = silent
-        self.logger = logger
-        self.root = None
-        self.progress = None
-        self.status_label = None
-        self.current_version = get_current_version(logger)
-        self._logged_milestones = set()
-        self._milestones = [0, 10, 25, 50, 75, 100]
+    def __new__(cls, *args, **kwargs):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(UpdateManager, cls).__new__(cls)
+                cls._instance._init_state()
+            return cls._instance
 
-    # ---------------- UI ---------------- #
+    def __init__(self, *args, **kwargs):
+        pass # Ignore legacy args like silent and logger from main.py
 
-    def _create_ui(self):
-        self.root = tk.Tk()
-        self.root.title("Updating Stasis")
-        self.root.geometry("400x120")
-        self.root.resizable(False, False)
-
-        self.status_label = tk.Label(self.root, text="Checking for updates...")
-        self.status_label.pack(pady=10)
-
-        self.progress = ttk.Progressbar(self.root, length=350)
-        self.progress.pack(pady=5)
-
-        self.root.update()
-
-    def _update_progress(self, percent):
-        if not self.silent and self.progress:
-            self.root.after(0, lambda: self.progress.config(value=percent))
-
-        # Log only milestone percentages
-        for milestone in self._milestones:
-            if percent >= milestone and milestone not in self._logged_milestones:
-                self._logged_milestones.add(milestone)
-                if self.logger:
-                    self.logger.info(f"Download progress reached {milestone}%")
-
-    def _update_status(self, message):
-        if not self.silent and self.status_label:
-            self.root.after(0, lambda: self.status_label.config(text=message))
-
-        if self.logger:
-            self.logger.info(f"STATUS: {message}")
-
-    # ---------------- Core ---------------- #
+    def _init_state(self):
+        self.logger = logging.getLogger("UpdateManager")
+        self.current_version = get_current_version(self.logger)
+        self.status = "idle" # idle, checking, update_available, downloading, ready
+        self.latest_version = None
+        self.download_url = None
+        self.progress = 0
+        self.error = None
 
     def start(self):
-        if self.logger:
-            self.logger.info("Starting update check...")
+        # Background automatic update loop disabled when UI triggers it, but we can safely ignore
+        pass
 
-        thread = threading.Thread(target=self._run_update, daemon=True)
+    def get_state(self):
+        return {
+            "status": self.status,
+            "current_version": self.current_version,
+            "latest_version": self.latest_version,
+            "progress": self.progress,
+            "error": self.error
+        }
+
+    def check_for_update_async(self):
+        if self.status in ["checking", "downloading"]:
+            return
+        thread = threading.Thread(target=self._check_for_update, daemon=True)
         thread.start()
 
-        if not self.silent:
-            self._create_ui()
-            self.root.mainloop()
-
-    def _run_update(self):
-        update_info = self._check_for_update()
-
-        if not update_info:
-            if self.logger:
-                self.logger.info("No update required.")
-
-            if not self.silent and self.root:
-                self._update_status("You are using the latest version.")
-                self.root.after(2000, self.root.destroy)
-            return
-
-        self._download_and_install(update_info["url"])
-
-    # ---------------- Check GitHub ---------------- #
-
     def _check_for_update(self):
+        self.status = "checking"
+        self.error = None
         try:
-            self._update_status("Checking GitHub for latest release...")
-
             headers = {"User-Agent": "Stasis-Updater"}
             response = requests.get(API_URL, headers=headers, timeout=10)
             response.raise_for_status()
 
             data = response.json()
-            latest_version = data["tag_name"].lstrip("v")
+            # Strip both 'v' and '-' characters if they exist before parsing
+            tag_name = data["tag_name"].lstrip("v")
+            self.latest_version = tag_name
 
-            if self.logger:
-                self.logger.info(
-                    f"Current version: {self.current_version} | "
-                    f"Latest version on GitHub: {latest_version}"
-                )
-
-            if version.parse(latest_version) > version.parse(self.current_version):
-
-                if self.logger:
-                    self.logger.info("Update available.")
-
+            if version.parse(self.latest_version) > version.parse(self.current_version):
                 for asset in data["assets"]:
                     asset_name = asset["name"]
+                    if asset_name.startswith("Stasis_") and asset_name.endswith(".exe"):
+                        self.download_url = asset["browser_download_url"]
+                        self.status = "update_available"
+                        return
 
-                    if self.logger:
-                        self.logger.info(f"Found release asset: {asset_name}")
-
-                    if asset_name.startswith(INSTALLER_NAME_PREFIX):
-                        if self.logger:
-                            self.logger.info("Matching installer asset found.")
-
-                        return {
-                            "version": latest_version,
-                            "url": asset["browser_download_url"]
-                        }
-
-                if self.logger:
-                    self.logger.warning("Update detected but no matching installer asset found.")
-
+                self.error = "Update available but no installer found."
+                self.status = "idle"
             else:
-                if self.logger:
-                    self.logger.info("Application is already up to date.")
-
-            return None
+                self.status = "idle"
 
         except Exception as e:
-            if self.logger:
-                self.logger.error(f"Update check failed: {e}")
-            return None
+            self.error = f"Failed to check for updates: {str(e)}"
+            self.status = "idle"
 
-    # ---------------- Download & Install ---------------- #
+    def download_and_install_async(self):
+        if self.status != "update_available" or not self.download_url:
+            return
+        thread = threading.Thread(target=self._download_and_install, daemon=True)
+        thread.start()
 
-    def _download_and_install(self, url):
+    def _download_and_install(self):
+        self.status = "downloading"
+        self.progress = 0
+        self.error = None
         try:
-            self._logged_milestones.clear()
-            self._update_status("Downloading update...")
-
-            if self.logger:
-                self.logger.info(f"Downloading from URL: {url}")
-
             headers = {"User-Agent": "Stasis-Updater"}
-            response = requests.get(url, headers=headers, stream=True)
+            response = requests.get(self.download_url, headers=headers, stream=True, timeout=20)
             response.raise_for_status()
 
             total_size = int(response.headers.get("content-length", 0))
@@ -190,37 +139,23 @@ class UpdateManager:
             temp_dir = Path(os.getenv("TEMP"))
             temp_path = temp_dir / "StasisUpdate.exe"
 
-            if self.logger:
-                self.logger.info(f"Download directory: {temp_dir}")
-                self.logger.info(f"Installer will be saved as: {temp_path}")
-                self.logger.info(f"Total download size: {total_size} bytes")
-
             with open(temp_path, "wb") as file:
                 downloaded = 0
                 for chunk in response.iter_content(block_size):
                     if chunk:
                         file.write(chunk)
                         downloaded += len(chunk)
-
                         if total_size > 0:
-                            percent = int(downloaded * 100 / total_size)
-                            self._update_progress(percent)
-
-            if self.logger:
-                self.logger.info("Download completed successfully.")
-                self.logger.info(f"Installer saved at: {temp_path}")
+                            self.progress = int(downloaded * 100 / total_size)
 
             if not temp_path.exists():
-                if self.logger:
-                    self.logger.error("Downloaded file does not exist after download!")
+                self.error = "Downloaded file not found."
+                self.status = "idle"
                 return
 
-            self._update_status("Installing update...")
-
-            if self.logger:
-                self.logger.info("Launching installer silently...")
-                self.logger.info("Installer flags: /verysilent /norestart")
-
+            self.status = "ready"
+            
+            # Launch installer
             subprocess.Popen(
                 [
                     str(temp_path),
@@ -231,14 +166,9 @@ class UpdateManager:
                 ],
                 shell=False
             )
-
+            # Exit this instance
             os._exit(0)
 
-
         except Exception as e:
-            if self.logger:
-                self.logger.error(f"Update download/install failed: {e}")
-
-            if not self.silent and self.root:
-                self._update_status("Update failed.")
-                self.root.after(3000, self.root.destroy)
+            self.error = f"Download failed: {str(e)}"
+            self.status = "idle"

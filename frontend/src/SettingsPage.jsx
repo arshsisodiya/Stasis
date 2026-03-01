@@ -1060,8 +1060,44 @@ function SecuritySection({ push }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ABOUT SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
-function AboutSection() {
+function AboutSection({ push }) {
   const [tab, setTab] = useState("about");
+  const [updateState, setUpdateState] = useState(null);
+
+  const fetchUpdateStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/update/status`);
+      const data = await res.json();
+      setUpdateState(data);
+    } catch { }
+  }, []);
+
+  useEffect(() => {
+    fetchUpdateStatus();
+    const interval = setInterval(fetchUpdateStatus, 3000);
+    return () => clearInterval(interval);
+  }, [fetchUpdateStatus]);
+
+  const handleCheckUpdate = async () => {
+    try {
+      await fetch(`${BASE_URL}/api/update/check`, { method: "POST" });
+      push("Checking for updates...", "success");
+      fetchUpdateStatus();
+    } catch {
+      push("Failed to check for updates", "error");
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    try {
+      await fetch(`${BASE_URL}/api/update/install`, { method: "POST" });
+      push("Starting download...", "success");
+      fetchUpdateStatus();
+    } catch {
+      push("Failed to start installation", "error");
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 12, padding: 4 }}>
@@ -1118,7 +1154,7 @@ function AboutSection() {
               borderRadius: 20, background: C.greenGlow, border: "1px solid rgba(74,222,128,0.2)"
             }}>
               <StatusDot color={C.green} pulse={false} size={6} />
-              <span style={{ fontSize: 11, color: C.green, fontWeight: 500 }}>v2.1.0 · Stable</span>
+              <span style={{ fontSize: 11, color: C.green, fontWeight: 500 }}>v{updateState?.current_version || "..."} · Stable</span>
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
@@ -1128,6 +1164,46 @@ function AboutSection() {
                 <div style={{ fontSize: 13, fontWeight: 600, color: C.textSub, marginTop: 3 }}>{v}</div>
               </div>
             ))}
+          </div>
+        </Card>
+      )}
+
+      {tab === "about" && (
+        <Card>
+          <SectionLabel>Update</SectionLabel>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "8px 0" }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 4 }}>App Updates</div>
+              <div style={{ fontSize: 12, color: C.textMuted }}>
+                {updateState?.status === "idle" && (updateState?.error || "You are using the latest version.")}
+                {updateState?.status === "checking" && "Checking GitHub for recent releases..."}
+                {updateState?.status === "update_available" && `Update available! Version ${updateState?.latest_version} is ready to download.`}
+                {updateState?.status === "downloading" && `Downloading update: ${updateState?.progress}%`}
+                {updateState?.status === "ready" && "Update ready to install."}
+              </div>
+            </div>
+            <div style={{ flexShrink: 0 }}>
+              {(updateState?.status === "idle" || updateState?.status === "checking") && (
+                <Btn onClick={handleCheckUpdate} loading={updateState?.status === "checking"} variant="secondary">Check for Updates</Btn>
+              )}
+              {updateState?.status === "update_available" && (
+                <button onClick={handleInstallUpdate} className="sp-action"
+                  style={{
+                    padding: "9px 18px", borderRadius: 10, border: "none", cursor: "pointer",
+                    background: "linear-gradient(135deg,#4ade80,#22d3ee)", color: "#060a12",
+                    fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif",
+                    boxShadow: "0 0 16px rgba(74,222,128,0.3)"
+                  }}>
+                  Download &amp; Install
+                </button>
+              )}
+              {updateState?.status === "downloading" && (
+                <Btn disabled={true} variant="secondary">Downloading {updateState?.progress}%...</Btn>
+              )}
+              {updateState?.status === "ready" && (
+                <Btn disabled={true} variant="secondary">Starting Installer...</Btn>
+              )}
+            </div>
           </div>
         </Card>
       )}
@@ -1307,7 +1383,7 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
               {section === "general" && <GeneralSection push={push} />}
               {section === "telegram" && <TelegramSection push={push} />}
               {section === "security" && <SecuritySection push={push} />}
-              {section === "about" && <AboutSection />}
+              {section === "about" && <AboutSection push={push} />}
             </div>
           </div>
         </div>

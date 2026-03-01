@@ -4,6 +4,7 @@ from werkzeug.serving import make_server
 
 from src.api.telegram_routes import telegram_bp, set_app_controller
 from src.api.wellbeing_routes import wellbeing_bp
+from src.api.update_routes import update_bp
 
 
 def create_app(app_controller):
@@ -15,6 +16,7 @@ def create_app(app_controller):
 
     app.register_blueprint(telegram_bp)
     app.register_blueprint(wellbeing_bp)
+    app.register_blueprint(update_bp)
 
     return app
 

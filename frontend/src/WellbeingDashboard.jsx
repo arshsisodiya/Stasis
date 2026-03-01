@@ -642,7 +642,7 @@ const BROWSER_EXES = new Set([
   "vivaldi.exe", "arc.exe", "zen.exe", "chromium.exe", "iexplore.exe"
 ]);
 
-function BrowserRow({ browsers, maxActive, index, BASE, selectedDate }) {
+function BrowserRow({ browsers, maxActive, index, BASE, selectedDate, prevActive }) {
   const [expanded, setExpanded] = useState(false);
   const [sites, setSites] = useState(null);
   const [loadingSites, setLoadingSites] = useState(false);
@@ -652,6 +652,7 @@ function BrowserRow({ browsers, maxActive, index, BASE, selectedDate }) {
   const totalActive = browsers.reduce((s, b) => s + b.active, 0);
   const pct = maxActive > 0 ? (totalActive / maxActive) * 100 : 0;
   const col = CATEGORY_COLORS.neutral;
+  const trend = trendPct(totalActive, prevActive);
 
   useEffect(() => {
     const t = setTimeout(() => setVis(true), 80 + index * 60);
@@ -712,6 +713,7 @@ function BrowserRow({ browsers, maxActive, index, BASE, selectedDate }) {
               }}>🌐 browser</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 8 }}>
+              <TrendBadge pct={trend} />
               <span style={{ fontSize: 12, color: "#64748b" }}>{fmtTime(totalActive)}</span>
               <span style={{
                 fontSize: 11, color: expanded ? col.primary : "#475569",
@@ -2497,7 +2499,7 @@ export default function WellbeingDashboard({ onDisconnect }) {
               return filteredGrouped.map((item, i) => {
                 const isBrowser = BROWSER_EXES.has(item.app.toLowerCase());
                 if (isBrowser) {
-                  return <BrowserRow key={item.app} browsers={item.browsers} maxActive={maxAllA} index={i} BASE={BASE} selectedDate={selectedDate} />;
+                  return <BrowserRow key={item.app} browsers={item.browsers} maxActive={maxAllA} index={i} BASE={BASE} selectedDate={selectedDate} prevActive={prevMap[item.app]} />;
                 }
                 return <AppRow key={item.app} {...item} maxActive={maxAllA} index={i} prevActive={prevMap[item.app]} />;
               });

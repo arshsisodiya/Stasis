@@ -539,6 +539,78 @@ def dashboard():
 
 
 # =====================================
+# Site Stats (Websites)
+# =====================================
+
+from urllib.parse import urlparse
+from collections import defaultdict
+
+@wellbeing_bp.route("/api/site-stats")
+def site_stats():
+    selected_date = get_selected_date()
+    app = request.args.get("app")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        query = """
+            SELECT url, SUM(active_seconds) as total_active
+            FROM activity_logs
+            WHERE timestamp LIKE ?
+              AND url IS NOT NULL
+              AND url != 'N/A'
+        """
+        params = [selected_date + "%"]
+
+        if app:
+            query += " AND app_name = ?"
+            params.append(app)
+
+        query += """
+            GROUP BY url
+            ORDER BY total_active DESC
+        """
+
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+
+        domain_map = defaultdict(int)
+
+        for url, active in rows:
+            try:
+                parsed = urlparse(url)
+                domain = parsed.netloc or parsed.path
+                domain = domain.lower().replace("www.", "")
+
+                # Filter out falsely mapped elements like "Reply..." textboxes
+                if "reply" in domain or ".." in domain:
+                    continue
+
+                if domain:
+                    domain_map[domain] += safe(active)
+
+            except Exception:
+                continue  # skip malformed URLs safely
+
+        result = [
+            {
+                "domain": domain,
+                "seconds": total,
+                "minutes": round(total / 60, 2)
+            }
+            for domain, total in domain_map.items()
+        ]
+
+        result.sort(key=lambda x: x["seconds"], reverse=True)
+
+        return jsonify(result)
+
+    finally:
+        conn.close()
+
+
+# =====================================
 # Limits
 # =====================================
 
@@ -655,3 +727,5 @@ def reset_everything():
             "success": False,
             "error": str(e)
         }), 500
+
+

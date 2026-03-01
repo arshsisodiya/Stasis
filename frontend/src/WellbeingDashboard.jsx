@@ -636,7 +636,155 @@ function AppRow({ app, active, maxActive, main, sub, index, prevActive }) {
   );
 }
 
-// ─── STAT PILL ───────────────────────────────────────────────────────────────
+// ─── BROWSER ROW (merged browser entry with expandable site breakdown) ─────────
+const BROWSER_EXES = new Set([
+  "chrome.exe", "firefox.exe", "msedge.exe", "opera.exe", "brave.exe",
+  "vivaldi.exe", "arc.exe", "zen.exe", "chromium.exe", "iexplore.exe"
+]);
+
+function BrowserRow({ browsers, maxActive, index, BASE, selectedDate }) {
+  const [expanded, setExpanded] = useState(false);
+  const [sites, setSites] = useState(null);
+  const [loadingSites, setLoadingSites] = useState(false);
+  const [vis, setVis] = useState(false);
+  const [hov, setHov] = useState(false);
+
+  const totalActive = browsers.reduce((s, b) => s + b.active, 0);
+  const pct = maxActive > 0 ? (totalActive / maxActive) * 100 : 0;
+  const col = CATEGORY_COLORS.neutral;
+
+  useEffect(() => {
+    const t = setTimeout(() => setVis(true), 80 + index * 60);
+    return () => clearTimeout(t);
+  }, [index]);
+
+  // Re-fetch sites if date changes while expanded
+  useEffect(() => {
+    if (expanded) {
+      setLoadingSites(true);
+      fetch(`${BASE}/api/site-stats?date=${selectedDate}&app=${browsers[0].app}`)
+        .then(r => r.json())
+        .then(data => { setSites(Array.isArray(data) ? data : []); setLoadingSites(false); })
+        .catch(() => { setSites([]); setLoadingSites(false); });
+    }
+  }, [selectedDate, BASE, browsers[0].app, expanded]);
+
+  const handleExpand = () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && sites === null) {
+      setLoadingSites(true);
+      fetch(`${BASE}/api/site-stats?date=${selectedDate}&app=${browsers[0].app}`)
+        .then(r => r.json())
+        .then(data => { setSites(Array.isArray(data) ? data : []); setLoadingSites(false); })
+        .catch(() => { setSites([]); setLoadingSites(false); });
+    }
+  };
+
+  return (
+    <div style={{
+      opacity: vis ? 1 : 0, transform: vis ? "translateX(0)" : "translateX(-20px)",
+      transition: `opacity 0.4s ease ${index * 0.04}s, transform 0.4s ease ${index * 0.04}s`,
+    }}>
+      {/* Main browser row */}
+      <div
+        onClick={handleExpand}
+        onMouseEnter={() => setHov(true)}
+        onMouseLeave={() => setHov(false)}
+        style={{
+          display: "flex", alignItems: "center", gap: 12, padding: "10px 8px", borderRadius: 12,
+          background: hov || expanded ? "rgba(255, 255, 255, 0.04)" : "transparent",
+          cursor: "pointer", transition: "background 0.15s",
+        }}>
+        {/* Browser icon */}
+        <AppIcon appName={browsers[0].app} category="neutral" size={36} />
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <span style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 500 }}>{browsers[0].app.replace(".exe", "").charAt(0).toUpperCase() + browsers[0].app.replace(".exe", "").slice(1)}</span>
+              {/* Browser sub-labels pill */}
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600,
+                padding: "2px 8px", borderRadius: 20,
+                background: col.bg, border: `1px solid ${col.primary}30`, color: col.primary,
+                letterSpacing: "0.02em", flexShrink: 0,
+              }}>🌐 browser</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 8 }}>
+              <span style={{ fontSize: 12, color: "#64748b" }}>{fmtTime(totalActive)}</span>
+              <span style={{
+                fontSize: 11, color: expanded ? col.primary : "#475569",
+                transition: "transform 0.2s, color 0.2s",
+                transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+                display: "inline-block",
+              }}>▾</span>
+            </div>
+          </div>
+          <div style={{ height: 4, borderRadius: 4, background: "rgba(255, 255, 255, 0.06)", overflow: "hidden" }}>
+            <div style={{
+              height: "100%", borderRadius: 4,
+              background: `linear-gradient(90deg,${col.primary},${col.primary}99)`,
+              boxShadow: `0 0 6px ${col.primary}80`, width: `${pct}%`,
+              transition: "width 1.2s cubic-bezier(0.34,1.56,0.64,1)"
+            }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Expanded site list */}
+      {expanded && (
+        <div style={{
+          marginLeft: 48, marginTop: 2, marginBottom: 4, paddingLeft: 12,
+          borderLeft: `2px solid ${col.primary}30`,
+          animation: "legend-slide-in 0.2s ease both",
+        }}>
+          {loadingSites ? (
+            <div style={{ padding: "12px 0", fontSize: 12, color: "#475569" }}>Loading site data…</div>
+          ) : !sites || sites.length === 0 ? (
+            <div style={{ padding: "12px 0", fontSize: 12, color: "#475569" }}>No site data available</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5, paddingTop: 8, paddingBottom: 4 }}>
+              {(() => {
+                const maxSite = Math.max(...sites.map(s => s.seconds), 1);
+                return sites.slice(0, 10).map((site, si) => {
+                  const sitePct = (site.seconds / maxSite) * 100;
+                  return (
+                    <div key={site.domain || si} style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: "5px 8px", borderRadius: 8,
+                      transition: "background 0.12s",
+                    }}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      {/* Favicon */}
+                      <img
+                        src={`https://www.google.com/s2/favicons?domain=${site.domain}&sz=32`}
+                        alt="" width={14} height={14}
+                        style={{ borderRadius: 3, flexShrink: 0 }}
+                        onError={e => { e.target.style.display = "none"; }}
+                      />
+                      <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 500, minWidth: 120, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {site.domain}
+                      </span>
+                      <div style={{ flex: 1, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                        <div style={{ width: `${sitePct}%`, height: "100%", borderRadius: 2, background: `${col.primary}99`, transition: "width 0.8s cubic-bezier(0.34,1.56,0.64,1)" }} />
+                      </div>
+                      <span style={{ fontSize: 11, color: "#475569", flexShrink: 0, minWidth: 36, textAlign: "right" }}>{fmtTime(site.seconds)}</span>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function StatPill({ icon, label, value, color = "#4ade80", trend }) {
   return (
     <div style={{
@@ -1385,9 +1533,10 @@ function SessionTimeline({ BASE, date }) {
   const [catBlocks, setCatBlocks] = useState({});   // { cat: [{start, end, apps, active, keys, clicks}] }
   const [allCats, setAllCats] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hovBlock, setHovBlock] = useState(null); // { cat, block }
+  const [hovBlock, setHovBlock] = useState(null); // { cat, block, x, y }
   const [dayStart, setDayStart] = useState(0);
   const [dayEnd, setDayEnd] = useState(1440);
+  const containerRef = useRef(null);
 
   const MIN_BLOCK_SECS = 60; // ignore blocks under this duration
 
@@ -1504,7 +1653,76 @@ function SessionTimeline({ BASE, date }) {
   const LABEL_W = 90; // px reserved for the left label column
 
   return (
-    <div>
+    <div ref={containerRef} style={{ position: "relative" }}>
+      {/* Floating tooltip */}
+      {hovBlock && (() => {
+        const { cat, block, tipX, tipY } = hovBlock;
+        const col = CATEGORY_COLORS[cat] || CATEGORY_COLORS.other;
+        const topApps = Object.entries(block.apps)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5);
+        return (
+          <div style={{
+            position: "absolute",
+            left: tipX, top: tipY,
+            transform: "translate(-50%, calc(-100% - 12px))",
+            pointerEvents: "none",
+            zIndex: 50,
+            background: "rgba(8,11,20,0.97)",
+            border: `1px solid ${col.primary}45`,
+            borderRadius: 14,
+            boxShadow: `0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px ${col.primary}18`,
+            minWidth: 220,
+            maxWidth: 300,
+            animation: "center-fade-in 0.13s ease both",
+          }}>
+            {/* Arrow */}
+            <div style={{
+              position: "absolute", bottom: -6, left: "50%", transform: "translateX(-50%) rotate(45deg)",
+              width: 10, height: 10, background: "rgba(8,11,20,0.97)",
+              border: `1px solid ${col.primary}45`, borderTop: "none", borderLeft: "none",
+            }} />
+            <div style={{ padding: "12px 16px", display: "flex", gap: 14, alignItems: "flex-start" }}>
+              {/* Left */}
+              <div style={{ minWidth: 100 }}>
+                <div style={{ fontSize: 10, color: col.primary, fontWeight: 700, textTransform: "capitalize", marginBottom: 4, letterSpacing: "0.06em" }}>
+                  {cat}
+                </div>
+                <div style={{ fontSize: 14, color: "#f8fafc", fontWeight: 700 }}>{fmtTime(block.active)}</div>
+                <div style={{ fontSize: 10, color: "#475569", marginTop: 3 }}>
+                  {fmtMin(block.startMin)} → {fmtMin(block.endMin)}
+                </div>
+                <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
+                  ⌨️ {block.keys.toLocaleString()} · 🖱 {block.clicks}
+                </div>
+              </div>
+              {topApps.length > 0 && (
+                <>
+                  <div style={{ width: 1, alignSelf: "stretch", background: `${col.primary}20` }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 9, color: "#475569", fontWeight: 600, marginBottom: 5, letterSpacing: "0.06em", textTransform: "uppercase" }}>Apps</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {topApps.map(([app, secs]) => {
+                        const pct = Math.round((secs / block.active) * 100);
+                        return (
+                          <div key={app} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 500, minWidth: 60, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{app}</span>
+                            <div style={{ flex: 1, height: 2, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                              <div style={{ width: `${pct}%`, height: "100%", borderRadius: 2, background: col.grad || col.primary, transition: "width 0.3s ease" }} />
+                            </div>
+                            <span style={{ fontSize: 9, color: "#475569", flexShrink: 0 }}>{fmtTime(secs)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Header ruler */}
       <div style={{ display: "flex" }}>
         <div style={{ width: LABEL_W, flexShrink: 0 }} />
@@ -1563,7 +1781,15 @@ function SessionTimeline({ BASE, date }) {
                   return (
                     <div
                       key={block.id}
-                      onMouseEnter={() => setHovBlock({ cat, block })}
+                      onMouseEnter={(e) => {
+                        const container = containerRef.current;
+                        if (!container) return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const containerRect = container.getBoundingClientRect();
+                        const tipX = rect.left + rect.width / 2 - containerRect.left;
+                        const tipY = rect.top - containerRect.top;
+                        setHovBlock({ cat, block, tipX, tipY });
+                      }}
                       onMouseLeave={() => setHovBlock(null)}
                       style={{
                         position: "absolute",
@@ -1598,75 +1824,6 @@ function SessionTimeline({ BASE, date }) {
         })}
       </div>
 
-      {/* Hover tooltip — fixed under the chart */}
-      {hovBlock && (() => {
-        const { cat, block } = hovBlock;
-        const col = CATEGORY_COLORS[cat] || CATEGORY_COLORS.other;
-        // Sort contributing apps by time
-        const topApps = Object.entries(block.apps)
-          .sort(([, a], [, b]) => b - a)
-          .slice(0, 5);
-
-        return (
-          <div style={{
-            marginTop: 14, padding: "12px 16px",
-            background: "rgba(8, 11, 20, 0.97)",
-            border: `1px solid ${col.primary}40`,
-            borderRadius: 14,
-            boxShadow: `0 6px 28px rgba(0,0,0,0.2), 0 0 0 1px ${col.primary}18`,
-            animation: "center-fade-in 0.14s ease both",
-            display: "flex", gap: 16, alignItems: "flex-start",
-          }}>
-            {/* Left — block summary */}
-            <div style={{ minWidth: 120 }}>
-              <div style={{ fontSize: 11, color: col.primary, fontWeight: 700, textTransform: "capitalize", marginBottom: 4 }}>
-                {cat}
-              </div>
-              <div style={{ fontSize: 13, color: "#f8fafc", fontWeight: 600 }}>
-                {fmtTime(block.active)}
-              </div>
-              <div style={{ fontSize: 10, color: "#475569", marginTop: 3 }}>
-                {fmtMin(block.startMin)} → {fmtMin(block.endMin)}
-              </div>
-              <div style={{ fontSize: 10, color: "#e2e8f0", marginTop: 2 }}>
-                {block.keys.toLocaleString()} keys · {block.clicks} clicks
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div style={{ width: 1, alignSelf: "stretch", background: `${col.primary}25` }} />
-
-            {/* Right — top apps that contributed */}
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 10, color: "#475569", fontWeight: 600, marginBottom: 6, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                Top apps
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {topApps.map(([app, secs]) => {
-                  const pct = Math.round((secs / block.active) * 100);
-                  return (
-                    <div key={app} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 11, color: "#e2e8f0", fontWeight: 500, minWidth: 80 }}>
-                        {app}
-                      </span>
-                      <div style={{ flex: 1, height: 3, borderRadius: 2, background: "rgba(255, 255, 255, 0.06)", overflow: "hidden" }}>
-                        <div style={{
-                          width: `${pct}%`, height: "100%", borderRadius: 2,
-                          background: col.grad || col.primary,
-                          transition: "width 0.4s ease",
-                        }} />
-                      </div>
-                      <span style={{ fontSize: 10, color: "#475569", minWidth: 32, textAlign: "right" }}>
-                        {fmtTime(secs)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }
@@ -1957,7 +2114,6 @@ export default function WellbeingDashboard({ onDisconnect }) {
 
   // Derived
   const sorted = [...stats].sort((a, b) => b.active - a.active);
-  const maxA = sorted[0]?.active || 1;
   const cats = stats.reduce((a, s) => { a[s.main] = (a[s.main] || 0) + s.active; return a; }, {});
   const appsByCategory = stats.reduce((a, s) => { if (!a[s.main]) a[s.main] = []; a[s.main].push(s); return a; }, {});
   const totA = Object.values(cats).reduce((a, b) => a + b, 0);
@@ -2304,12 +2460,48 @@ export default function WellbeingDashboard({ onDisconnect }) {
                 );
               })}
             </div>
-            {(appFilter === "all" ? sorted : sorted.filter(s => s.main === appFilter)).length === 0
-              ? <div style={{ textAlign: "center", padding: "40px 0", color: "#e2e8f0", fontSize: 13 }}>No apps in this category</div>
-              : (appFilter === "all" ? sorted : sorted.filter(s => s.main === appFilter)).map((s, i) => (
-                <AppRow key={s.app} {...s} maxActive={maxA} index={i} prevActive={prevMap[s.app]} />
-              ))
-            }
+            {(() => {
+              // Group all stats by app to unify fragmented entries (e.g. Firefox split by categories)
+              const groupedAppsMap = {};
+              for (const s of stats) {
+                if (!groupedAppsMap[s.app]) {
+                  groupedAppsMap[s.app] = { ...s, active: 0, idle: 0, categories: new Set(), browsers: [] };
+                }
+                groupedAppsMap[s.app].active += s.active;
+                groupedAppsMap[s.app].idle += s.idle;
+                if (BROWSER_EXES.has(s.app.toLowerCase())) {
+                  groupedAppsMap[s.app].browsers.push(s);
+                }
+                groupedAppsMap[s.app].categories.add(s.main);
+
+                // Track dominant category for styling
+                const _dt = groupedAppsMap[s.app]._domCount || 0;
+                if (s.active > _dt) {
+                  groupedAppsMap[s.app]._domCount = s.active;
+                  groupedAppsMap[s.app].main = s.main;
+                  groupedAppsMap[s.app].sub = s.sub;
+                }
+              }
+
+              const allGrouped = Object.values(groupedAppsMap);
+              const filteredGrouped = appFilter === "all" ? allGrouped : allGrouped.filter(s => s.categories.has(appFilter));
+
+              if (filteredGrouped.length === 0) {
+                return <div style={{ textAlign: "center", padding: "40px 0", color: "#e2e8f0", fontSize: 13 }}>No apps in this category</div>;
+              }
+
+              // Sort filteredGrouped by total active time
+              filteredGrouped.sort((a, b) => b.active - a.active);
+              const maxAllA = filteredGrouped.length > 0 ? filteredGrouped[0].active || 1 : 1;
+
+              return filteredGrouped.map((item, i) => {
+                const isBrowser = BROWSER_EXES.has(item.app.toLowerCase());
+                if (isBrowser) {
+                  return <BrowserRow key={item.app} browsers={item.browsers} maxActive={maxAllA} index={i} BASE={BASE} selectedDate={selectedDate} />;
+                }
+                return <AppRow key={item.app} {...item} maxActive={maxAllA} index={i} prevActive={prevMap[item.app]} />;
+              });
+            })()}
           </SectionCard>
         </TabPanel>
 

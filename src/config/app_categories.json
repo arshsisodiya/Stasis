@@ -4,6 +4,10 @@
       "main": "productive",
       "sub": "coding"
     },
+    "antigravity.exe": {
+      "main": "productive",
+      "sub": "coding"
+    },
     "cursor.exe": {
       "main": "productive",
       "sub": "coding"
@@ -307,6 +311,14 @@
       "sub": "learning"
     },
     "chat.openai.com": {
+      "main": "productive",
+      "sub": "ai_tools"
+    },
+    "chatgpt.com": {
+      "main": "productive",
+      "sub": "ai_tools"
+    },
+    "gemini.google.com": {
       "main": "productive",
       "sub": "ai_tools"
     },

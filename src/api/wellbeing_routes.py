@@ -236,10 +236,39 @@ def wellbeing():
     conn = get_connection()
     cursor = conn.cursor()
 
+    BASELINE_KPM = 35  # tune later after observing real user data
+
     try:
+        # ---------------------------------
+        # 1️⃣ Get category-wise active time
+        # ---------------------------------
+        cursor.execute("""
+            SELECT main_category, SUM(active_seconds)
+            FROM daily_stats
+            WHERE date = ?
+            GROUP BY main_category
+        """, (selected_date,))
+        
+        category_rows = cursor.fetchall()
+        category_data = {row[0]: row[1] for row in category_rows}
+
+        productive = safe(category_data.get("productive", 0))
+
+        # Treat "other" as neutral
+        neutral = (
+            safe(category_data.get("neutral", 0)) +
+            safe(category_data.get("other", 0))
+        )
+
+        unproductive = safe(category_data.get("unproductive", 0))
+
+        total_active = productive + neutral + unproductive
+
+        # ---------------------------------
+        # 2️⃣ Get other totals
+        # ---------------------------------
         cursor.execute("""
             SELECT
-                SUM(active_seconds),
                 SUM(idle_seconds),
                 SUM(keystrokes),
                 SUM(clicks),
@@ -248,21 +277,16 @@ def wellbeing():
             WHERE date = ?
         """, (selected_date,))
 
-        row = cursor.fetchone() or (0, 0, 0, 0, 0)
+        row = cursor.fetchone() or (0, 0, 0, 0)
 
-        total_active = safe(row[0])
-        total_idle   = safe(row[1])
-        total_keys   = safe(row[2])
-        total_clicks = safe(row[3])
-        total_sessions = safe(row[4])
+        total_idle = safe(row[0])
+        total_keys = safe(row[1])
+        total_clicks = safe(row[2])
+        total_sessions = safe(row[3])
 
-        cursor.execute("""
-            SELECT SUM(active_seconds)
-            FROM daily_stats
-            WHERE date = ? AND main_category = 'productive'
-        """, (selected_date,))
-        productive = safe(cursor.fetchone()[0])
-
+        # ---------------------------------
+        # 3️⃣ Most used app
+        # ---------------------------------
         cursor.execute("""
             SELECT app_name, SUM(active_seconds) AS total
             FROM daily_stats
@@ -271,25 +295,51 @@ def wellbeing():
             ORDER BY total DESC
             LIMIT 1
         """, (selected_date,))
+
         top_app_row = cursor.fetchone()
         top_app = top_app_row[0] if top_app_row else "N/A"
 
-        total_for_percent = total_active if total_active > 0 else 1
+        # ---------------------------------
+        # 4️⃣ Weighted Productivity Logic
+        # ---------------------------------
+        if total_active == 0:
+            productivity_percent = 0.0
+        else:
+            minutes_active = total_active / 60
+            kpm = total_keys / minutes_active if minutes_active > 0 else 0
 
+            engagement_factor = min(1.0, kpm / BASELINE_KPM)
+
+            # Apply engagement only to productive time
+            effective_productive = productive * engagement_factor
+
+            weighted_time = (
+                effective_productive * 1.0 +
+                neutral * 0.4 +
+                unproductive * 0.0
+            )
+
+            productivity_percent = round(
+                (weighted_time / total_active) * 100,
+                1
+            )
+
+        # ---------------------------------
+        # 5️⃣ Return Response
+        # ---------------------------------
         return jsonify({
             "totalScreenTime": total_active,
             "totalIdleTime": total_idle,
             "totalKeystrokes": total_keys,
             "totalClicks": total_clicks,
             "totalSessions": total_sessions,
-            "productivityPercent": round((productive / total_for_percent) * 100, 1),
+            "productivityPercent": productivity_percent,
             "mostUsedApp": top_app,
         })
 
     finally:
         conn.close()
-
-
+        
 # =====================================
 # Daily App Stats
 # =====================================
@@ -382,62 +432,164 @@ def focus():
     conn = get_connection()
     cursor = conn.cursor()
 
+    BASELINE_KPM = 35
+
     try:
+        # ---------------------------------
+        # 1️⃣ Load category mapping for apps
+        # ---------------------------------
         cursor.execute("""
-            SELECT
-                SUM(active_seconds),
-                SUM(sessions)
+            SELECT app_name, main_category, SUM(active_seconds), SUM(sessions)
+            FROM daily_stats
+            WHERE date = ?
+            GROUP BY app_name, main_category
+        """, (selected_date,))
+
+        app_category = {}
+        productive_seconds = 0
+        productive_sessions = 0
+        total_sessions = 0
+        total_active = 0
+
+        for app, category, active, sessions in cursor.fetchall():
+            active = safe(active)
+            sessions = safe(sessions)
+
+            app_category[app] = category
+            total_active += active
+            total_sessions += sessions
+
+            if category == "productive":
+                productive_seconds += active
+                productive_sessions += sessions
+
+        if total_active <= 0:
+            return jsonify({"score": 0})
+
+        # ---------------------------------
+        # 2️⃣ Load activity logs (ordered)
+        # ---------------------------------
+        cursor.execute("""
+            SELECT timestamp, app_name
+            FROM activity_logs
+            WHERE date(timestamp) = ?
+            ORDER BY timestamp ASC
+        """, (selected_date,))
+
+        logs = cursor.fetchall()
+
+        # ---------------------------------
+        # 3️⃣ Detect Context Switching
+        # ---------------------------------
+        switch_penalty = 0
+        previous_app = None
+
+        for _, app in logs:
+            if previous_app is None:
+                previous_app = app
+                continue
+
+            if app != previous_app:
+                prev_cat = app_category.get(previous_app, "neutral")
+                curr_cat = app_category.get(app, "neutral")
+
+                if prev_cat == "productive":
+                    if curr_cat == "productive":
+                        switch_penalty += 0.2
+                    elif curr_cat == "neutral":
+                        switch_penalty += 1.0
+                    elif curr_cat == "unproductive":
+                        switch_penalty += 5.0
+
+            previous_app = app
+
+        switch_penalty = min(30, switch_penalty)
+
+        # ---------------------------------
+        # 4️⃣ Flow State Detection
+        # ---------------------------------
+        flow_bonus = 0
+        current_streak = 0
+        previous_app = None
+        previous_timestamp = None
+
+        for timestamp, app in logs:
+            category = app_category.get(app, "neutral")
+
+            if category == "productive":
+                if previous_app == app:
+                    current_streak += 60  # assuming 1-min log granularity
+                else:
+                    current_streak = 60
+            else:
+                if current_streak >= 1200:  # 20 minutes
+                    flow_bonus += 5
+                current_streak = 0
+
+            previous_app = app
+
+        if current_streak >= 1200:
+            flow_bonus += 5
+
+        flow_bonus = min(15, flow_bonus)
+
+        # ---------------------------------
+        # 5️⃣ Engagement Factor
+        # ---------------------------------
+        cursor.execute("""
+            SELECT SUM(keystrokes), SUM(idle_seconds)
             FROM daily_stats
             WHERE date = ?
         """, (selected_date,))
 
         row = cursor.fetchone() or (0, 0)
+        total_keys = safe(row[0])
+        idle_seconds = safe(row[1])
 
-        total_active = safe(row[0])
-        total_sessions = safe(row[1])
+        minutes_active = total_active / 60
+        kpm = total_keys / minutes_active if minutes_active > 0 else 0
+        engagement_factor = min(1.0, kpm / BASELINE_KPM)
 
-        if total_active <= 0:
-            return jsonify({
-                "score": 0,
-                "deepWorkSeconds": 0,
-                "sessionCount": 0,
-                "stabilityScore": 0,
-                "deepWorkScore": 0
-            })
+        effective_productive = productive_seconds * engagement_factor
 
-        stability_score = max(0, 40 - (total_sessions * 1.5))
-        stability_score = min(stability_score, 40)
+        engagement_score = engagement_factor * 15
 
-        deep_work_score = min(40, total_active / 3600 * 10)
-        deep_work_score = min(deep_work_score, 40)
+        # ---------------------------------
+        # 6️⃣ Deep Work Score
+        # ---------------------------------
+        deep_work_score = min(40, (effective_productive / 3600) * 20)
 
-        cursor.execute("""
-            SELECT SUM(idle_seconds)
-            FROM daily_stats
-            WHERE date = ?
-        """, (selected_date,))
+        # ---------------------------------
+        # 7️⃣ Idle Penalty
+        # ---------------------------------
+        idle_ratio = idle_seconds / total_active
+        idle_penalty = min(20, idle_ratio * 25)
 
-        idle = safe(cursor.fetchone()[0])
+        # ---------------------------------
+        # 8️⃣ Final Focus Score
+        # ---------------------------------
+        score = (
+            deep_work_score
+            + flow_bonus
+            + engagement_score
+            - switch_penalty
+            - idle_penalty
+        )
 
-        idle_ratio = idle / total_active if total_active > 0 else 0
-        idle_penalty = min(20, idle_ratio * 20)
-
-        score = stability_score + deep_work_score - idle_penalty
         score = max(0, min(100, round(score)))
 
         return jsonify({
             "score": score,
-            "deepWorkSeconds": total_active,
-            "sessionCount": total_sessions,
-            "stabilityScore": round(stability_score, 1),
-            "deepWorkScore": round(deep_work_score, 1),
+            "deepWorkSeconds": productive_seconds,
+            "flowBonus": flow_bonus,
+            "engagementScore": round(engagement_score, 1),
+            "switchPenalty": round(switch_penalty, 1),
             "idlePenalty": round(idle_penalty, 1)
         })
 
     finally:
         conn.close()
-
-
+        
 # =====================================
 # Combined Dashboard Endpoint
 # =====================================

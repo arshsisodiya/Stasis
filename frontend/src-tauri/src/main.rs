@@ -5,10 +5,13 @@
 
 use std::process::Child;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager};
 use tauri::tray::TrayIconBuilder;
 use tauri::menu::{Menu, MenuItem};
 use tauri_plugin_dialog::{MessageDialogBuilder, MessageDialogButtons, DialogExt};
+
+static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 
 struct BackendState(Mutex<Option<Child>>);
 
@@ -42,12 +45,25 @@ fn main() {
                             if let Some(window) = app.get_webview_window("main") {
                                 let _ = window.show();
                                 let _ = window.set_focus();
+                            } else {
+                                // Recreate the window if it was closed to save RAM
+                                let _ = tauri::WebviewWindowBuilder::new(
+                                    app,
+                                    "main",
+                                    tauri::WebviewUrl::App("index.html".into()),
+                                )
+                                .title("Stasis")
+                                .inner_size(1100.0, 700.0)
+                                .resizable(true)
+                                .fullscreen(false)
+                                .decorations(true)
+                                .build();
                             }
                         }
 
                         "close" => {
                             if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.hide();
+                                let _ = window.close(); // Use close instead of hide to free RAM
                             }
                         }
 
@@ -63,6 +79,7 @@ fn main() {
                             .show(move |confirmed| {
                                 if confirmed {
                                     stop_backend(&app_handle);
+                                    SHOULD_EXIT.store(true, Ordering::SeqCst);
                                     app_handle.exit(0);
                                 }
                             });
@@ -76,19 +93,22 @@ fn main() {
             Ok(())
         })
 
-        // Close button → hide only
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
-                api.prevent_close();
-            }
-        })
+        // By default, closing the window will now destroy it (freeing RAM).
+        // The RunEvent handler below will prevent the app from exiting.
 
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
 
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| match event {
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                if !SHOULD_EXIT.load(Ordering::SeqCst) {
+                    api.prevent_exit();
+                }
+            }
+            _ => {}
+        });
 }
 
 fn start_backend(app: &AppHandle) {

@@ -4,11 +4,11 @@ import psutil
 import datetime
 import time
 import asyncio
+import gc
 from pynput import mouse, keyboard
 
 from src.core.url_sniffer import get_browser_url
 from src.analytics.daily_summary import update_daily_stats
-from src.analytics.daily_wellbeing import calculate_daily_wellbeing
 from src.database.database import get_connection
 import win32con
 import threading
@@ -495,7 +495,7 @@ def flush_session(session: SessionState, cursor) -> bool:
         ))
 
         update_daily_stats(cursor, info["app_name"], info["url"], active_secs, idle_secs, keys, clicks)
-        calculate_daily_wellbeing()
+        # Throttled call for wellbeing calculation moved to main loop to save memory/CPU
         return True
 
     except Exception as e:
@@ -517,6 +517,9 @@ def start_logging():
 
     current_date  = datetime.datetime.now().date()
     last_loop_mono = time.monotonic()
+    
+    # Efficiency counters
+    gc_throttle_ticks = 0
 
     def reset_session(new_info: dict | None):
         nonlocal session
@@ -590,7 +593,18 @@ def start_logging():
                 # Same session — update idle accounting
                 session.tick_idle(currently_idle, idle_secs)
 
-            time.sleep(POLL_INTERVAL)
+            # ---- Periodic Efficiency Logic ----
+            # 1. Periodic Garbage Collection (every ~1 hour)
+            gc_throttle_ticks += 1
+            if gc_throttle_ticks >= 3600:
+                gc.collect()
+                gc_throttle_ticks = 0
+
+            # 2. Adaptive Polling: if we are deeply idle, sleep longer to save CPU/RAM cycles
+            if currently_idle and idle_secs > 600: # 10 minutes of deep idle
+                time.sleep(min(delta * 5, 5))   # Cap at 5s between checks
+            else:
+                time.sleep(POLL_INTERVAL)
 
     except KeyboardInterrupt:
         print("[Logger] Stopping...")

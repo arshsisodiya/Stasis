@@ -8,6 +8,7 @@ import sys
 import win32api
 import logging
 import json
+import ctypes
 
 API_URL = "https://api.github.com/repos/arshsisodiya/Stasis/releases/latest"
 
@@ -155,19 +156,29 @@ class UpdateManager:
 
             self.status = "ready"
             
-            # Launch installer
-            subprocess.Popen(
-                [
-                    str(temp_path),
-                    "/verysilent",
-                    "/norestart",
-                    "/closeapplications",
-                    "/forcecloseapplications"
-                ],
-                shell=False
-            )
-            # Exit this instance
-            os._exit(0)
+            # Use ShellExecute with "runas" to trigger the UAC prompt for elevation
+            try:
+                # Parameters for the installer
+                params = "/verysilent /norestart /closeapplications /forcecloseapplications"
+                
+                # Execute with 'runas' verb to request elevation
+                result = ctypes.windll.shell32.ShellExecuteW(
+                    None, 
+                    "runas", 
+                    str(temp_path), 
+                    params, 
+                    None, 
+                    1 # SW_SHOWNORMAL
+                )
+                
+                if result <= 32:
+                    raise Exception(f"ShellExecute failed with code {result}")
+                
+                # Exit this instance if the installer started successfully
+                os._exit(0)
+            except Exception as launch_err:
+                self.error = f"Failed to launch installer: {str(launch_err)}"
+                self.status = "idle"
 
         except Exception as e:
             self.error = f"Download failed: {str(e)}"

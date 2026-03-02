@@ -66,6 +66,12 @@ FunctionEnd
 
 Section "Install"
 
+  # Kill any running instances before installation
+  DetailPrint "Closing running instances..."
+  nsExec::ExecToStack 'taskkill /IM stasis-backend.exe /F'
+  nsExec::ExecToStack 'taskkill /IM Stasis.exe /F'
+  Sleep 1000
+
   SetOutPath "$INSTDIR"
 
   # Tauri will copy files here automatically

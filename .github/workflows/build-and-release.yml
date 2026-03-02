@@ -66,43 +66,12 @@ jobs:
           Write-Output "Extracted version: $VERSION"
           echo "APP_VERSION=$VERSION" >> $env:GITHUB_ENV
 
-      - name: Inject Dynamic Version
-        shell: pwsh
-        run: |
-          $VERSION = $env:APP_VERSION
-          Write-Output "Setting app version to $VERSION"
-
-          # Use Node to cleanly parse and update JSON files
-          node -e "
-          const fs = require('fs');
-          const version = process.env.APP_VERSION;
-          
-          // Update tauri.conf.json
-          const tauriPath = 'frontend/src-tauri/tauri.conf.json';
-          const tauriConf = JSON.parse(fs.readFileSync(tauriPath));
-          tauriConf.version = version;
-          fs.writeFileSync(tauriPath, JSON.stringify(tauriConf, null, 4));
-          
-          // Update package.json
-          const pkgPath = 'frontend/package.json';
-          const pkg = JSON.parse(fs.readFileSync(pkgPath));
-          pkg.version = version;
-          fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-          "
-
-          # Update Cargo.toml using Powershell regex
-          $CargoToml = "frontend/src-tauri/Cargo.toml"
-          $cargoContent = Get-Content $CargoToml
-          $cargoContent = $cargoContent -replace '^(version\s*=\s*")([^"]+)(")', "`${1}$VERSION`${3}"
-          $cargoContent | Set-Content $CargoToml
-          
-          Write-Output "Version updated successfully in all config files!"
-
       - name: Run Build Script (build.ps1)
         shell: pwsh
         run: |
-          # build.ps1 does exactly what we do locally (builds pyinstaller, runs npm install, runs tauri build) 
-          .\build.ps1
+          # The updated build.ps1 now handles version synchronization 
+          # and generating EXE metadata automatically.
+          .\build.ps1 -Version ${{ env.APP_VERSION }}
 
       - name: Upload GitHub Release
         uses: softprops/action-gh-release@v2

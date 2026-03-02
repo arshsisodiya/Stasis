@@ -42,6 +42,7 @@ exe = EXE(
     [],
     name='stasis-backend',
     icon='backend-app-icon.ico',
+    version='file_version_info.txt',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

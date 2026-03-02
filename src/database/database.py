@@ -23,6 +23,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT NOT NULL,
         app_name TEXT,
+        exe_path TEXT,
         pid INTEGER,
         window_title TEXT,
         url TEXT,
@@ -127,6 +128,12 @@ def init_db():
     # Add unblock_until column if not exists (for backwards compatibility)
     try:
         cursor.execute("ALTER TABLE app_limits ADD COLUMN unblock_until TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+    # Add exe_path column to activity_logs if not exists
+    try:
+        cursor.execute("ALTER TABLE activity_logs ADD COLUMN exe_path TEXT")
     except sqlite3.OperationalError:
         pass
 

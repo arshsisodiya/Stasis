@@ -326,7 +326,9 @@ def get_active_window_info() -> dict | None:
 
         _, pid = win32process.GetWindowThreadProcessId(hwnd)
         try:
-            app_name = psutil.Process(pid).name()
+            proc = psutil.Process(pid)
+            app_name = proc.name()
+            exe_path = proc.exe()
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             return None
 
@@ -340,7 +342,7 @@ def get_active_window_info() -> dict | None:
             except Exception:
                 pass
 
-        return {"app_name": app_name, "pid": pid, "title": title.strip(), "url": url}
+        return {"app_name": app_name, "pid": pid, "title": title.strip(), "url": url, "exe_path": exe_path}
     except Exception:
         return None
 
@@ -482,12 +484,12 @@ def flush_session(session: SessionState, cursor) -> bool:
     try:
         cursor.execute("""
             INSERT INTO activity_logs
-                (timestamp, app_name, pid, window_title, url,
+                (timestamp, app_name, exe_path, pid, window_title, url,
                  active_seconds, idle_seconds, keystrokes, clicks)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             timestamp,
-            info["app_name"], info["pid"], info["title"], info["url"],
+            info["app_name"], info.get("exe_path"), info["pid"], info["title"], info["url"],
             int(active_secs), int(idle_secs),
             int(keys), int(clicks)
         ))

@@ -9,8 +9,10 @@ import subprocess
 import os
 import threading
 import time
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 import datetime
+import io
+import base64
 
 from src.database.database import (
     get_connection,
@@ -23,6 +25,8 @@ from src.database.database import (
     clear_all_tracked_events,
     factory_reset
 )
+from src.config.storage import get_icons_dir
+from src.utils.icon_extractor import extract_icon_as_base64, get_exe_path_by_name
 
 wellbeing_bp = Blueprint("wellbeing", __name__)
 
@@ -73,6 +77,52 @@ def ignored_apps():
     except Exception as e:
         print(f"Error loading ignored apps: {e}")
     return jsonify([])
+
+# =====================================
+# App Icon
+# =====================================
+
+@wellbeing_bp.route("/api/app-icon/<app_name>")
+def app_icon(app_name):
+    """
+    Returns the app icon as a PNG image, with disk and browser caching.
+    """
+    import hashlib
+    safe_name = hashlib.md5(app_name.lower().encode()).hexdigest()
+    cache_path = os.path.join(get_icons_dir(), f"{safe_name}.png")
+
+    # 1. Try disk cache first
+    if os.path.exists(cache_path):
+        return send_file(cache_path, mimetype='image/png', max_age=86400)
+
+    # 2. Extract and cache if not found
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        exe_path = get_exe_path_by_name(cursor, app_name)
+        if not exe_path:
+            return "No icon", 404
+        
+        icon_b64 = extract_icon_as_base64(exe_path)
+        if not icon_b64:
+            return "Failed to extract", 404
+            
+        icon_data = base64.b64decode(icon_b64)
+        
+        # Save to disk cache
+        with open(cache_path, 'wb') as f:
+            f.write(icon_data)
+            
+        return send_file(
+            io.BytesIO(icon_data),
+            mimetype='image/png',
+            max_age=86400
+        )
+    except Exception as e:
+        print(f"Error serving icon for {app_name}: {e}")
+        return str(e), 500
+    finally:
+        conn.close()
 
 # =====================================
 # Settings

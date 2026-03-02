@@ -19,5 +19,10 @@ def get_data_dir():
     os.makedirs(path, exist_ok=True)
     return path
 
+def get_icons_dir():
+    path = os.path.join(get_base_dir(), "icons")
+    os.makedirs(path, exist_ok=True)
+    return path
+
 def get_config_path():
     return os.path.join(get_base_dir(), "config.json")

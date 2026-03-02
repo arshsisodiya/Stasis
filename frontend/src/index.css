@@ -4,7 +4,7 @@ body {
     margin: 0;
     font-family: 'DM Sans', sans-serif;
     background: radial-gradient(circle at 15% 10%, #171c35 0%, #080b14 40%),
-                radial-gradient(circle at 85% 90%, #14172e 0%, #080b14 50%);
+        radial-gradient(circle at 85% 90%, #14172e 0%, #080b14 50%);
     background-color: #080b14;
     color: #f8fafc;
     overflow-y: scroll;

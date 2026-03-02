@@ -423,10 +423,33 @@ export default function LoadingScreen({
         setPhase("ready");
         clearInterval(timerRef.current);
 
-        // Short celebration pause, then fade out and call onReady
-        setTimeout(() => {
-          setExiting(true);
-          setTimeout(onReady, 700);
+        // Pre-fetch all dashboard data during the celebration pause so the
+        // dashboard mounts with real data the moment onReady() fires.
+        // This lets the ls-outro play over an already-rendered dashboard —
+        // zero skeleton, zero white flash.
+        const BASE = healthUrl.replace('/api/health', '');
+        const _today = new Date();
+        const _pad = n => String(n).padStart(2, '0');
+        const _ymd = d => `${d.getFullYear()}-${_pad(d.getMonth()+1)}-${_pad(d.getDate())}`;
+        const _todayStr = _ymd(_today);
+        const _yd = new Date(_today); _yd.setDate(_yd.getDate() - 1);
+        const _ydStr = _ymd(_yd);
+
+        const _prefetch = Promise.all([
+          fetch(`${BASE}/api/wellbeing?date=${_todayStr}`).then(r=>r.json()).catch(()=>null),
+          fetch(`${BASE}/api/daily-stats?date=${_todayStr}`).then(r=>r.json()).catch(()=>[]),
+          fetch(`${BASE}/api/hourly?date=${_todayStr}`).then(r=>r.json()).catch(()=>new Array(24).fill(0)),
+          fetch(`${BASE}/api/focus?date=${_todayStr}`).then(r=>r.json()).catch(()=>null),
+          fetch(`${BASE}/api/daily-stats?date=${_ydStr}`).then(r=>r.json()).catch(()=>[]),
+          fetch(`${BASE}/limits/all`).then(r=>r.json()).catch(()=>[]),
+        ]).then(([wb,ds,hr,fc,prev,lim]) => ({wb,ds,hr,fc,prev,lim})).catch(()=>null);
+
+        // After the celebration pause: pass data to App so the dashboard
+        // mounts underneath, then immediately start the outro over it.
+        setTimeout(async () => {
+          const _data = await _prefetch;
+          onReady(_data);   // dashboard mounts with real data
+          setExiting(true); // ls-outro now plays over an already-visible dashboard
         }, 900);
         return;
       }

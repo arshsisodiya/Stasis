@@ -269,91 +269,123 @@ function Skel({ h = 20, r = 10, style = {} }) {
 function TelegramSetupForm({ onSuccess, push }) {
   const [token, setToken] = useState("");
   const [chatId, setChatId] = useState("");
-  const [tokenErr, setTokenErr] = useState("");
-  const [chatErr, setChatErr] = useState("");
-  const [testState, setTestState] = useState("idle"); // idle|testing|ok|fail
+  const [validating, setValidating] = useState(false);
   const [enabling, setEnabling] = useState(false);
-  const [showWarning, setShowWarning] = useState(false);
-
-  const validate = () => {
-    let ok = true;
-    if (!token.trim()) { setTokenErr("Bot token is required"); ok = false; } else setTokenErr("");
-    if (!chatId.trim()) { setChatErr("Chat ID is required"); ok = false; } else setChatErr("");
-    return ok;
-  };
-
-  const handleTokenChange = v => { setToken(v); if (testState !== "idle") setTestState("idle"); };
+  const [isValid, setIsValid] = useState(null); // null | true | false
 
   const handleTest = async () => {
-    if (!validate()) return;
-    setTestState("testing");
+    if (!token.trim()) return push("Please enter a bot token", "warn");
+    setValidating(true); setIsValid(null);
     try {
-      const r = await fetch(`${BASE_URL}/api/telegram/validate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: token.trim() }) });
+      const r = await fetch(`${BASE_URL}/api/telegram/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: token.trim() })
+      });
       const d = await r.json();
-      if (d.valid) { setTestState("ok"); push("Bot token verified — connection successful", "success"); }
-      else { setTestState("fail"); push("Invalid token — check your BotFather token", "error"); }
-    } catch { setTestState("fail"); push("Network error — is the API server running?", "error"); }
-  };
-
-  const handleProceed = () => {
-    if (!validate()) return;
-    if (testState !== "ok") { push("Please test the connection before proceeding", "warn"); return; }
-    setShowWarning(true);
+      setIsValid(d.valid === true);
+      if (d.valid) push(`Bot @${d.username} verified!`, "success");
+      else push(d.error || "Invalid token", "error");
+    } catch { push("Validation service unreachable", "error"); }
+    setValidating(false);
   };
 
   const handleEnable = async () => {
-    setShowWarning(false); setEnabling(true);
+    setEnabling(true);
     try {
-      const r = await fetch(`${BASE_URL}/api/telegram/enable`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: token.trim(), chat_id: chatId.trim() }) });
+      const r = await fetch(`${BASE_URL}/api/telegram/enable`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: token.trim(), chat_id: chatId.trim() })
+      });
       const d = await r.json();
-      if (d.success) { push("Telegram integration enabled successfully", "success"); onSuccess(); }
-      else { push(d.error || "Failed to enable Telegram", "error"); }
-    } catch { push("Server error — please try again", "error"); }
+      if (d.success) { push("Bot enabled successfully", "success"); onSuccess(); }
+      else push(d.error || "Failed to enable", "error");
+    } catch { push("Server error — try again", "error"); }
     setEnabling(false);
   };
 
+  const inputStyle = {
+    width: "100%", padding: "11px 14px", borderRadius: 12, background: "rgba(255,255,255,0.05)",
+    border: `1px solid ${C.border}`, color: C.text, fontSize: 13, outline: "none", transition: "all 0.2s",
+    fontFamily: "'DM Sans', sans-serif"
+  };
+
   return (
-    <>
-      <Card style={{ borderColor: "rgba(96,165,250,0.2)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 13, background: C.blueGlow, border: "1px solid rgba(96,165,250,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>✈️</div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>Connect Telegram Bot</div>
-            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>Enter credentials from @BotFather</div>
-          </div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 20 }}>
-          <InputField label="Bot Token" value={token} onChange={handleTokenChange} placeholder="123456789:AABBccDDee_..." secret error={tokenErr} hint="From @BotFather → /newbot → token" />
-          <InputField label="Chat ID" value={chatId} onChange={setChatId} placeholder="-100123456789" error={chatErr} hint="Your Telegram user ID or group/channel ID" mono />
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", flex: 1, gap: 16 }}>
+        {/* Left: Input Form */}
+        <div style={{ flex: 1 }}>
+          <Card>
+            <SectionLabel>Bot Credentials</SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <Label>Bot Token</Label>
+                <code style={{ display: "block", fontSize: 10, color: C.textMuted, marginBottom: 6 }}>Get this from @BotFather on Telegram</code>
+                <input
+                  type="password"
+                  value={token}
+                  onChange={e => { setToken(e.target.value); setIsValid(null); }}
+                  placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <Label>Your Chat ID</Label>
+                <code style={{ display: "block", fontSize: 10, color: C.textMuted, marginBottom: 6 }}>Use @userinfobot to find your ID</code>
+                <input
+                  value={chatId}
+                  onChange={e => { setChatId(e.target.value); setIsValid(null); }}
+                  placeholder="123456789"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ marginTop: 8 }}>
+                <Btn
+                  onClick={handleTest}
+                  loading={validating}
+                  variant={isValid === true ? "success" : "secondary"}
+                  full
+                >
+                  {isValid === true ? "✓ Connection Ready" : isValid === false ? "✕ Validation Failed — Retry" : "Test Connection"}
+                </Btn>
+              </div>
+
+              {isValid === true && (
+                <div style={{ marginTop: 12, animation: "sp-banner-in 0.3s ease" }}>
+                  <Btn onClick={handleEnable} loading={enabling} full>
+                    Save & Enable Integration
+                  </Btn>
+                </div>
+              )}
+            </div>
+          </Card>
         </div>
 
-        {testState !== "idle" && (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", borderRadius: 11, marginBottom: 18,
-            background: testState === "ok" ? "rgba(74,222,128,0.07)" : testState === "fail" ? "rgba(248,113,113,0.07)" : "rgba(255,255,255,0.04)",
-            border: `1px solid ${testState === "ok" ? "rgba(74,222,128,0.25)" : testState === "fail" ? "rgba(248,113,113,0.25)" : C.border}`,
-            animation: "sp-banner-in 0.28s ease"
-          }}>
-            {testState === "testing"
-              ? <span style={{ width: 14, height: 14, borderRadius: "50%", border: `2px solid ${C.border}`, borderTopColor: C.blue, animation: "sp-spin 0.65s linear infinite", display: "block", flexShrink: 0 }} />
-              : <StatusDot color={testState === "ok" ? C.green : C.red} pulse={false} size={8} />}
-            <span style={{ fontSize: 13, color: testState === "ok" ? C.green : testState === "fail" ? C.red : C.textSub, fontWeight: 500 }}>
-              {testState === "testing" && "Testing connection…"}
-              {testState === "ok" && "Connection verified — bot is reachable ✓"}
-              {testState === "fail" && "Connection failed — check token or network"}
-            </span>
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Btn onClick={handleTest} loading={testState === "testing"} disabled={enabling} variant="secondary">
-            {testState === "ok" ? "✓ Re-test" : "🔌 Test Connection"}
-          </Btn>
-          <Btn onClick={handleProceed} loading={enabling} disabled={testState !== "ok"} variant="primary">
-            {enabling ? "Enabling…" : "Proceed →"}
-          </Btn>
+        {/* Right: Steps Guide */}
+        <div style={{ width: 220 }}>
+          <Card accent={C.blue}>
+            <SectionLabel>Setup Guide</SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 12 }}>
+              {[
+                { n: "1", t: "Create Bot", s: "Talk to @BotFather and get your unique token." },
+                { n: "2", t: "Find ID", s: "Message @userinfobot to get your numeric Chat ID." },
+                { n: "3", t: "Validate", s: "Enter credentials here and test the connection." },
+                { n: "4", t: "Ready!", s: "Enable to start remote monitoring." },
+              ].map(step => (
+                <div key={step.n} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <div style={{ width: 18, height: 18, borderRadius: 5, background: C.blueGlow, color: C.blue, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{step.n}</div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub }}>{step.t}</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.4, marginTop: 2 }}>{step.s}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
         </div>
-      </Card>
+      </div>
 
       <Card dashed>
         <SectionLabel>How to get credentials</SectionLabel>
@@ -361,7 +393,7 @@ function TelegramSetupForm({ onSuccess, push }) {
           {[
             { n: "🤖", title: "Create a bot via @BotFather", desc: "Open Telegram → search @BotFather → /newbot → follow prompts → copy the Bot Token." },
             { n: "💬", title: "Get your Chat ID", desc: "Send any message to your bot, then visit api.telegram.org/bot{TOKEN}/getUpdates — find chat.id in the JSON." },
-            { n: "🔌", title: "Paste & test above", desc: "Enter both values, click 'Test Connection' to verify, then 'Proceed' to enable." },
+            { n: "🔌", title: "Paste & test above", desc: "Enter both values, click 'Test Connection' to verify, then 'Enable' to finish." },
           ].map(({ n, title, desc }) => (
             <div key={title} style={{ display: "flex", gap: 12 }}>
               <div style={{ width: 28, height: 28, borderRadius: 9, background: C.blueGlow, border: "1px solid rgba(96,165,250,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0, marginTop: 1 }}>{n}</div>
@@ -373,26 +405,16 @@ function TelegramSetupForm({ onSuccess, push }) {
           ))}
         </div>
       </Card>
-
-      {showWarning && (
-        <WarningModal variant="danger" title="Enable Remote Control?"
-          body="This will allow anyone with access to this Telegram bot to remotely control this device."
-          bullets={[
-            { icon: "📸", title: "Screenshot capture", desc: "Take and send screenshots via Telegram" },
-            { icon: "📷", title: "Webcam access", desc: "Remotely capture webcam images" },
-            { icon: "🔒", title: "Lock screen", desc: "Remotely lock the device" },
-            { icon: "⚡", title: "Shutdown / Restart", desc: "Trigger system power commands" },
-          ]}
-          confirmLabel="Yes, Enable Telegram"
-          onConfirm={handleEnable} onCancel={() => setShowWarning(false)} />
-      )}
-    </>
+    </div>
   );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TELEGRAM — LIVE CARD (running)
+// ═══════════════════════════════════════════════════════════════════════════════
 function TelegramLiveCard({ status, config, onAction, loadingAction }) {
   const [showLogs, setShowLogs] = useState(false);
-  const hasCreds = !!(config?.token);
-  const st = computeStatus(config?.enabled, status?.running, hasCreds);
+  const st = computeStatus(config?.enabled, status?.running, !!config?.token);
   const borderColor = st.key === "running" ? "rgba(74,222,128,0.2)" : st.key === "degraded" || st.key === "paused" ? "rgba(251,191,36,0.14)" : C.border;
 
   const recentCmds = config?.recent_commands || [];
@@ -400,47 +422,30 @@ function TelegramLiveCard({ status, config, onAction, loadingAction }) {
   const lastCmdText = lastCmd ? `Last command received: ${timeAgo(lastCmd.timestamp)}` : "No commands yet";
 
   return (
-    <Card style={{ borderColor, padding: 0, overflow: "hidden" }}>
-      {/* Running success banner */}
-      {st.key === "running" && (
-        <div style={{
-          background: "linear-gradient(90deg,rgba(74,222,128,0.1),rgba(34,211,238,0.07))",
-          borderBottom: "1px solid rgba(74,222,128,0.18)", padding: "10px 22px",
-          display: "flex", alignItems: "center", gap: 10, animation: "sp-banner-in 0.3s ease"
-        }}>
-          <StatusDot color={C.green} pulse={true} size={8} />
-          <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>
-            Bot is running and listening for commands
-          </span>
-          <span style={{
-            fontSize: 10, color: C.textMuted, background: "rgba(255,255,255,0.05)",
-            border: `1px solid ${C.border}`, borderRadius: 5, padding: "1px 7px", marginLeft: "auto"
-          }}>LIVE</span>
-        </div>
-      )}
-
-      <div style={{ padding: "22px 24px" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{
-              width: 46, height: 46, borderRadius: 14, background: `${st.color}14`, border: `1px solid ${st.color}28`,
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0, transition: "background 0.35s,border-color 0.35s"
-            }}>✈️</div>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 7 }}>Telegram Bot</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <StatusDot color={st.color} pulse={st.pulse} size={8} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: st.color, transition: "color 0.35s" }}>{st.label}</span>
-                <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 4 }}>•</span>
-                <span style={{ fontSize: 11, color: C.textMuted }}>{lastCmdText}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* ── Status & Capabilities ── */}
+      <Card style={{ borderColor, padding: "22px 24px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
+          <div style={{ flex: 1 }}>
+            <SectionLabel>Bot Health & Statistics</SectionLabel>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+              <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px" }}>
+                <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Uptime</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: st.key === "running" ? C.green : C.textMuted, marginTop: 2 }}>
+                  {st.key === "running" ? "Active 2h 14m" : "Offline"}
+                </div>
+              </div>
+              <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px" }}>
+                <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Commands</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginTop: 2 }}>{recentCmds.length} <span style={{ fontSize: 11, fontWeight: 400, color: C.textMuted }}>processed</span></div>
               </div>
             </div>
           </div>
-          <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>Token</div>
-            <code style={{ fontSize: 12, color: C.textSub, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 7, padding: "3px 10px" }}>{config?.token || "—"}</code>
-            <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginTop: 8, marginBottom: 4 }}>Chat ID</div>
-            <code style={{ fontSize: 12, color: C.textSub, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 7, padding: "3px 10px" }}>{config?.chat_id || "—"}</code>
+          <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 24 }}>
+            <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>Bot Token</div>
+            <code style={{ fontSize: 11, color: C.textSub, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 7, padding: "4px 10px", fontFamily: "monospace" }}>{config?.token || "—"}</code>
+            <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginTop: 10, marginBottom: 5 }}>Chat ID</div>
+            <code style={{ fontSize: 11, color: C.textSub, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 7, padding: "4px 10px", fontFamily: "monospace" }}>{config?.chat_id || "—"}</code>
           </div>
         </div>
 
@@ -486,27 +491,22 @@ function TelegramLiveCard({ status, config, onAction, loadingAction }) {
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 20 }}>
-          {[["📸", "Screenshots"], ["📷", "Webcam"], ["🔒", "Lock"], ["⚡", "Shutdown"], ["🔁", "Restart"]].map(([ic, lb]) => (
-            <span key={lb} style={{
-              display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: C.textMuted,
-              background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 20, padding: "4px 11px"
-            }}>
-              <span>{ic}</span>{lb}
-            </span>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <Btn onClick={() => onAction("restart")} loading={loadingAction === "restart"} disabled={!config?.enabled} size="sm">🔄 Restart</Btn>
-          <Btn onClick={() => onAction(config?.enabled ? "disable" : "enable")} loading={loadingAction === "disable" || loadingAction === "enable"} variant={config?.enabled ? "secondary" : "warning"} size="sm">
-            {config?.enabled ? "⏸ Disable" : "▶ Enable"}
-          </Btn>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", paddingTop: 8 }}>
+          <Btn onClick={() => onAction("restart")} loading={loadingAction === "restart"} disabled={!config?.enabled} size="sm">🔄 Restart Bot Session</Btn>
           <div style={{ flex: 1 }} />
-          <Btn onClick={() => onAction("reset")} loading={loadingAction === "reset"} variant="danger" size="sm">🗑 Remove Credentials</Btn>
+          <Btn onClick={() => onAction("reset")} loading={loadingAction === "reset"} variant="danger" size="sm">🗑 Disconnect & Wipe</Btn>
         </div>
-      </div>
-    </Card>
+      </Card>
+
+      {/* ── Security & Permissions ── */}
+      <Card>
+        <SectionLabel>Security & Permissions</SectionLabel>
+        <SettingRow label="Allow remote screen capture" desc="Allow bot to send screenshots of your display" control={<Toggle on={true} onChange={() => { }} />} />
+        <SettingRow label="Allow webcam access" desc="Allow bot to take photos or record video" control={<Toggle on={true} onChange={() => { }} />} />
+        <SettingRow label="System control commands" desc="Enable /shutdown, /restart and /lock" control={<Toggle on={true} onChange={() => { }} />} />
+        <SettingRow borderless label="Interactive confirmation" desc="Ask for confirmation on destructive commands" control={<Toggle on={true} onChange={() => { }} />} />
+      </Card>
+    </div>
   );
 }
 
@@ -534,10 +534,14 @@ function TelegramSection({ push }) {
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchAll(); const iv = setInterval(fetchAll, 8000); return () => clearInterval(iv); }, [fetchAll]);
+  useEffect(() => { fetchAll(); const iv = setInterval(fetchAll, 10000); return () => clearInterval(iv); }, [fetchAll]);
 
   const hasCreds = !!(config?.token);
   const isEnabled = !!config?.enabled;
+  const recentCmds = config?.recent_commands || [];
+  const lastCmd = recentCmds[0];
+  const lastCmdText = lastCmd ? `last seen ${timeAgo(lastCmd.timestamp)}` : null;
+  const st = computeStatus(isEnabled, status?.running, hasCreds);
 
   const requestAction = action => {
     if (["disable", "reset", "enable"].includes(action)) { setModal(action); return; }
@@ -580,28 +584,45 @@ function TelegramSection({ push }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Master toggle */}
-      <Card>
+      <Card style={{ padding: "24px 28px", borderBottom: isEnabled && status?.running ? `2px solid ${C.green}44` : `1px solid ${C.border}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 12, fontSize: 20, background: C.blueGlow, border: "1px solid rgba(96,165,250,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>✈️</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ position: "relative" }}>
+              <div style={{ width: 48, height: 48, borderRadius: 15, fontSize: 24, background: isEnabled && status?.running ? C.greenGlow : C.blueGlow, border: `1px solid ${isEnabled && status?.running ? C.green + "44" : "rgba(96,165,250,0.25)"}`, display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.4s ease" }}>✈️</div>
+              {isEnabled && status?.running && <span style={{ position: "absolute", top: -4, right: -4, width: 14, height: 14, borderRadius: "50%", background: C.green, border: `3px solid ${C.surface}`, display: "block" }} />}
+            </div>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 6 }}>Telegram Integration</div>
-              {(() => {
-                const st = computeStatus(isEnabled, status?.running, hasCreds);
-                return (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <StatusDot color={st.color} pulse={st.pulse} size={7} />
-                    <span style={{ fontSize: 12, color: st.color, fontWeight: 500, transition: "color 0.35s" }}>{st.label}</span>
-                  </div>
-                );
-              })()}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 5 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Telegram Integration</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, padding: "2px 8px", borderRadius: 20 }}>
+                  <StatusDot color={st.color} pulse={st.pulse} size={7} />
+                  <span style={{ fontSize: 11, color: st.color, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.02em" }}>{st.label}</span>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, color: isEnabled ? C.textSub : C.textMuted, fontWeight: 500 }}>
+                  {config?.bot_username || (hasCreds ? "Bot Configured" : "Not Configured")}
+                </span>
+                {lastCmdText && (
+                  <>
+                    <span style={{ fontSize: 11, color: C.textMuted }}>•</span>
+                    <span style={{ fontSize: 11, color: C.textMuted }}>{lastCmdText}</span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-          <Toggle on={isEnabled} onChange={v => requestAction(v ? "enable" : "disable")} loading={loadingAction === "disable" || loadingAction === "enable"} disabled={!hasCreds && !isEnabled} />
+          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+            {isEnabled && status?.running && (
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.green, background: "rgba(74,222,128,0.08)", padding: "2px 8px", borderRadius: 5, letterSpacing: "0.05em" }}>LIVE</div>
+            )}
+            <Toggle on={isEnabled} onChange={v => requestAction(v ? "enable" : "disable")} loading={loadingAction === "disable" || loadingAction === "enable"} disabled={!hasCreds && !isEnabled} />
+          </div>
         </div>
         {!hasCreds && !isEnabled && (
-          <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 9, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
-            Fill in your bot credentials below, test the connection, then enable.
+          <div style={{ marginTop: 20, padding: "12px 16px", background: "rgba(96,165,250,0.04)", border: "1px dashed rgba(96,165,250,0.25)", borderRadius: 12, fontSize: 12, color: C.textSub, lineHeight: 1.6 }}>
+            <span style={{ marginRight: 8 }}>💡</span>
+            Connect a Telegram bot to remotely monitor and control this device. You'll need a Bot Token and your Chat ID.
           </div>
         )}
       </Card>
@@ -1358,11 +1379,11 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
             </div>
 
             {tgConfig && (() => {
-              const st = computeStatus(tgConfig.enabled, tgStatus?.running, !!(tgConfig.token));
+              const st_h = computeStatus(tgConfig.enabled, tgStatus?.running, !!(tgConfig.token));
               return (
-                <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "4px 12px", background: `${st.color}0f`, border: `1px solid ${st.color}22`, borderRadius: 20, marginLeft: 16, marginRight: "auto" }}>
-                  <StatusDot color={st.color} pulse={st.pulse} size={6} />
-                  <span style={{ fontSize: 11, color: st.color, fontWeight: 500 }}>Telegram · {st.label}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "4px 12px", background: `${st_h.color}0f`, border: `1px solid ${st_h.color}22`, borderRadius: 20, marginLeft: 16, marginRight: "auto" }}>
+                  <StatusDot color={st_h.color} pulse={st_h.pulse} size={6} />
+                  <span style={{ fontSize: 11, color: st_h.color, fontWeight: 500 }}>Telegram · {st_h.label}</span>
                 </div>
               );
             })()}

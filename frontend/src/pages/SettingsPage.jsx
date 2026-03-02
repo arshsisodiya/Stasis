@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import UpdateSection from "./UpdatePage";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const BASE_URL = "http://127.0.0.1:7432";
@@ -1085,39 +1086,10 @@ function AboutSection({ push }) {
   const [tab, setTab] = useState("about");
   const [updateState, setUpdateState] = useState(null);
 
-  const fetchUpdateStatus = useCallback(async () => {
-    try {
-      const res = await fetch(`${BASE_URL}/api/update/status`);
-      const data = await res.json();
-      setUpdateState(data);
-    } catch { }
-  }, []);
-
   useEffect(() => {
-    fetchUpdateStatus();
-    const interval = setInterval(fetchUpdateStatus, 3000);
-    return () => clearInterval(interval);
-  }, [fetchUpdateStatus]);
-
-  const handleCheckUpdate = async () => {
-    try {
-      await fetch(`${BASE_URL}/api/update/check`, { method: "POST" });
-      push("Checking for updates...", "success");
-      fetchUpdateStatus();
-    } catch {
-      push("Failed to check for updates", "error");
-    }
-  };
-
-  const handleInstallUpdate = async () => {
-    try {
-      await fetch(`${BASE_URL}/api/update/install`, { method: "POST" });
-      push("Starting download...", "success");
-      fetchUpdateStatus();
-    } catch {
-      push("Failed to start installation", "error");
-    }
-  };
+    // Read current version only, for display in the About card
+    fetch(`${BASE_URL}/api/update/status`).then(r => r.json()).then(setUpdateState).catch(() => {});
+  }, []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1189,46 +1161,6 @@ function AboutSection({ push }) {
         </Card>
       )}
 
-      {tab === "about" && (
-        <Card>
-          <SectionLabel>Update</SectionLabel>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "8px 0" }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 4 }}>App Updates</div>
-              <div style={{ fontSize: 12, color: C.textMuted }}>
-                {updateState?.status === "idle" && (updateState?.error || "You are using the latest version.")}
-                {updateState?.status === "checking" && "Checking GitHub for recent releases..."}
-                {updateState?.status === "update_available" && `Update available! Version ${updateState?.latest_version} is ready to download.`}
-                {updateState?.status === "downloading" && `Downloading update: ${updateState?.progress}%`}
-                {updateState?.status === "ready" && "Update ready to install."}
-              </div>
-            </div>
-            <div style={{ flexShrink: 0 }}>
-              {(updateState?.status === "idle" || updateState?.status === "checking") && (
-                <Btn onClick={handleCheckUpdate} loading={updateState?.status === "checking"} variant="secondary">Check for Updates</Btn>
-              )}
-              {updateState?.status === "update_available" && (
-                <button onClick={handleInstallUpdate} className="sp-action"
-                  style={{
-                    padding: "9px 18px", borderRadius: 10, border: "none", cursor: "pointer",
-                    background: "linear-gradient(135deg,#4ade80,#22d3ee)", color: "#060a12",
-                    fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif",
-                    boxShadow: "0 0 16px rgba(74,222,128,0.3)"
-                  }}>
-                  Download &amp; Install
-                </button>
-              )}
-              {updateState?.status === "downloading" && (
-                <Btn disabled={true} variant="secondary">Downloading {updateState?.progress}%...</Btn>
-              )}
-              {updateState?.status === "ready" && (
-                <Btn disabled={true} variant="secondary">Starting Installer...</Btn>
-              )}
-            </div>
-          </div>
-        </Card>
-      )}
-
       {tab === "privacy" && (
         <Card>
           <SectionLabel>Privacy Policy</SectionLabel>
@@ -1272,19 +1204,22 @@ function AboutSection({ push }) {
 // SIDE NAV
 // ═══════════════════════════════════════════════════════════════════════════════
 const NAV_ITEMS = [
-  { id: "general", icon: "⚙️", label: "General", sub: "App & tracking" },
-  { id: "telegram", icon: "✈️", label: "Telegram", sub: "Remote control" },
-  { id: "security", icon: "🔐", label: "Security", sub: "Access & encryption" },
-  { id: "about", icon: "ℹ️", label: "About", sub: "Version & privacy" },
+  { id: "general",  icon: "⚙️",  label: "General",  sub: "App & tracking" },
+  { id: "telegram", icon: "✈️",  label: "Telegram", sub: "Remote control" },
+  { id: "security", icon: "🔐",  label: "Security", sub: "Access & encryption" },
+  { id: "updates",  icon: "🚀",  label: "Updates",  sub: "Version & changelog" },
+  { id: "about",    icon: "ℹ️",  label: "About",    sub: "Privacy & licenses" },
 ];
 
-function SideNav({ active, onChange, tgStatus, tgConfig }) {
+function SideNav({ active, onChange, tgStatus, tgConfig, updateState }) {
   const tgSt = tgConfig ? computeStatus(tgConfig.enabled, tgStatus?.running, !!(tgConfig.token)) : null;
+  const hasUpdate = updateState?.status === "update_available";
   return (
     <nav style={{ display: "flex", flexDirection: "column", gap: 3 }}>
       {NAV_ITEMS.map(({ id, icon, label, sub }) => {
         const isAct = active === id;
         const badge = id === "telegram" && tgSt && tgSt.key !== "running" && tgSt.key !== "disabled";
+        const updateBadge = id === "updates" && hasUpdate;
         return (
           <button key={id} onClick={() => onChange(id)} className={`sp-nav-btn${isAct ? " active" : ""}`}
             style={{
@@ -1314,6 +1249,16 @@ function SideNav({ active, onChange, tgStatus, tgConfig }) {
                 {tgSt.label}
               </span>
             )}
+            {updateBadge && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, color: C.green, background: "rgba(74,222,128,0.15)",
+                border: "1px solid rgba(74,222,128,0.35)", borderRadius: 10, padding: "2px 7px",
+                letterSpacing: "0.03em", textTransform: "uppercase",
+                animation: "sp-ping 2s cubic-bezier(0,0,0.2,1) infinite",
+              }}>
+                New
+              </span>
+            )}
           </button>
         );
       })}
@@ -1329,6 +1274,7 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
   const [mounted, setMounted] = useState(false);
   const [tgStatus, setTgStatus] = useState(null);
   const [tgConfig, setTgConfig] = useState(null);
+  const [updateState, setUpdateState] = useState(null);
   const { toasts, push } = useToast();
 
   useEffect(() => { const t = setTimeout(() => setMounted(true), 40); return () => clearTimeout(t); }, []);
@@ -1343,13 +1289,21 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
     poll(); const iv = setInterval(poll, 10000); return () => clearInterval(iv);
   }, []);
 
+  useEffect(() => {
+    const pollUpdate = async () => {
+      try { const d = await fetch(`${BASE_URL}/api/update/status`).then(r => r.json()); setUpdateState(d); } catch { }
+    };
+    pollUpdate(); const iv2 = setInterval(pollUpdate, 15000); return () => clearInterval(iv2);
+  }, []);
+
   useEffect(() => { const h = e => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [onClose]);
 
   const meta = {
-    general: { label: "General", sub: "App behaviour and tracking" },
+    general:  { label: "General",              sub: "App behaviour and tracking" },
     telegram: { label: "Telegram Integration", sub: "Remote control via Telegram bot" },
-    security: { label: "Security", sub: "Access control and encryption" },
-    about: { label: "About & Privacy", sub: "Version, licenses and data policy" },
+    security: { label: "Security",             sub: "Access control and encryption" },
+    updates:  { label: "Updates",              sub: "Version history and changelog" },
+    about:    { label: "About & Privacy",      sub: "Version, licenses and data policy" },
   };
 
   return (
@@ -1394,17 +1348,18 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
           {/* Body */}
           <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
             <div style={{ width: 200, flexShrink: 0, padding: "16px 12px", borderRight: `1px solid ${C.border}`, background: "rgba(255,255,255,0.008)", overflowY: "auto" }}>
-              <SideNav active={section} onChange={setSection} tgStatus={tgStatus} tgConfig={tgConfig} />
+              <SideNav active={section} onChange={setSection} tgStatus={tgStatus} tgConfig={tgConfig} updateState={updateState} />
             </div>
             <div key={section} className="sp-scroll" style={{ flex: 1, overflowY: "auto", padding: "24px 28px", animation: "sp-slide-in 0.24s ease" }}>
               <div style={{ marginBottom: 22 }}>
                 <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: C.text, fontWeight: 400 }}>{meta[section]?.label}</div>
                 <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5 }}>{meta[section]?.sub}</div>
               </div>
-              {section === "general" && <GeneralSection push={push} />}
+              {section === "general"  && <GeneralSection push={push} />}
               {section === "telegram" && <TelegramSection push={push} />}
               {section === "security" && <SecuritySection push={push} />}
-              {section === "about" && <AboutSection push={push} />}
+              {section === "updates"  && <UpdateSection push={push} />}
+              {section === "about"    && <AboutSection push={push} />}
             </div>
           </div>
         </div>

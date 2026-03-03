@@ -20,6 +20,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import UpdateDialog from "../shared/UpdateDialog";
+import { GITHUB_REPO, shouldAutoCheckUpdate, recordUpdateCheck, getHoursUntilNextCheck } from "../shared/updateUtils";
 
 const HEALTH_URL = `${import.meta.env.VITE_API_URL || 'http://127.0.0.1:7432'}/api/health`;
 const RETRY_INTERVAL = 1500;
@@ -47,6 +49,7 @@ const C = {
 const STATUS_MSGS = [
   "Initialising core services…",
   "Loading activity database…",
+  "Checking for updates…",
   "Waking up the tracker…",
   "Syncing Telegram bridge…",
   "Calibrating focus engine…",
@@ -385,12 +388,17 @@ export default function LoadingScreen({
   retryInterval = RETRY_INTERVAL,
   maxRetries = MAX_RETRIES,
 }) {
-  const [phase, setPhase] = useState("booting");   // booting | connecting | ready | error
+  const [phase, setPhase] = useState("booting");   // booting | connecting | checking_update | ready | error
   const [attempts, setAttempts] = useState(0);
   const [msgIdx, setMsgIdx] = useState(0);
   const [msgAnim, setMsgAnim] = useState("in");        // in | out
   const [exiting, setExiting] = useState(false);
   const [showRetry, setShowRetry] = useState(false);
+
+  // Update logic
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [prefetchedData, setPrefetchedData] = useState(null);
 
   const timerRef = useRef(null);
   const msgTimer = useRef(null);
@@ -420,37 +428,81 @@ export default function LoadingScreen({
       const r = await fetch(healthUrl, { signal: AbortSignal.timeout(3000) });
       if (r.ok) {
         // ── SUCCESS ──
-        setPhase("ready");
+        setPhase("checking_update");
         clearInterval(timerRef.current);
 
-        // Pre-fetch all dashboard data during the celebration pause so the
-        // dashboard mounts with real data the moment onReady() fires.
-        // This lets the ls-outro play over an already-rendered dashboard —
-        // zero skeleton, zero white flash.
         const BASE = healthUrl.replace('/api/health', '');
         const _today = new Date();
         const _pad = n => String(n).padStart(2, '0');
-        const _ymd = d => `${d.getFullYear()}-${_pad(d.getMonth()+1)}-${_pad(d.getDate())}`;
+        const _ymd = d => `${d.getFullYear()}-${_pad(d.getMonth() + 1)}-${_pad(d.getDate())}`;
         const _todayStr = _ymd(_today);
         const _yd = new Date(_today); _yd.setDate(_yd.getDate() - 1);
         const _ydStr = _ymd(_yd);
 
         const _prefetch = Promise.all([
-          fetch(`${BASE}/api/wellbeing?date=${_todayStr}`).then(r=>r.json()).catch(()=>null),
-          fetch(`${BASE}/api/daily-stats?date=${_todayStr}`).then(r=>r.json()).catch(()=>[]),
-          fetch(`${BASE}/api/hourly?date=${_todayStr}`).then(r=>r.json()).catch(()=>new Array(24).fill(0)),
-          fetch(`${BASE}/api/focus?date=${_todayStr}`).then(r=>r.json()).catch(()=>null),
-          fetch(`${BASE}/api/daily-stats?date=${_ydStr}`).then(r=>r.json()).catch(()=>[]),
-          fetch(`${BASE}/limits/all`).then(r=>r.json()).catch(()=>[]),
-        ]).then(([wb,ds,hr,fc,prev,lim]) => ({wb,ds,hr,fc,prev,lim})).catch(()=>null);
+          fetch(`${BASE}/api/wellbeing?date=${_todayStr}`).then(r => r.json()).catch(() => null),
+          fetch(`${BASE}/api/daily-stats?date=${_todayStr}`).then(r => r.json()).catch(() => []),
+          fetch(`${BASE}/api/hourly?date=${_todayStr}`).then(r => r.json()).catch(() => new Array(24).fill(0)),
+          fetch(`${BASE}/api/focus?date=${_todayStr}`).then(r => r.json()).catch(() => null),
+          fetch(`${BASE}/api/daily-stats?date=${_ydStr}`).then(r => r.json()).catch(() => []),
+          fetch(`${BASE}/limits/all`).then(r => r.json()).catch(() => []),
+        ]).then(([wb, ds, hr, fc, prev, lim]) => ({ wb, ds, hr, fc, prev, lim })).catch(() => null);
 
-        // After the celebration pause: pass data to App so the dashboard
-        // mounts underneath, then immediately start the outro over it.
-        setTimeout(async () => {
-          const _data = await _prefetch;
-          onReady(_data);   // dashboard mounts with real data
-          setExiting(true); // ls-outro now plays over an already-visible dashboard
-        }, 900);
+        // Multi-stage finishing logic
+        const finish = async (data) => {
+          setPhase("ready");
+          setTimeout(() => {
+            onReady(data);
+            setExiting(true);
+          }, 900);
+        };
+
+        // ─── INTERVAL CHECK (using shared utils) ───
+        if (!shouldAutoCheckUpdate()) {
+          console.log(`Update check skipped (next check in ${getHoursUntilNextCheck()}h)`);
+          finish(await _prefetch);
+          return;
+        }
+
+        try {
+          // 1. Initialise update check on backend
+          console.log("Starting update check...");
+          await fetch(`${BASE}/api/update/check`, { method: "POST" });
+
+          // 2. Poll for status (wait up to 4 seconds for result)
+          let updateData = null;
+          for (let i = 0; i < 20; i++) {
+            const upRes = await fetch(`${BASE}/api/update/status`);
+            updateData = await upRes.json();
+            console.log(`Update status check ${i}:`, updateData.status);
+            if (updateData.status !== "checking") break;
+            await new Promise((r) => setTimeout(r, 200));
+          }
+
+          // Mark this check attempt via shared util
+          recordUpdateCheck();
+
+          if (updateData && updateData.status === "update_available") {
+            console.log("Update available! Fetching releases...");
+            // 3. If update available, fetch changelog from GitHub
+            const relRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=5`);
+            if (!relRes.ok) console.warn("GitHub releases fetch failed:", relRes.status);
+            const releases = relRes.ok ? await relRes.json() : [];
+
+            console.log(`Found ${releases.length} releases.`);
+            setUpdateInfo({ state: updateData, releases });
+            setPrefetchedData(await _prefetch);
+            setShowUpdateDialog(true);
+            return;
+          } else {
+            console.log("No update available or check timed out. Status:", updateData?.status);
+          }
+        } catch (e) {
+          console.error("Update check failed during startup:", e);
+        }
+
+        // Proceed to main app if no update found
+        finish(await _prefetch);
         return;
       }
     } catch {
@@ -486,6 +538,26 @@ export default function LoadingScreen({
     timerRef.current = setInterval(poll, retryInterval);
   };
 
+  const handleUpdateLater = () => {
+    setShowUpdateDialog(false);
+    setPhase("ready");
+    setTimeout(() => {
+      onReady(prefetchedData);
+      setExiting(true);
+    }, 400);
+  };
+
+  const handleUpdateNow = async () => {
+    const BASE = healthUrl.replace('/api/health', '');
+    try {
+      await fetch(`${BASE}/api/update/install`, { method: "POST" });
+    } catch (e) {
+      console.error("Failed to start update", e);
+    }
+    // Still proceed to app, but user will see update progress in settings or app will restart
+    handleUpdateLater();
+  };
+
   // ── Derived display values ──────────────────────────────────────────────────
   const isError = phase === "error";
   const isReady = phase === "ready";
@@ -494,9 +566,11 @@ export default function LoadingScreen({
 
   const statusText = isError
     ? "Backend unreachable — check that api_server.py is running"
-    : isReady
-      ? "Connected — launching Stasis…"
-      : STATUS_MSGS[msgIdx];
+    : phase === "checking_update"
+      ? "Checking for Stasis updates…"
+      : isReady
+        ? "Connected — launching Stasis…"
+        : STATUS_MSGS[msgIdx];
 
   // How many dots to show max (keep to 12 so row doesn't overflow)
   const dotMax = Math.min(maxRetries, 12);
@@ -761,6 +835,15 @@ export default function LoadingScreen({
             : "Waiting for api_server.py on port 7432"}
         </div>
       </div>
+
+      {showUpdateDialog && updateInfo && (
+        <UpdateDialog
+          updateState={updateInfo.state}
+          releases={updateInfo.releases}
+          onDownload={handleUpdateNow}
+          onLater={handleUpdateLater}
+        />
+      )}
     </>
   );
 }

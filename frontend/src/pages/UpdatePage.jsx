@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { GITHUB_REPO, shouldAutoCheckUpdate, recordUpdateCheck } from "../shared/updateUtils";
 
 // ─── CONSTANTS (mirrors SettingsPage) ────────────────────────────────────────
 const BASE_URL = "http://127.0.0.1:7432";
-const GITHUB_REPO = "arshsisodiya/Stasis"; // Exact casing from remote
 
 const C = {
   bg: "#080b14",
@@ -695,12 +695,18 @@ export default function UpdateSection({ push }) {
 
   useEffect(() => {
     fetchGithubReleases();
-  }, [fetchGithubReleases]);
+
+    // Auto-trigger check if interval passed
+    if (shouldAutoCheckUpdate()) {
+      handleCheck();
+    }
+  }, [fetchGithubReleases]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCheck = async () => {
     setChecking(true);
     try {
       await fetch(`${BASE_URL}/api/update/check`, { method: "POST" });
+      recordUpdateCheck(); // Record manually triggered check too
       push("Checking for updates…", "success");
       await fetchUpdateStatus();
     } catch {

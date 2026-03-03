@@ -134,6 +134,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
   const [data, setData] = useState(null);
   const [stats, setStats] = useState([]);
   const [prevStats, setPrevStats] = useState([]);
+  const [prevWellbeing, setPrevWellbeing] = useState(null); // yesterday's wellbeing summary
   const [hourly, setHourly] = useState([]);
   const [focusData, setFocusData] = useState(null);
   const [limits, setLimits] = useState([]);
@@ -149,6 +150,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
   const [ignoredApps, setIgnoredApps] = useState(new Set());
   // Version fetched from API (same as SettingsPage — never hardcoded)
   const [appVersion, setAppVersion] = useState(null);
+  const [showYesterdayComparison, setShowYesterdayComparison] = useState(true);
 
   const { elapsed, isToday } = useLiveClock(selectedDate);
 
@@ -172,7 +174,17 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
       .then(r => r.json())
       .then(d => { if (d?.current_version) setAppVersion(d.current_version); })
       .catch(() => { });
-  }, [BASE]);
+
+    // Also fetch settings to see if we should show comparisons
+    fetch(`${BASE}/api/settings`)
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.show_yesterday_comparison !== undefined) {
+          setShowYesterdayComparison(d.show_yesterday_comparison);
+        }
+      })
+      .catch(() => { });
+  }, [BASE, showSettings]); // Re-fetch when settings modal closes in case user changed it
 
   const cache = useRef((() => {
     if (initialData) {
@@ -184,11 +196,11 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
   const inflight = useRef({});
 
   const applyData = useCallback((entry) => {
-    const { wb, ds, hr, fc, prev, lim } = entry;
+    const { wb, ds, hr, fc, prev, prevWb, lim } = entry;
     if (!wb || wb.error || wb.totalScreenTime === 0 || (!wb.totalScreenTime && !ds.length)) {
       setData({ totalScreenTime: 0, totalIdleTime: 0, totalKeystrokes: 0, totalClicks: 0, totalSessions: 0, productivityPercent: 0, mostUsedApp: 'N/A' });
       setStats([]); setHourly(new Array(24).fill(0)); setFocusData({ score: 0 });
-      setPrevStats([]); setLimits([]); setTrackedSeconds(0);
+      setPrevStats([]); setPrevWellbeing(null); setLimits([]); setTrackedSeconds(0);
       setNoData(false); setLoading(false);
       setTimeout(() => setMounted(true), 100);
       return;
@@ -196,6 +208,8 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
     setNoData(false);
     setData(wb); setStats(ds); setHourly(hr); setFocusData(fc);
     setPrevStats(Array.isArray(prev) ? prev : []);
+    // Accept any valid wellbeing object (even if screen time is 0)
+    setPrevWellbeing(prevWb && typeof prevWb.totalScreenTime === "number" ? prevWb : null);
     setLimits(Array.isArray(lim) ? lim : []);
     setTrackedSeconds(wb.totalScreenTime || 0);
     setLoading(false);
@@ -212,8 +226,9 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
       fetch(`${BASE}/api/focus?date=${date}`).then(r => r.json()),
       fetch(`${BASE}/api/daily-stats?date=${yd}`).then(r => r.json()).catch(() => []),
       fetch(`${BASE}/limits/all`).then(r => r.json()).catch(() => []),
-    ]).then(([wb, ds, hr, fc, prev, lim]) => {
-      const entry = { wb, ds, hr, fc, prev, lim, fetchedAt: Date.now() };
+      fetch(`${BASE}/api/wellbeing?date=${yd}`).then(r => r.json()).catch(() => null),
+    ]).then(([wb, ds, hr, fc, prev, lim, prevWb]) => {
+      const entry = { wb, ds, hr, fc, prev, lim, prevWb, fetchedAt: Date.now() };
       cache.current[date] = entry;
       delete inflight.current[date];
       return entry;
@@ -474,6 +489,8 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               data={enrichedData}
               stats={stats}
               prevStats={prevStats}
+              prevWellbeing={prevWellbeing}
+              showComparison={showYesterdayComparison}
               limits={limits}
               hourly={hourly}
               peakHour={peakHour}
@@ -502,6 +519,8 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               data={data || { totalScreenTime: 0, totalSessions: 0, totalKeystrokes: 0, totalClicks: 0 }}
               stats={stats}
               prevStats={prevStats}
+              prevWellbeing={prevWellbeing}
+              showComparison={showYesterdayComparison}
               hourly={hourly}
               peakHour={peakHour}
               countKey={countKey}

@@ -446,7 +446,8 @@ export default function LoadingScreen({
           fetch(`${BASE}/api/focus?date=${_todayStr}`).then(r => r.json()).catch(() => null),
           fetch(`${BASE}/api/daily-stats?date=${_ydStr}`).then(r => r.json()).catch(() => []),
           fetch(`${BASE}/limits/all`).then(r => r.json()).catch(() => []),
-        ]).then(([wb, ds, hr, fc, prev, lim]) => ({ wb, ds, hr, fc, prev, lim })).catch(() => null);
+          fetch(`${BASE}/api/wellbeing?date=${_ydStr}`).then(r => r.json()).catch(() => null),
+        ]).then(([wb, ds, hr, fc, prev, lim, prevWb]) => ({ wb, ds, hr, fc, prev, lim, prevWb })).catch(() => null);
 
         // Multi-stage finishing logic
         const finish = async (data) => {

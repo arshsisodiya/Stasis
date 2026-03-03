@@ -24,7 +24,8 @@ class SettingsManager:
             "telegram_token": None,
             "telegram_chat_id": None,
             "file_logging_enabled": "true",
-            "file_logging_essential_only": "true"
+            "file_logging_essential_only": "true",
+            "show_yesterday_comparison": "true"
         }
 
         for key, value in defaults.items():

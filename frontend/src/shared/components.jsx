@@ -115,6 +115,58 @@ export function TrendBadge({ pct }) {
   );
 }
 
+// ─── TREND CHIP ──────────────────────────────────────────────────────────────
+// Richer comparison pill — shows human-readable delta like "+30m vs yesterday"
+// mode: "time" | "pct" | "count"
+// isPositiveGood: false for screen time (less is better), true for productivity/focus
+export function TrendChip({ current, previous, mode = "time", isPositiveGood = true, label = "vs yesterday" }) {
+  if (current === null || current === undefined || previous === null || previous === undefined) return null;
+  const delta = current - previous;
+  if (delta === 0) return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 8,
+      background: "rgba(148,163,184,0.07)", border: "1px solid rgba(148,163,184,0.15)",
+      fontSize: 10, fontWeight: 500, color: "#64748b"
+    }}>— same as {label}</span>
+  );
+
+  const isUp = delta > 0;
+  const isGood = isPositiveGood === (delta >= 0);
+  const color = isGood ? "#34d399" : "#f87171";
+  const bg = isGood ? "rgba(52,211,153,0.06)" : "rgba(248,113,113,0.06)";
+  const border = isGood ? "rgba(52,211,153,0.15)" : "rgba(248,113,113,0.15)";
+
+  let label_text = "";
+  if (mode === "time") {
+    const absDelta = Math.round(Math.abs(delta));
+    const h = Math.floor(absDelta / 3600);
+    const m = Math.floor((absDelta % 3600) / 60);
+    label_text = `${isUp ? "+" : "−"}${h > 0 ? `${h}h ` : ""}${m}m`;
+  } else if (mode === "pct") {
+    // Show 1 decimal place if the change is very small (<1%)
+    const absDelta = Math.abs(delta);
+    const text = absDelta < 1 && absDelta > 0 ? absDelta.toFixed(1) : Math.round(absDelta).toString();
+    label_text = `${isUp ? "+" : "−"}${text}%`;
+  } else {
+    label_text = `${isUp ? "+" : ""}${delta.toLocaleString()}`;
+  }
+
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 5, padding: "3.5px 10px", borderRadius: 20,
+      background: bg, border: `1px solid ${border}`,
+      fontSize: 10, fontWeight: 700, color, letterSpacing: "-0.01em",
+      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+      animation: "legend-slide-in 0.4s ease forwards",
+      cursor: "default", userSelect: "none"
+    }}>
+      <span style={{ fontSize: 9 }}>{isUp ? "▲" : "▼"}</span>
+      {label_text} <span style={{ opacity: 0.75, fontWeight: 500 }}>{label}</span>
+    </span>
+  );
+}
+
+
 // ─── SECTION CARD ─────────────────────────────────────────────────────────────
 export function SectionCard({ title, children, style = {}, className = "" }) {
   return (

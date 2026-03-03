@@ -642,7 +642,7 @@ function TelegramSection({ push }) {
 // GENERAL SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 function GeneralSection({ push }) {
-  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", file_logging_enabled: true, file_logging_essential_only: true };
+  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", file_logging_enabled: true, file_logging_essential_only: true, show_yesterday_comparison: true };
   const [s, setS] = useState({ ...DEFAULTS });
   const [saved, setSaved] = useState({ ...DEFAULTS });
   const [confirmReset, setConfirmReset] = useState(false);
@@ -671,7 +671,8 @@ function GeneralSection({ push }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           file_logging_enabled: s.file_logging_enabled,
-          file_logging_essential_only: s.file_logging_essential_only
+          file_logging_essential_only: s.file_logging_essential_only,
+          show_yesterday_comparison: s.show_yesterday_comparison
         })
       });
       setSaved({ ...s });
@@ -700,6 +701,7 @@ function GeneralSection({ push }) {
         <SettingRow label="Auto-start on login" desc="Launch tracker when Windows starts" control={<Toggle on={s.autostart} onChange={v => set("autostart", v)} />} />
         <SettingRow label="Run in system tray" desc="Minimise to tray instead of closing" control={<Toggle on={s.tray} onChange={v => set("tray", v)} />} />
         <SettingRow label="Desktop notifications" desc="Alerts for limit warnings and events" control={<Toggle on={s.notifications} onChange={v => set("notifications", v)} />} />
+        <SettingRow label="Show yesterday comparison" desc="Show 'vs yesterday' indicators on dashboard" control={<Toggle on={s.show_yesterday_comparison} onChange={v => set("show_yesterday_comparison", v)} />} />
         <SettingRow borderless label="Data retention" desc="Delete activity older than"
           control={<select value={s.retention} onChange={e => set("retention", e.target.value)} style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, padding: "6px 12px", fontSize: 12, fontFamily: "'DM Sans',sans-serif", outline: "none", cursor: "pointer" }}>
             {[["30", "30 days"], ["60", "60 days"], ["90", "90 days"], ["180", "6 months"], ["365", "1 year"], ["0", "Forever"]].map(([v, l]) => <option key={v} value={v} style={{ background: "#0f1222" }}>{l}</option>)}
@@ -1088,7 +1090,7 @@ function AboutSection({ push }) {
 
   useEffect(() => {
     // Read current version only, for display in the About card
-    fetch(`${BASE_URL}/api/update/status`).then(r => r.json()).then(setUpdateState).catch(() => {});
+    fetch(`${BASE_URL}/api/update/status`).then(r => r.json()).then(setUpdateState).catch(() => { });
   }, []);
 
   return (
@@ -1204,11 +1206,11 @@ function AboutSection({ push }) {
 // SIDE NAV
 // ═══════════════════════════════════════════════════════════════════════════════
 const NAV_ITEMS = [
-  { id: "general",  icon: "⚙️",  label: "General",  sub: "App & tracking" },
-  { id: "telegram", icon: "✈️",  label: "Telegram", sub: "Remote control" },
-  { id: "security", icon: "🔐",  label: "Security", sub: "Access & encryption" },
-  { id: "updates",  icon: "🚀",  label: "Updates",  sub: "Version & changelog" },
-  { id: "about",    icon: "ℹ️",  label: "About",    sub: "Privacy & licenses" },
+  { id: "general", icon: "⚙️", label: "General", sub: "App & tracking" },
+  { id: "telegram", icon: "✈️", label: "Telegram", sub: "Remote control" },
+  { id: "security", icon: "🔐", label: "Security", sub: "Access & encryption" },
+  { id: "updates", icon: "🚀", label: "Updates", sub: "Version & changelog" },
+  { id: "about", icon: "ℹ️", label: "About", sub: "Privacy & licenses" },
 ];
 
 function SideNav({ active, onChange, tgStatus, tgConfig, updateState }) {
@@ -1299,11 +1301,11 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
   useEffect(() => { const h = e => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [onClose]);
 
   const meta = {
-    general:  { label: "General",              sub: "App behaviour and tracking" },
+    general: { label: "General", sub: "App behaviour and tracking" },
     telegram: { label: "Telegram Integration", sub: "Remote control via Telegram bot" },
-    security: { label: "Security",             sub: "Access control and encryption" },
-    updates:  { label: "Updates",              sub: "Version history and changelog" },
-    about:    { label: "About & Privacy",      sub: "Version, licenses and data policy" },
+    security: { label: "Security", sub: "Access control and encryption" },
+    updates: { label: "Updates", sub: "Version history and changelog" },
+    about: { label: "About & Privacy", sub: "Version, licenses and data policy" },
   };
 
   return (
@@ -1355,11 +1357,11 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
                 <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: C.text, fontWeight: 400 }}>{meta[section]?.label}</div>
                 <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5 }}>{meta[section]?.sub}</div>
               </div>
-              {section === "general"  && <GeneralSection push={push} />}
+              {section === "general" && <GeneralSection push={push} />}
               {section === "telegram" && <TelegramSection push={push} />}
               {section === "security" && <SecuritySection push={push} />}
-              {section === "updates"  && <UpdateSection push={push} />}
-              {section === "about"    && <AboutSection push={push} />}
+              {section === "updates" && <UpdateSection push={push} />}
+              {section === "about" && <AboutSection push={push} />}
             </div>
           </div>
         </div>

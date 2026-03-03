@@ -6,6 +6,7 @@ import {
   SectionCard,
   RadialProgress,
   TrendBadge,
+  TrendChip,
   AppIcon,
   HourlyBar,
   DONUT_CSS,
@@ -241,6 +242,8 @@ export default function OverviewPage({
   data,
   stats,
   prevStats,
+  prevWellbeing,
+  showComparison,
   limits,
   hourly,
   peakHour,
@@ -281,7 +284,17 @@ export default function OverviewPage({
             {sH}<span style={{ fontSize: 24, color: "#475569" }}>h </span>
             {sM}<span style={{ fontSize: 24, color: "#475569" }}>m</span>
           </div>
-          <div style={{ marginTop: 16, display: "flex", gap: 12 }}>
+          {showComparison && prevWellbeing && (
+            <div style={{ marginTop: 10, marginBottom: 4 }}>
+              <TrendChip
+                current={data.totalScreenTime}
+                previous={prevWellbeing.totalScreenTime}
+                mode="time"
+                isPositiveGood={false}
+              />
+            </div>
+          )}
+          <div style={{ marginTop: (showComparison && prevWellbeing) ? 8 : 16, display: "flex", gap: 12 }}>
             <div style={{ flex: 1, background: "rgba(74,222,128,0.08)", borderRadius: 10, padding: "10px 12px" }}>
               <div style={{ fontSize: 10, color: "#4ade80", textTransform: "uppercase" }}>Active</div>
               <div style={{ fontSize: 15, fontWeight: 600, color: "#f8fafc", marginTop: 2 }}>{fmtTime(data.totalScreenTime - data.totalIdleTime)}</div>
@@ -294,21 +307,43 @@ export default function OverviewPage({
         </SectionCard>
 
         {/* Productivity */}
-        <SectionCard className="metric-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, borderLeft: "3px solid #4ade80", background: "linear-gradient(135deg,rgba(74,222,128,0.04) 0%,rgba(15,18,34,0.7) 60%)", minHeight: 190, animationDelay: "60ms" }}>
+        <SectionCard className="metric-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, borderLeft: "3px solid #4ade80", background: "linear-gradient(135deg,rgba(74,222,128,0.04) 0%,rgba(15,18,34,0.7) 60%)", minHeight: 190, animationDelay: "60ms" }}>
           <div style={{ fontSize: 11, color: "#4ade80", textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600 }}>Productivity</div>
           <RadialProgress value={data.productivityPercent} size={150} stroke={12} color="#4ade80" sublabel="%" />
-          <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>of active time on<br />productive work</div>
+          {showComparison && prevWellbeing ? (
+            <TrendChip
+              current={data.productivityPercent}
+              previous={prevWellbeing.productivityPercent}
+              mode="pct"
+              isPositiveGood={true}
+            />
+          ) : (
+            <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>of active time on<br />productive work</div>
+          )}
         </SectionCard>
 
         {/* Focus */}
-        <SectionCard className="metric-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, borderLeft: "3px solid #60a5fa", background: "linear-gradient(135deg,rgba(96,165,250,0.04) 0%,rgba(15,18,34,0.7) 60%)", minHeight: 190, animationDelay: "120ms" }}>
+        <SectionCard className="metric-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, borderLeft: "3px solid #60a5fa", background: "linear-gradient(135deg,rgba(96,165,250,0.04) 0%,rgba(15,18,34,0.7) 60%)", minHeight: 190, animationDelay: "120ms" }}>
           <div style={{ fontSize: 11, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600 }}>Focus</div>
           <RadialProgress value={data.focusScore ?? 0} size={150} stroke={12} color="#60a5fa" sublabel="%" />
-          <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>
-            {data.deepWorkSeconds
-              ? <><span>deep work</span><br /><span style={{ color: "#475569", fontWeight: 600 }}>{fmtTimeLong(data.deepWorkSeconds)}</span></>
-              : "of time in deep focus"}
-          </div>
+          {data.deepWorkSeconds ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>
+                <span>deep work</span><br />
+                <span style={{ color: "#475569", fontWeight: 600 }}>{fmtTimeLong(data.deepWorkSeconds)}</span>
+              </div>
+              {showComparison && prevWellbeing?.productivityPercent !== undefined && (
+                <TrendChip
+                  current={data.focusScore ?? 0}
+                  previous={prevWellbeing.productivityPercent}
+                  mode="pct"
+                  isPositiveGood={true}
+                />
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>of time in deep focus</div>
+          )}
         </SectionCard>
 
         {/* Input Activity */}
@@ -318,10 +353,7 @@ export default function OverviewPage({
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <span style={{ fontSize: 12, color: "#64748b" }}>⌨️ Keystrokes</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <TrendBadge pct={trendPct(data.totalKeystrokes, prevData.totalKeystrokes)} />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: "#f8fafc", fontFamily: "'DM Serif Display',serif" }}>{kC.toLocaleString()}</span>
-                </div>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "#f8fafc", fontFamily: "'DM Serif Display',serif" }}>{kC.toLocaleString()}</span>
               </div>
               <div style={{ height: 3, borderRadius: 4, background: "rgba(255, 255, 255, 0.06)" }}>
                 <div style={{
@@ -333,10 +365,7 @@ export default function OverviewPage({
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <span style={{ fontSize: 12, color: "#64748b" }}>🖱️ Clicks</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <TrendBadge pct={trendPct(data.totalClicks, prevData.totalClicks)} />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: "#f8fafc", fontFamily: "'DM Serif Display',serif" }}>{clC.toLocaleString()}</span>
-                </div>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "#f8fafc", fontFamily: "'DM Serif Display',serif" }}>{clC.toLocaleString()}</span>
               </div>
               <div style={{ height: 3, borderRadius: 4, background: "rgba(255, 255, 255, 0.06)" }}>
                 <div style={{

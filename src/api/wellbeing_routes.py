@@ -132,7 +132,8 @@ def app_icon(app_name):
 def get_settings():
     return jsonify({
         "file_logging_enabled": SettingsManager.get_bool("file_logging_enabled", True),
-        "file_logging_essential_only": SettingsManager.get_bool("file_logging_essential_only", True)
+        "file_logging_essential_only": SettingsManager.get_bool("file_logging_essential_only", True),
+        "show_yesterday_comparison": SettingsManager.get_bool("show_yesterday_comparison", True)
     })
 
 @wellbeing_bp.route("/api/settings/update", methods=["POST"])
@@ -145,6 +146,10 @@ def update_settings():
     if "file_logging_essential_only" in data:
         val = "true" if data["file_logging_essential_only"] else "false"
         SettingsManager.set("file_logging_essential_only", val)
+
+    if "show_yesterday_comparison" in data:
+        val = "true" if data["show_yesterday_comparison"] else "false"
+        SettingsManager.set("show_yesterday_comparison", val)
         
     return jsonify({"status": "updated"})
 

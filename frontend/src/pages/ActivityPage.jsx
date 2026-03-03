@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { CATEGORY_COLORS } from "../shared/constants";
 import { fmtTime, trendPct } from "../shared/utils";
-import { SectionCard, StatPill, HourlyBar } from "../shared/components";
+import { SectionCard, StatPill, TrendChip, HourlyBar } from "../shared/components";
 
 // ─── WEEKLY TREND GRAPH ───────────────────────────────────────────────────────
 function WeeklyTrendGraph({ BASE, onDayClick, activeDrillDate }) {
@@ -411,16 +411,12 @@ function SessionTimeline({ BASE, date }) {
 }
 
 // ─── ACTIVITY PAGE ────────────────────────────────────────────────────────────
-export default function ActivityPage({ BASE, selectedDate, data, stats, prevStats, hourly, peakHour, countKey }) {
+export default function ActivityPage({ BASE, selectedDate, data, stats, prevStats, prevWellbeing, showComparison, hourly, peakHour, countKey }) {
   const [drillDate, setDrillDate] = useState(null);
   const [drillHourly, setDrillHourly] = useState(null);
   const [drillLoading, setDrillLoading] = useState(false);
 
-  const prevData = prevStats.reduce((a, s) => {
-    a.totalKeystrokes = (a.totalKeystrokes || 0) + s.keystrokes;
-    a.totalClicks = (a.totalClicks || 0) + s.clicks;
-    return a;
-  }, {});
+  const drillPeak = drillHourly ? drillHourly.reduce((pi, v, i) => v > drillHourly[pi] ? i : pi, 0) : 0;
 
   const handleDayClick = (date) => {
     if (drillDate === date) { setDrillDate(null); setDrillHourly(null); return; }
@@ -432,18 +428,35 @@ export default function ActivityPage({ BASE, selectedDate, data, stats, prevStat
       .catch(() => setDrillLoading(false));
   };
 
-  const drillPeak = drillHourly ? drillHourly.reduce((pi, v, i) => v > drillHourly[pi] ? i : pi, 0) : 0;
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Stat pills */}
       <div className="grid-4-sm" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
-        <StatPill icon="⏱" label="Screen Time" value={fmtTime(data.totalScreenTime)} color="#4ade80" />
-        <StatPill icon="💬" label="Sessions" value={data.totalSessions} color="#60a5fa" />
-        <StatPill icon="⌨️" label="Keystrokes" value={data.totalKeystrokes.toLocaleString()} color="#a78bfa"
-          trend={trendPct(data.totalKeystrokes, prevData.totalKeystrokes)} />
-        <StatPill icon="🖱️" label="Clicks" value={data.totalClicks.toLocaleString()} color="#f472b6"
-          trend={trendPct(data.totalClicks, prevData.totalClicks)} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <StatPill icon="⏱" label="Screen Time" value={fmtTime(data.totalScreenTime)} color="#4ade80" />
+          {showComparison && prevWellbeing && (
+            <TrendChip current={data.totalScreenTime} previous={prevWellbeing.totalScreenTime} mode="time" isPositiveGood={false} />
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <StatPill icon="💬" label="Sessions" value={data.totalSessions} color="#60a5fa" />
+          {showComparison && prevWellbeing && (
+            <TrendChip current={data.totalSessions} previous={prevWellbeing.totalSessions} mode="count" isPositiveGood={true} />
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <StatPill icon="⌨️" label="Keystrokes" value={data.totalKeystrokes.toLocaleString()} color="#a78bfa" />
+          {showComparison && prevWellbeing && (
+            <TrendChip current={data.totalKeystrokes} previous={prevWellbeing.totalKeystrokes} mode="count" isPositiveGood={true} />
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <StatPill icon="🖱️" label="Clicks" value={data.totalClicks.toLocaleString()} color="#f472b6" />
+          {showComparison && prevWellbeing && (
+            <TrendChip current={data.totalClicks} previous={prevWellbeing.totalClicks} mode="count" isPositiveGood={true} />
+          )}
+        </div>
+
       </div>
 
       {/* Weekly trend */}

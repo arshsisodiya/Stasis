@@ -358,6 +358,14 @@
       "main": "entertainment",
       "sub": "streaming"
     },
+    "hotstar.com": {
+      "main": "entertainment",
+      "sub": "streaming"
+    },
+    "hotstar.in": {
+      "main": "entertainment",
+      "sub": "streaming"
+    },
     "twitch.tv": {
       "main": "entertainment",
       "sub": "streaming"

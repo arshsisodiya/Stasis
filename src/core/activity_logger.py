@@ -279,41 +279,73 @@ media_monitor  = MediaSessionMonitor()
 # HELPERS
 # ===============================
 
+# Known long-form video domains where we should be more lenient if SMTC fails.
+# These sites often don't put a ▶ in the title or the browser doesn't report SMTC correctly.
+LONG_FORM_STREAMING_DOMAINS = {
+    "hotstar.com", "hotstar.in", "netflix.com", "primevideo.com", 
+    "disneyplus.com", "hbo.com", "crunchyroll.com"
+}
+
 def is_media_active(info: dict) -> bool:
     """
     Returns True ONLY when media is genuinely playing right now,
     meaning idle time should NOT be counted.
-
-    Source of truth priority:
-      1. SMTC (winsdk installed) — checks actual playback status reported
-         by the OS for ALL apps: VLC, Spotify, Chrome/YouTube, Edge, etc.
-         This is the only correct way — app name and tab title are irrelevant.
-      2. Tab-title ▶ heuristic — ONLY used as a fallback when winsdk is not
-         installed. The ▶ prefix is injected by YouTube/most players into the
-         tab title when actually playing, and removed when paused.
-
-    Deliberately removed:
-      - NATIVE_MEDIA_APPS list (VLC open ≠ VLC playing)
-      - Web media title keywords like "youtube", "netflix" (site open ≠ playing)
-      These caused idle time to never be counted whenever these apps were open,
-      which was the original bug.
     """
     if not info:
         return False
 
-    # --- Primary: SMTC scoped to the foreground app (accurate) ---
-    #
-    # We check only the FOREGROUND app's SMTC session, not all sessions.
-    # Using the global is_media_playing() would block idle on a paused
-    # YouTube tab whenever Spotify (or any other app) is playing in the
-    # background — that was the original bug.
+    # --- 1. Primary: SMTC (The gold standard) ---
     if media_monitor.is_available:
-        return media_monitor.is_app_playing(info["app_name"])
+        if media_monitor.is_app_playing(info["app_name"]):
+            return True
 
-    # --- Fallback: ▶ in tab title (winsdk not installed) ---
-    # YouTube/most streaming sites prepend ▶ when playing, remove when paused.
-    return info["title"].startswith("▶")
+    # --- 2. Fullscreen Heuristic ---
+    # People rarely sit in fullscreen without watching/doing something important.
+    # If the app is in the 'Entertainment' category or 'Gaming' and is fullscreen,
+    # we treat it as active regardless of input.
+    if info.get("is_fullscreen", False):
+        from src.config.category_manager import get_category
+        main_cat, _ = get_category(info["app_name"], info.get("url"))
+        if main_cat in ["entertainment", "communication"]: # Communication covers discord/zoom calls
+            return True
 
+    # --- 3. URL & Title Keywords (Fallback) ---
+    title = info["title"].lower()
+    url = info.get("url", "").lower()
+    
+    # Symbols and Keywords in Title
+    media_markers = ["▶", "playing", "watching", "listening", "episode", "season", "movie"]
+    if any(marker in title for marker in media_markers):
+        return True
+
+    # Streaming Domain check
+    if any(domain in url for domain in LONG_FORM_STREAMING_DOMAINS):
+        return True
+
+    # URL keywords for video pages
+    url_video_keywords = ["/watch", "/video", "/stream", "/movie", "/tv-show", "netflix.com/title"]
+    if any(kw in url for kw in url_video_keywords):
+        return True
+
+    return False
+
+
+def is_window_fullscreen(hwnd) -> bool:
+    """
+    Checks if a window is in fullscreen mode by comparing its 
+    dimensions to the primary monitor resolution.
+    """
+    try:
+        from win32api import GetSystemMetrics
+        rect = win32gui.GetWindowRect(hwnd)
+        w = rect[2] - rect[0]
+        h = rect[3] - rect[1]
+        sw = GetSystemMetrics(0)
+        sh = GetSystemMetrics(1)
+        # Covers both exact match and 'borderless' which can be slightly larger
+        return w >= sw and h >= sh
+    except Exception:
+        return False
 
 def get_active_window_info() -> dict | None:
     try:
@@ -342,7 +374,14 @@ def get_active_window_info() -> dict | None:
             except Exception:
                 pass
 
-        return {"app_name": app_name, "pid": pid, "title": title.strip(), "url": url, "exe_path": exe_path}
+        return {
+            "app_name": app_name, 
+            "pid": pid, 
+            "title": title.strip(), 
+            "url": url, 
+            "exe_path": exe_path,
+            "is_fullscreen": is_window_fullscreen(hwnd)
+        }
     except Exception:
         return None
 

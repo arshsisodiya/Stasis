@@ -62,6 +62,8 @@ import json
 def health():
     return jsonify({"status": "running"})
 
+from src.config.ignored_apps_manager import load_ignored_apps, is_ignored
+
 # =====================================
 # Ignored Apps
 # =====================================
@@ -69,11 +71,7 @@ def health():
 @wellbeing_bp.route("/api/ignored-apps")
 def ignored_apps():
     try:
-        config_path = os.path.join(os.path.dirname(__file__), "..", "config", "ignored_apps.json")
-        if os.path.exists(config_path):
-            with open(config_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return jsonify(data.get("ignore_processes", []))
+        return jsonify(load_ignored_apps())
     except Exception as e:
         print(f"Error loading ignored apps: {e}")
     return jsonify([])
@@ -298,14 +296,19 @@ def wellbeing():
         # 1️⃣ Get category-wise active time
         # ---------------------------------
         cursor.execute("""
-            SELECT main_category, SUM(active_seconds)
+            SELECT main_category, SUM(active_seconds), app_name
             FROM daily_stats
             WHERE date = ?
-            GROUP BY main_category
+            GROUP BY app_name, main_category
         """, (selected_date,))
         
-        category_rows = cursor.fetchall()
-        category_data = {row[0]: row[1] for row in category_rows}
+        category_rows_raw = cursor.fetchall()
+        category_data = {}
+        for row in category_rows_raw:
+            main_cat, active_secs, app_name = row
+            if is_ignored(app_name):
+                continue
+            category_data[main_cat] = category_data.get(main_cat, 0) + active_secs
 
         productive = safe(category_data.get("productive", 0))
 
@@ -327,17 +330,26 @@ def wellbeing():
                 SUM(idle_seconds),
                 SUM(keystrokes),
                 SUM(clicks),
-                SUM(sessions)
+                SUM(sessions),
+                app_name
             FROM daily_stats
             WHERE date = ?
+            GROUP BY app_name
         """, (selected_date,))
 
-        row = cursor.fetchone() or (0, 0, 0, 0)
+        rows = cursor.fetchall()
+        total_idle = 0
+        total_keys = 0
+        total_clicks = 0
+        total_sessions = 0
 
-        total_idle = safe(row[0])
-        total_keys = safe(row[1])
-        total_clicks = safe(row[2])
-        total_sessions = safe(row[3])
+        for row in rows:
+            if is_ignored(row[4]):
+                continue
+            total_idle += safe(row[0])
+            total_keys += safe(row[1])
+            total_clicks += safe(row[2])
+            total_sessions += safe(row[3])
 
         # ---------------------------------
         # 3️⃣ Most used app
@@ -348,11 +360,13 @@ def wellbeing():
             WHERE date = ?
             GROUP BY app_name
             ORDER BY total DESC
-            LIMIT 1
         """, (selected_date,))
 
-        top_app_row = cursor.fetchone()
-        top_app = top_app_row[0] if top_app_row else "N/A"
+        top_app = "N/A"
+        for app_name, total in cursor.fetchall():
+            if not is_ignored(app_name):
+                top_app = app_name
+                break
 
         # ---------------------------------
         # 4️⃣ Weighted Productivity Logic
@@ -436,7 +450,7 @@ def daily_stats():
                 "keys":   safe(r[5]),
                 "clicks": safe(r[6]),
             }
-            for r in rows
+            for r in rows if not is_ignored(r[0])
         ])
 
     finally:
@@ -507,6 +521,8 @@ def focus():
         total_active = 0
 
         for app, category, active, sessions in cursor.fetchall():
+            if is_ignored(app):
+                continue
             active = safe(active)
             sessions = safe(sessions)
 
@@ -531,7 +547,8 @@ def focus():
             ORDER BY timestamp ASC
         """, (selected_date,))
 
-        logs = cursor.fetchall()
+        logs_raw = cursor.fetchall()
+        logs = [(ts, app) for ts, app in logs_raw if not is_ignored(app)]
 
         # ---------------------------------
         # 3️⃣ Detect Context Switching
@@ -592,14 +609,19 @@ def focus():
         # 5️⃣ Engagement Factor
         # ---------------------------------
         cursor.execute("""
-            SELECT SUM(keystrokes), SUM(idle_seconds)
+            SELECT SUM(keystrokes), SUM(idle_seconds), app_name
             FROM daily_stats
             WHERE date = ?
+            GROUP BY app_name
         """, (selected_date,))
 
-        row = cursor.fetchone() or (0, 0)
-        total_keys = safe(row[0])
-        idle_seconds = safe(row[1])
+        total_keys = 0
+        idle_seconds = 0
+        for row in cursor.fetchall():
+            if is_ignored(row[2]):
+                continue
+            total_keys += safe(row[0])
+            idle_seconds += safe(row[1])
 
         minutes_active = total_active / 60
         kpm = total_keys / minutes_active if minutes_active > 0 else 0
@@ -708,6 +730,8 @@ def dashboard():
         app_map = {}
         for r in apps_rows:
             aname = r[0]
+            if is_ignored(aname):
+                continue
             if aname not in app_map:
                 app_map[aname] = {"app": aname, "main": r[1], "sub": r[2],
                                   "active": 0, "idle": 0, "keys": 0, "clicks": 0}

@@ -569,6 +569,8 @@ def start_logging():
                 and not media_playing
             )
 
+            from src.config.ignored_apps_manager import is_ignored
+
             if info is None:
                 # No foreground window (lock screen, UAC prompt, etc.)
                 if session:
@@ -576,8 +578,15 @@ def start_logging():
                     conn.commit()
                 reset_session(None)
 
+            elif is_ignored(info.get("app_name")):
+                # App is in the ignored list — treat as "no window" to skip tracking
+                if session:
+                    flush_session(session, cursor)
+                    conn.commit()
+                reset_session(None)
+
             elif session is None:
-                # First window seen — start tracking
+                # First window seen (that isn't ignored) — start tracking
                 reset_session(info)
 
             elif session.check_tab_switch(info):

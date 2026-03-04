@@ -14,6 +14,8 @@ from src.database.database import init_db
 from src.services.blocking_service import BlockingService
 from src.services.update_manager import UpdateManager
 from src.utils.logger import setup_logger
+from src.core.shutdown import trigger_shutdown, shutdown_event
+import signal
 
 logger = setup_logger()
 ENABLE_UPDATER = False
@@ -47,14 +49,29 @@ def get_executable_path():
 
 def main():
     logger.info("Application started")
+    
+    # Track resources for graceful shutdown
+    api_server = None
+    blocking_service = None
+    threads = []
 
-    # 🔒 Ensure single instance (exits internally if duplicate is detected)
+    def handle_signal(signum, frame):
+        logger.info(f"Signal {signum} received. Initiating graceful shutdown...")
+        trigger_shutdown()
+        if api_server: api_server.stop()
+        if blocking_service: blocking_service.stop()
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+    # 🔒 Ensure single instance
     _app_mutex = ensure_single_instance()
-    # Initialize App Controller (handles Telegram + config + internet internally)
+    
     app_controller = AppController()
     app_controller.initialize()
 
-    def safe_api_server():
+    def api_server_vessel():
+        nonlocal api_server
         try:
             logger.info("API server thread started")
             api_server = APIServer(app_controller)
@@ -62,60 +79,56 @@ def main():
         except Exception:
             logger.exception("API server crashed unexpectedly")
 
-    # Initialize database
     init_db()
 
-    # Register startup only when running as packaged EXE
-    # We now let the backend register itself so it can run independently of the UI.
     if getattr(sys, "frozen", False):
         add_to_startup(get_executable_path())
 
-    # Small startup delay for system stability
-    time.sleep(5)
+    time.sleep(1) # Reduced startup delay
 
-    # ===============================
-    # 1️⃣ Start Blocking Service FIRST
-    # ===============================
     blocking_service = BlockingService()
     blocking_service.start()
     logger.info("Blocking Service started")
 
-    # ===============================
-    # 2️⃣ Start Activity Tracking
-    # ===============================
-    threading.Thread(
-        target=safe_api_server,
-        daemon=True,
-        name="APIServerThread"
-    ).start()
+    # Start tracking threads
+    t_api = threading.Thread(target=api_server_vessel, daemon=True, name="APIServerThread")
+    t_log = threading.Thread(target=safe_activity_logger, daemon=True, name="ActivityLoggerThread")
+    t_file = threading.Thread(target=safe_file_watchdog, daemon=True, name="FileWatchdogThread")
 
-    threading.Thread(
-        target=safe_activity_logger,
-        daemon=True,
-        name="ActivityLoggerThread"
-    ).start()
-
-    threading.Thread(
-        target=safe_file_watchdog,
-        daemon=True,
-        name="FileWatchdogThread"
-    ).start()
+    for t in [t_api, t_log, t_file]:
+        t.start()
+        threads.append(t)
 
     logger.info("Activity tracking services started")
 
-    # ===============================
-    # 3️⃣ Start Updater (Background)
-    # ===============================
     if ENABLE_UPDATER and getattr(sys, "frozen", False):
-        logger.info("Starting background updater...")
         updater = UpdateManager(silent=True, logger=logger)
         updater.start()
 
-    logger.info("System initialization completed successfully")
+    logger.info("System initialization completed")
 
-    # Keep main thread alive
-    while True:
-        time.sleep(60)
+    # Wait for shutdown signal
+    while not shutdown_event.is_set():
+        try:
+            time.sleep(1)
+        except KeyboardInterrupt:
+            trigger_shutdown()
+            break
+
+    logger.info("Shutdown event set. Waiting for threads to conclude...")
+    
+    # Stop listeners manually (from activity_logger)
+    try:
+        from src.core.activity_logger import input_tracker
+        input_tracker.stop()
+    except Exception:
+        pass
+
+    # Give threads a few seconds to finish their cleanup
+    for t in threads:
+        t.join(timeout=3)
+    
+    logger.info("Stasis has shut down gracefully.")
 
 
 if __name__ == "__main__":

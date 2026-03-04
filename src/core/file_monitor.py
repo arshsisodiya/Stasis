@@ -3,6 +3,7 @@ import datetime
 import psutil
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from src.core.shutdown import shutdown_event
 
 from src.config.storage import get_data_dir
 from src.database.database import get_connection
@@ -132,9 +133,8 @@ def start_file_watchdog():
     observer.start()
 
     try:
-        while True:
+        while not shutdown_event.is_set():
             time.sleep(10)
-    except KeyboardInterrupt:
+    finally:
         observer.stop()
-
-    observer.join()
+        observer.join()

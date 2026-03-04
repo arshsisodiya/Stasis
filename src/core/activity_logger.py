@@ -1,6 +1,5 @@
 import win32gui
 import win32process
-import psutil
 import datetime
 import time
 import asyncio
@@ -10,6 +9,8 @@ from pynput import mouse, keyboard
 from src.core.url_sniffer import get_browser_url
 from src.analytics.daily_summary import update_daily_stats
 from src.database.database import get_connection
+from src.core.process_cache import process_cache
+from src.core.shutdown import shutdown_event
 import win32con
 import threading
 
@@ -17,6 +18,7 @@ APP_NAME = "Stasis"
 IDLE_THRESHOLD = 120        # seconds of no input = idle
 SLEEP_DELTA_THRESHOLD = 15 # seconds gap = assume sleep/resume
 POLL_INTERVAL = 1          # main loop interval in seconds
+BATCH_COMMIT_INTERVAL = 15 # commit to disk every N seconds
 
 # Browser process names — used to match SMTC source_app_user_model_id
 BROWSER_PROCESSES = {"chrome", "msedge", "brave", "firefox", "opera"}
@@ -49,6 +51,7 @@ class MediaSessionMonitor:
         self._available: bool = False   # False if winsdk not installed
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
+        self._lock = threading.Lock() # Added for thread safety
         self._start_background_loop()
 
     # ------------------------------------------------------------------
@@ -64,7 +67,8 @@ class MediaSessionMonitor:
         Returns True if any SMTC session reports PlaybackStatus == Playing.
         Always False when winsdk is unavailable.
         """
-        return self._is_playing
+        with self._lock:
+            return self._is_playing
 
     def is_app_playing(self, app_name: str) -> bool:
         """
@@ -75,7 +79,8 @@ class MediaSessionMonitor:
         detection when the foreground window is a paused YouTube tab.
         """
         name_lower = app_name.lower().replace(".exe", "")
-        return self._playing_sources.get(name_lower, False)
+        with self._lock:
+            return self._playing_sources.get(name_lower, False)
 
     # ------------------------------------------------------------------
     # Background asyncio loop (runs in a daemon thread)
@@ -98,13 +103,16 @@ class MediaSessionMonitor:
 
     def _run_loop(self):
         asyncio.set_event_loop(self._loop)
-        self._loop.run_until_complete(self._poll_forever())
+        try:
+            self._loop.run_until_complete(self._poll_forever())
+        except asyncio.CancelledError:
+            pass
 
     async def _poll_forever(self):
         import winsdk.windows.media.control as wmc
 
         manager = None
-        while True:
+        while not shutdown_event.is_set():
             try:
                 # Re-acquire manager if needed (e.g. after resume from sleep)
                 if manager is None:
@@ -138,15 +146,17 @@ class MediaSessionMonitor:
                     if is_playing:
                         any_playing = True
 
-                self._is_playing       = any_playing
-                self._playing_sources  = playing_sources
+                with self._lock:
+                    self._is_playing       = any_playing
+                    self._playing_sources  = playing_sources
 
             except Exception as e:
                 # Manager can fail after sleep/resume; reset so we re-acquire next tick
                 print(f"[MediaSessionMonitor] Poll error: {e}")
                 manager = None
-                self._is_playing      = False
-                self._playing_sources = {}
+                with self._lock:
+                    self._is_playing      = False
+                    self._playing_sources = {}
 
             await asyncio.sleep(2)   # poll every 2 s — plenty for idle detection
 
@@ -266,6 +276,11 @@ class InputCounter:
             self.mouse_count = 0
         return counts
 
+    def stop(self):
+        """Cleanly stop pynput listeners."""
+        self.kb_listener.stop()
+        self.mouse_listener.stop()
+
 
 # ===============================
 # SINGLETONS
@@ -357,11 +372,9 @@ def get_active_window_info() -> dict | None:
             return None
 
         _, pid = win32process.GetWindowThreadProcessId(hwnd)
-        try:
-            proc = psutil.Process(pid)
-            app_name = proc.name()
-            exe_path = proc.exe()
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        app_name, exe_path = process_cache.get_info(pid)
+        
+        if not app_name:
             return None
 
         url = "N/A"
@@ -554,8 +567,10 @@ def start_logging():
     conn   = get_connection()
     cursor = conn.cursor()
 
-    current_date  = datetime.datetime.now().date()
+    today = datetime.datetime.now().date()
+    current_date = today
     last_loop_mono = time.monotonic()
+    last_commit_mono = time.monotonic() # Track for batching
     
     # Efficiency counters
     gc_throttle_ticks = 0
@@ -566,7 +581,7 @@ def start_logging():
         input_tracker.get_and_reset_counts()  # discard stale counts
 
     try:
-        while True:
+        while not shutdown_event.is_set():
             # ---- sleep guard ----
             if sleep_manager.is_sleeping:
                 last_loop_mono = time.monotonic()
@@ -587,11 +602,11 @@ def start_logging():
                 continue
 
             # ---- midnight rollover ----
-            today = datetime.datetime.now().date()
             if today != current_date:
                 if session:
                     flush_session(session, cursor)
-                    conn.commit()
+                conn.commit()
+                last_commit_mono = time.monotonic()
                 current_date = today
                 reset_session(None)
 
@@ -631,15 +646,18 @@ def start_logging():
             elif session.check_tab_switch(info):
                 # Stable tab/window switch confirmed after debounce —
                 # flush the completed session and start a new one.
-                # Use session.info (which has the last known good metadata)
-                # not `info` which is the new tab.
                 flush_session(session, cursor)
-                conn.commit()
+                # Note: No immediate conn.commit() here anymore -> Batching
                 reset_session(info)
 
             else:
                 # Same session — update idle accounting
                 session.tick_idle(currently_idle, idle_secs)
+
+            # ---- Database Batching Commit ----
+            if time.monotonic() - last_commit_mono > BATCH_COMMIT_INTERVAL:
+                conn.commit()
+                last_commit_mono = time.monotonic()
 
             # ---- Periodic Efficiency Logic ----
             # 1. Periodic Garbage Collection (every ~1 hour)

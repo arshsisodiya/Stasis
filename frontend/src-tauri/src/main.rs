@@ -96,6 +96,24 @@ fn main() {
         // By default, closing the window will now destroy it (freeing RAM).
         // The RunEvent handler below will prevent the app from exiting.
 
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            } else {
+                let _ = tauri::WebviewWindowBuilder::new(
+                    app,
+                    "main",
+                    tauri::WebviewUrl::App("index.html".into()),
+                )
+                .title("Stasis")
+                .inner_size(1100.0, 700.0)
+                .resizable(true)
+                .fullscreen(false)
+                .decorations(true)
+                .build();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
 

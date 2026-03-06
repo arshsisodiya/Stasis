@@ -80,7 +80,7 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Stasis v${{ env.APP_VERSION }}
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(env.APP_VERSION, '-beta') || contains(env.APP_VERSION, '-alpha') || contains(env.APP_VERSION, '-rc') }}
           files: |
             frontend/src-tauri/target/release/bundle/nsis/*.exe
             frontend/src-tauri/target/release/bundle/nsis/*.msi

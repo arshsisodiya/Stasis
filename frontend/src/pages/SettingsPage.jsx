@@ -642,7 +642,7 @@ function TelegramSection({ push }) {
 // GENERAL SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 function GeneralSection({ push }) {
-  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", file_logging_enabled: true, file_logging_essential_only: true, show_yesterday_comparison: true };
+  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", file_logging_enabled: true, file_logging_essential_only: true, show_yesterday_comparison: true, hardware_acceleration: true };
   const [s, setS] = useState({ ...DEFAULTS });
   const [saved, setSaved] = useState({ ...DEFAULTS });
   const [confirmReset, setConfirmReset] = useState(false);
@@ -672,7 +672,8 @@ function GeneralSection({ push }) {
         body: JSON.stringify({
           file_logging_enabled: s.file_logging_enabled,
           file_logging_essential_only: s.file_logging_essential_only,
-          show_yesterday_comparison: s.show_yesterday_comparison
+          show_yesterday_comparison: s.show_yesterday_comparison,
+          hardware_acceleration: s.hardware_acceleration
         })
       });
       setSaved({ ...s });
@@ -702,6 +703,7 @@ function GeneralSection({ push }) {
         <SettingRow label="Run in system tray" desc="Minimise to tray instead of closing" control={<Toggle on={s.tray} onChange={v => set("tray", v)} />} />
         <SettingRow label="Desktop notifications" desc="Alerts for limit warnings and events" control={<Toggle on={s.notifications} onChange={v => set("notifications", v)} />} />
         <SettingRow label="Show yesterday comparison" desc="Show 'vs yesterday' indicators on dashboard" control={<Toggle on={s.show_yesterday_comparison} onChange={v => set("show_yesterday_comparison", v)} />} />
+        <SettingRow label="Hardware Acceleration" desc="Boost performance using GPU, turn off to save RAM (requires restart)" control={<Toggle on={s.hardware_acceleration} onChange={v => set("hardware_acceleration", v)} />} />
         <SettingRow borderless label="Data retention" desc="Delete activity older than"
           control={<select value={s.retention} onChange={e => set("retention", e.target.value)} style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, padding: "6px 12px", fontSize: 12, fontFamily: "'DM Sans',sans-serif", outline: "none", cursor: "pointer" }}>
             {[["30", "30 days"], ["60", "60 days"], ["90", "90 days"], ["180", "6 months"], ["365", "1 year"], ["0", "Forever"]].map(([v, l]) => <option key={v} value={v} style={{ background: "#0f1222" }}>{l}</option>)}

@@ -16,6 +16,17 @@ static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 struct BackendState(Mutex<Option<Child>>);
 
 fn main() {
+    // Check if hardware acceleration should be disabled
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let disabled_flag_path = std::path::Path::new(&local_app_data)
+            .join("Stasis")
+            .join("hardware_acceleration_disabled.txt");
+            
+        if disabled_flag_path.exists() {
+            println!("Hardware acceleration disabled via settings, disabling WebView2 GPU process");
+            std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-gpu --disable-software-rasterizer");
+        }
+    }
     tauri::Builder::default()
         .manage(BackendState(Mutex::new(None)))
 

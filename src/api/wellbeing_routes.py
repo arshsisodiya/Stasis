@@ -131,7 +131,8 @@ def get_settings():
     return jsonify({
         "file_logging_enabled": SettingsManager.get_bool("file_logging_enabled", True),
         "file_logging_essential_only": SettingsManager.get_bool("file_logging_essential_only", True),
-        "show_yesterday_comparison": SettingsManager.get_bool("show_yesterday_comparison", True)
+        "show_yesterday_comparison": SettingsManager.get_bool("show_yesterday_comparison", True),
+        "hardware_acceleration": SettingsManager.get_bool("hardware_acceleration", True)
     })
 
 @wellbeing_bp.route("/api/settings/update", methods=["POST"])
@@ -148,6 +149,20 @@ def update_settings():
     if "show_yesterday_comparison" in data:
         val = "true" if data["show_yesterday_comparison"] else "false"
         SettingsManager.set("show_yesterday_comparison", val)
+        
+    if "hardware_acceleration" in data:
+        val = "true" if data["hardware_acceleration"] else "false"
+        SettingsManager.set("hardware_acceleration", val)
+        
+        from src.config.storage import get_base_dir
+        import os
+        flag_file = os.path.join(get_base_dir(), "hardware_acceleration_disabled.txt")
+        if data["hardware_acceleration"]:
+            if os.path.exists(flag_file):
+                os.remove(flag_file)
+        else:
+            with open(flag_file, "w") as f:
+                f.write("disabled")
         
     return jsonify({"status": "updated"})
 
@@ -181,20 +196,30 @@ def heatmap():
         cursor.execute("""
             SELECT
                 date,
-                SUM(active_seconds)                                         AS screen_time,
-                SUM(CASE WHEN main_category = 'productive' THEN active_seconds ELSE 0 END) AS productive_time
+                app_name,
+                active_seconds,
+                CASE WHEN main_category = 'productive' THEN active_seconds ELSE 0 END AS productive_time
             FROM daily_stats
-            GROUP BY date
             ORDER BY date DESC
-            LIMIT 60
         """)
         rows = cursor.fetchall()
         result = {}
         for row in rows:
-            date, screen, prod = row
-            pct = round((safe(prod) / safe(screen, 1)) * 100) if screen else 0
-            result[date] = {"screenTime": safe(screen), "productivityPct": pct}
-        return jsonify(result)
+            date, app_name, screen, prod = row
+            if is_ignored(app_name): continue
+            if date not in result:
+                result[date] = {"screen_time": 0, "productive_time": 0}
+            result[date]["screen_time"] += safe(screen)
+            result[date]["productive_time"] += safe(prod)
+            
+        filtered = {}
+        for date in sorted(result.keys(), reverse=True)[:60]:
+            screen = result[date]["screen_time"]
+            prod = result[date]["productive_time"]
+            pct = round((prod / safe(screen, 1)) * 100) if screen else 0
+            filtered[date] = {"screenTime": screen, "productivityPct": pct}
+            
+        return jsonify(filtered)
     finally:
         conn.close()
 
@@ -241,7 +266,7 @@ def sessions():
                 "clicks": safe(r[5]),
                 "cat":    r[6] or "other",
             }
-            for r in rows
+            for r in rows if not is_ignored(r[1])
         ])
     finally:
         conn.close()
@@ -260,19 +285,28 @@ def weekly_trend():
         cursor.execute("""
             SELECT
                 date,
-                SUM(active_seconds) AS screen_time,
-                SUM(CASE WHEN main_category = 'productive' THEN active_seconds ELSE 0 END) AS prod_time
+                app_name,
+                active_seconds,
+                CASE WHEN main_category = 'productive' THEN active_seconds ELSE 0 END AS prod_time
             FROM daily_stats
-            GROUP BY date
             ORDER BY date DESC
-            LIMIT 14
         """)
         rows = cursor.fetchall()
-        result = []
+        grouped = {}
         for row in rows:
-            date, screen, prod = row
-            pct = round((safe(prod) / max(safe(screen), 1)) * 100)
-            result.append({"date": date, "screenTime": safe(screen), "productivityPct": pct})
+            date, app_name, screen, prod = row
+            if is_ignored(app_name): continue
+            if date not in grouped:
+                grouped[date] = {"screen_time": 0, "prod_time": 0}
+            grouped[date]["screen_time"] += safe(screen)
+            grouped[date]["prod_time"] += safe(prod)
+            
+        result = []
+        for date in sorted(grouped.keys(), reverse=True)[:14]:
+            screen = grouped[date]["screen_time"]
+            prod = grouped[date]["prod_time"]
+            pct = round((prod / max(screen, 1)) * 100)
+            result.append({"date": date, "screenTime": screen, "productivityPct": pct})
         result.reverse()   # oldest → newest
         return jsonify(result)
     finally:
@@ -471,14 +505,19 @@ def hourly():
         cursor.execute("""
             SELECT
                 strftime('%H', timestamp),
+                app_name,
                 SUM(active_seconds)
             FROM activity_logs
             WHERE timestamp LIKE ?
-            GROUP BY 1
+            GROUP BY 1, 2
         """, (selected_date + "%",))
 
         rows = cursor.fetchall()
-        hourly_map = {row[0]: row[1] for row in rows}
+        hourly_map = {}
+        for row in rows:
+            hour, app, act = row
+            if is_ignored(app): continue
+            hourly_map[hour] = hourly_map.get(hour, 0) + act
 
         hourly_data = [
             safe(hourly_map.get(f"{h:02d}")) // 60
@@ -678,9 +717,9 @@ def dashboard():
     cursor = conn.cursor()
 
     try:
-        # SUMMARY
         cursor.execute("""
             SELECT
+                app_name,
                 SUM(active_seconds),
                 SUM(idle_seconds),
                 SUM(keystrokes),
@@ -688,25 +727,32 @@ def dashboard():
                 SUM(sessions)
             FROM daily_stats
             WHERE date = ?
-        """, (selected_date,))
-        row = cursor.fetchone() or (0, 0, 0, 0, 0)
-
-        total_active = safe(row[0])
-        total_idle   = safe(row[1])
-        total_keys   = safe(row[2])
-        total_clicks = safe(row[3])
-        total_sessions = safe(row[4])
-
-        cursor.execute("""
-            SELECT app_name, SUM(active_seconds) AS total
-            FROM daily_stats
-            WHERE date = ?
             GROUP BY app_name
-            ORDER BY total DESC
-            LIMIT 1
         """, (selected_date,))
-        top_app_row = cursor.fetchone()
-        top_app = top_app_row[0] if top_app_row else "N/A"
+        rows = cursor.fetchall()
+        
+        total_active = 0
+        total_idle = 0
+        total_keys = 0
+        total_clicks = 0
+        total_sessions = 0
+        
+        top_app = "N/A"
+        max_active = -1
+        
+        for row in rows:
+            app_name, act, idl, key, clk, sess = row
+            if is_ignored(app_name): continue
+            
+            total_active += safe(act)
+            total_idle += safe(idl)
+            total_keys += safe(key)
+            total_clicks += safe(clk)
+            total_sessions += safe(sess)
+            
+            if safe(act) > max_active:
+                max_active = safe(act)
+                top_app = app_name
 
         # APPS: return per-(app_name, main_category) rows for the donut chart;
         # the frontend Apps tab will group by app and pick the dominant category.
@@ -754,14 +800,19 @@ def dashboard():
         cursor.execute("""
             SELECT
                 strftime('%H', timestamp),
+                app_name,
                 SUM(active_seconds)
             FROM activity_logs
             WHERE timestamp LIKE ?
-            GROUP BY 1
+            GROUP BY 1, 2
         """, (selected_date + "%",))
 
         hourly_rows = cursor.fetchall()
-        hourly_map = {row[0]: row[1] for row in hourly_rows}
+        hourly_map = {}
+        for row in hourly_rows:
+            hour, app, act = row
+            if is_ignored(app): continue
+            hourly_map[hour] = hourly_map.get(hour, 0) + act
 
         hourly_data = [
             safe(hourly_map.get(f"{h:02d}")) // 60
@@ -803,7 +854,7 @@ def site_stats():
 
     try:
         query = """
-            SELECT url, SUM(active_seconds) as total_active
+            SELECT url, app_name, SUM(active_seconds) as total_active
             FROM activity_logs
             WHERE timestamp LIKE ?
               AND url IS NOT NULL
@@ -816,7 +867,7 @@ def site_stats():
             params.append(app)
 
         query += """
-            GROUP BY url
+            GROUP BY url, app_name
             ORDER BY total_active DESC
         """
 
@@ -825,7 +876,8 @@ def site_stats():
 
         domain_map = defaultdict(int)
 
-        for url, active in rows:
+        for url, app_name, active in rows:
+            if is_ignored(app_name): continue
             try:
                 parsed = urlparse(url)
                 domain = parsed.netloc or parsed.path
@@ -850,7 +902,7 @@ def site_stats():
             for domain, total in domain_map.items()
         ]
 
-        result.sort(key=lambda x: x["seconds"], reverse=True)
+        result = sorted(result, key=lambda x: x["seconds"], reverse=True)[:50]
 
         return jsonify(result)
 

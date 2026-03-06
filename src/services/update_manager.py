@@ -23,19 +23,22 @@ def get_current_version(logger=None):
             logger.info(f"Reading version from: {exe_path}")
 
         try:
-            info = win32api.GetFileVersionInfo(exe_path, "\\")
-            ms = info['FileVersionMS']
-            ls = info['FileVersionLS']
-            version_str = f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}"
+            version_str = win32api.GetFileVersionInfo(exe_path, "\\StringFileInfo\\040904B0\\ProductVersion")
         except:
-            # Fallback if GetFileVersionInfo fails (e.g. while testing)
             try:
-                tauri_conf_path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "src-tauri", "tauri.conf.json")
-                with open(tauri_conf_path, "r", encoding="utf-8") as f:
-                    conf_data = json.load(f)
-                    version_str = conf_data.get("version", "1.0.0")
+                info = win32api.GetFileVersionInfo(exe_path, "\\")
+                ms = info['FileVersionMS']
+                ls = info['FileVersionLS']
+                version_str = f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}"
             except:
-                version_str = "1.0.0"
+                # Fallback if GetFileVersionInfo fails (e.g. while testing)
+                try:
+                    tauri_conf_path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "src-tauri", "tauri.conf.json")
+                    with open(tauri_conf_path, "r", encoding="utf-8") as f:
+                        conf_data = json.load(f)
+                        version_str = conf_data.get("version", "1.0.0")
+                except:
+                    version_str = "1.0.0"
 
         if logger:
             logger.info(f"Detected application version: {version_str}")

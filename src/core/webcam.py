@@ -1,5 +1,4 @@
 # webcam.py
-import cv2
 import os
 import time
 from src.utils.logger import setup_logger
@@ -11,6 +10,7 @@ def capture_webcam():
     """
     Captures an image from the webcam and returns the file path.
     """
+    import cv2
     cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
@@ -47,6 +47,7 @@ def record_video(duration=10):
     """
     Records video from webcam for a specific duration (seconds) and returns the file path.
     """
+    import cv2
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         logger.error("Could not open webcam for video.")

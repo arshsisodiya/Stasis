@@ -42,6 +42,8 @@
         "SearchApp.exe",
         "SearchUI.exe",
         "Security",
-        "PickerHost.exe"
+        "PickerHost.exe",
+        "uninstall.exe",
+        "unins000.exe"
     ]
 }

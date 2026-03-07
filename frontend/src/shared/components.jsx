@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { CATEGORY_COLORS, KNOWN_APP_EMOJIS, CATEGORY_EMOJIS } from "./constants";
-import { fmtTime, trendPct, resolveAppIcon } from "./utils";
+import { fmtTime, trendPct, resolveAppIcon, localYMD } from "./utils";
 
 // ─── SKELETON ─────────────────────────────────────────────────────────────────
 export function Skeleton({ w = "100%", h = 20, r = 8 }) {
@@ -88,11 +88,66 @@ export function RadialProgress({ value, max = 100, size = 140, stroke = 10, colo
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255, 255, 255, 0.06)" strokeWidth={stroke} />
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
           strokeDasharray={`${(a / max) * circ} ${circ}`} strokeLinecap="round"
-          style={{ filter: `drop-shadow(0 0 8px ${color})`, transition: "stroke-dasharray 0.1s linear" }} />
+          style={{ filter: `drop-shadow(0 0 8px ${color})` }} />
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span style={{ fontSize: 26, fontWeight: 700, color: "#f8fafc", fontFamily: "'DM Serif Display',serif", lineHeight: 1 }}>
           {a}{sublabel || "%"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── GRADIENT RADIAL PROGRESS ────────────────────────────────────────────────
+// Renders a ring whose color transitions through colorStops based on value.
+// colorStops: [{ at: 0, color: "#94a3b8" }, { at: 50, color: "#4ade80" }, ...]
+let _gradUID = 0;
+export function GradientRadialProgress({ value, max = 100, size = 140, stroke = 10, colorStops = [], sublabel }) {
+  const [uid] = useState(() => `grad-radial-${++_gradUID}`);
+  const r = (size - stroke) / 2, circ = 2 * Math.PI * r;
+  const pct = Math.min(value, max);
+
+  // Interpolate the current color from colorStops based on value
+  const interpolateColor = (val) => {
+    if (!colorStops.length) return "#4ade80";
+    if (val <= colorStops[0].at) return colorStops[0].color;
+    if (val >= colorStops[colorStops.length - 1].at) return colorStops[colorStops.length - 1].color;
+    for (let i = 0; i < colorStops.length - 1; i++) {
+      const a = colorStops[i], b = colorStops[i + 1];
+      if (val >= a.at && val <= b.at) {
+        const t = (val - a.at) / (b.at - a.at);
+        const ha = a.color.replace("#", ""), hb = b.color.replace("#", "");
+        const ra = parseInt(ha.substring(0, 2), 16), ga = parseInt(ha.substring(2, 4), 16), ba2 = parseInt(ha.substring(4, 6), 16);
+        const rb = parseInt(hb.substring(0, 2), 16), gb = parseInt(hb.substring(2, 4), 16), bb = parseInt(hb.substring(4, 6), 16);
+        const rc = Math.round(ra + (rb - ra) * t), gc = Math.round(ga + (gb - ga) * t), bc = Math.round(ba2 + (bb - ba2) * t);
+        return `#${rc.toString(16).padStart(2, "0")}${gc.toString(16).padStart(2, "0")}${bc.toString(16).padStart(2, "0")}`;
+      }
+    }
+    return colorStops[colorStops.length - 1].color;
+  };
+
+  const mainColor = interpolateColor(pct);
+  const gradStartColor = interpolateColor(Math.max(0, pct - 30));
+
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)", overflow: "visible" }}>
+        <defs>
+          <linearGradient id={uid} x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor={gradStartColor} />
+            <stop offset="100%" stopColor={mainColor} />
+          </linearGradient>
+        </defs>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255, 255, 255, 0.06)" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none"
+          stroke={`url(#${uid})`} strokeWidth={stroke}
+          strokeDasharray={`${(pct / max) * circ} ${circ}`} strokeLinecap="round"
+          style={{ filter: `drop-shadow(0 0 8px ${mainColor})` }} />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ fontSize: 26, fontWeight: 700, color: mainColor, fontFamily: "'DM Serif Display',serif", lineHeight: 1, transition: "color 0.4s ease" }}>
+          {Math.round(pct)}{sublabel || "%"}
         </span>
       </div>
     </div>
@@ -294,32 +349,107 @@ export function CategoryChip({ main, sub }) {
 }
 
 // ─── HOURLY BAR ──────────────────────────────────────────────────────────────
-export function HourlyBar({ data, peakHour }) {
+export function HourlyBar({ data, peakHour, BASE, selectedDate }) {
   const max = Math.max(...data, 1);
   const [tip, setTip] = useState(null);
   const nowHour = new Date().getHours();
   const lbl = i => i === 0 ? "12 am" : i === 12 ? "12 pm" : i < 12 ? `${i} am` : `${i - 12} pm`;
+
+  // Per-hour app breakdown from session data
+  const [hourlyApps, setHourlyApps] = useState({});
+  const fetchedRef = useRef(null);
+
+  useEffect(() => {
+    if (!BASE || !selectedDate) return;
+
+    // Only use ref to prevent duplicate fetches on same render, 
+    // but we WANT to re-fetch if it's the current day and data refreshed.
+    const isToday = selectedDate === localYMD();
+    if (fetchedRef.current === selectedDate && !isToday) return;
+
+    fetchedRef.current = selectedDate;
+    fetch(`${BASE}/api/hourly-stats?date=${selectedDate}`)
+      .then(r => r.json())
+      .then(d => {
+        setHourlyApps(d);
+      })
+      .catch(() => { });
+  }, [BASE, selectedDate, data?.length]); // Add 'data.length' to re-fetch when hourly totals update (polling)
+
   return (
     <div style={{ position: "relative" }}>
-      {tip !== null && (
-        <div style={{
-          position: "absolute", bottom: 90,
-          left: `clamp(50px,calc(${(tip / 24) * 100}% + ${100 / 24 / 2}%),calc(100% - 50px))`,
-          transform: "translateX(-50%)", background: "rgba(12,15,28,0.97)",
-          border: "1px solid rgba(74,222,128,0.35)", borderRadius: 10, padding: "8px 14px",
-          pointerEvents: "none", zIndex: 10, whiteSpace: "nowrap", boxShadow: "0 8px 24px rgba(0,0,0,0.5)"
-        }}>
-          <div style={{ fontSize: 11, color: "#4ade80", fontWeight: 600, marginBottom: 2 }}>{lbl(tip)}</div>
-          <div style={{ fontSize: 14, color: "#f8fafc", fontWeight: 700 }}>{data[tip]} min active</div>
-          {tip === peakHour && <div style={{ fontSize: 10, color: "#fbbf24", marginTop: 3 }}>⭐ Peak hour</div>}
-          {tip === nowHour && tip !== peakHour && <div style={{ fontSize: 10, color: "#4ade80", marginTop: 3 }}>◉ Current hour</div>}
+      {tip !== null && (() => {
+        const mins = data[tip];
+        const idleMins = 60 - mins;
+        const pctOfMax = max > 0 ? Math.round((mins / max) * 100) : 0;
+        const tipStr = tip.toString().padStart(2, "0");
+        const displayApps = (mins > 0 && hourlyApps[tipStr]) ? hourlyApps[tipStr] : [];
+        return (
           <div style={{
-            position: "absolute", bottom: -6, left: "50%", transform: "translateX(-50%) rotate(45deg)",
-            width: 10, height: 10, background: "rgba(12,15,28,0.97)",
-            border: "1px solid rgba(74,222,128,0.35)", borderTop: "none", borderLeft: "none"
-          }} />
-        </div>
-      )}
+            position: "absolute", bottom: 90,
+            left: `clamp(60px,calc(${(tip / 24) * 100}% + ${100 / 24 / 2}%),calc(100% - ${displayApps.length > 0 ? 140 : 60}px))`,
+            transform: "translateX(-50%)", background: "rgba(12,15,28,0.97)",
+            border: "1px solid rgba(74,222,128,0.35)", borderRadius: 10, padding: "10px 16px",
+            pointerEvents: "none", zIndex: 10, whiteSpace: "nowrap", boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+            display: "flex", gap: displayApps.length > 0 ? 14 : 0, alignItems: "flex-start"
+          }}>
+            <div style={{ minWidth: 110 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: "#4ade80", fontWeight: 600 }}>{lbl(tip)}</div>
+                <div style={{ fontSize: 9, color: "#475569", marginLeft: 10 }}>{lbl(tip)} → {lbl((tip + 1) % 24)}</div>
+              </div>
+              <div style={{ fontSize: 16, color: "#f8fafc", fontWeight: 700, marginBottom: 4 }}>
+                {mins > 0 ? `${mins} min active` : "No activity"}
+              </div>
+              {mins > 0 && (
+                <div style={{ marginBottom: 4 }}>
+                  <div style={{ height: 3, borderRadius: 3, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%", borderRadius: 3,
+                      background: "linear-gradient(90deg, #4ade80, #22d3ee)",
+                      width: `${pctOfMax}%`,
+                      transition: "width 0.3s ease"
+                    }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+                    <span style={{ fontSize: 9, color: "#4ade8099" }}>{pctOfMax}% of peak</span>
+                    <span style={{ fontSize: 9, color: "#475569" }}>{idleMins}m idle</span>
+                  </div>
+                </div>
+              )}
+              {tip === peakHour && <div style={{ fontSize: 10, color: "#fbbf24", marginTop: 2 }}>⭐ Peak hour</div>}
+              {tip === nowHour && tip !== peakHour && <div style={{ fontSize: 10, color: "#4ade80", marginTop: 2 }}>◉ Current hour</div>}
+            </div>
+            {displayApps.length > 0 && (
+              <>
+                <div style={{ width: 1, alignSelf: "stretch", background: "rgba(74,222,128,0.15)" }} />
+                <div>
+                  <div style={{ fontSize: 9, color: "#475569", fontWeight: 600, marginBottom: 5, letterSpacing: "0.06em", textTransform: "uppercase" }}>Top Apps</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {displayApps.map((app, idx) => (
+                      <div key={app.app} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, width: 10, textAlign: "center", flexShrink: 0,
+                          color: idx === 0 ? "#fbbf24" : idx === 1 ? "#94a3b8" : "#cd7f32"
+                        }}>{idx + 1}</span>
+                        <span style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 500, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {app.app.replace(".exe", "")}
+                        </span>
+                        <span style={{ fontSize: 9, color: "#475569", flexShrink: 0 }}>{fmtTime(app.active)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+            <div style={{
+              position: "absolute", bottom: -6, left: "50%", transform: "translateX(-50%) rotate(45deg)",
+              width: 10, height: 10, background: "rgba(12,15,28,0.97)",
+              border: "1px solid rgba(74,222,128,0.35)", borderTop: "none", borderLeft: "none"
+            }} />
+          </div>
+        );
+      })()}
       <div style={{ position: "relative" }}>
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, display: "flex", alignItems: "center", gap: 6, pointerEvents: "none", zIndex: 1 }}>
           <span style={{ fontSize: 9, color: "#2d3f55", fontWeight: 500, whiteSpace: "nowrap", paddingRight: 4 }}>{max}m</span>
@@ -375,30 +505,30 @@ export function HourlyBar({ data, peakHour }) {
 
 // ─── DONUT CSS ────────────────────────────────────────────────────────────────
 export const DONUT_CSS = `
-  @keyframes center-fade-in {
-    from { opacity: 0; transform: scale(0.88) translateY(4px); }
-    to   { opacity: 1; transform: scale(1) translateY(0); }
+      @keyframes center-fade-in {
+        from {opacity: 0; transform: scale(0.88) translateY(4px); }
+      to   {opacity: 1; transform: scale(1) translateY(0); }
   }
-  @keyframes legend-slide-in {
-    from { opacity: 0; transform: translateX(10px); }
-    to   { opacity: 1; transform: translateX(0); }
+      @keyframes legend-slide-in {
+        from {opacity: 0; transform: translateX(10px); }
+      to   {opacity: 1; transform: translateX(0); }
   }
-  @keyframes chip-pop-in {
-    from { opacity: 0; transform: scale(0.85); }
-    to   { opacity: 1; transform: scale(1); }
+      @keyframes chip-pop-in {
+        from {opacity: 0; transform: scale(0.85); }
+      to   {opacity: 1; transform: scale(1); }
   }
-  .donut-seg {
-    transition: stroke-width 0.38s cubic-bezier(0.34,1.56,0.64,1), filter 0.38s ease, opacity 0.38s ease;
+      .donut-seg {
+        transition: stroke-width 0.38s cubic-bezier(0.34,1.56,0.64,1), filter 0.38s ease, opacity 0.38s ease;
   }
-  .donut-seg:not(.hov) { opacity: 0.88; }
-  .donut-seg.hov       { opacity: 1; }
-  .donut-seg.dimmed    { opacity: 0.38; }
-  .cat-row {
-    transition: background 0.28s cubic-bezier(0.4,0,0.2,1), border-color 0.28s cubic-bezier(0.4,0,0.2,1),
+      .donut-seg:not(.hov) {opacity: 0.88; }
+      .donut-seg.hov       {opacity: 1; }
+      .donut-seg.dimmed    {opacity: 0.38; }
+      .cat-row {
+        transition: background 0.28s cubic-bezier(0.4,0,0.2,1), border-color 0.28s cubic-bezier(0.4,0,0.2,1),
       transform 0.28s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.28s ease, opacity 0.28s ease;
   }
-  .cat-row:hover { transform: translateX(4px) !important; }
-  .cat-swatch { transition: box-shadow 0.28s ease, transform 0.28s cubic-bezier(0.34,1.56,0.64,1); }
-  .cat-row:hover .cat-swatch { transform: scale(1.35); }
-  .cat-label, .cat-pct { transition: color 0.28s ease; }
-`;
+      .cat-row:hover {transform: translateX(4px) !important; }
+      .cat-swatch {transition: box-shadow 0.28s ease, transform 0.28s cubic-bezier(0.34,1.56,0.64,1); }
+      .cat-row:hover .cat-swatch {transform: scale(1.35); }
+      .cat-label, .cat-pct {transition: color 0.28s ease; }
+      `;

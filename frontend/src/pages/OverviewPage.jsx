@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CATEGORY_COLORS } from "../shared/constants";
-import { fmtTime, fmtTimeLong, trendPct } from "../shared/utils";
+import { fmtTime, fmtTimeLong, trendPct, interpolateColor } from "../shared/utils";
 import { useCountUp } from "../shared/hooks";
 import {
   SectionCard,
@@ -250,6 +250,7 @@ export default function OverviewPage({
   countKey,
   selectedDate,
   onGoToLimits,
+  BASE,
 }) {
   const prevData = prevStats.reduce((a, s) => {
     a.totalKeystrokes = (a.totalKeystrokes || 0) + s.keystrokes;
@@ -266,6 +267,9 @@ export default function OverviewPage({
   const sM = useCountUp(Math.floor(((data?.totalScreenTime || 0) % 3600) / 60), 1200, countKey);
   const kC = useCountUp(data?.totalKeystrokes || 0, 1600, countKey);
   const clC = useCountUp(data?.totalClicks || 0, 1600, countKey);
+  // Add animated values for productivity and focus
+  const pC = useCountUp(data?.productivityPercent || 0, 2000, countKey);
+  const fC = useCountUp(data?.focusScore || 0, 2000, countKey);
 
   if (!data) return null;
 
@@ -307,44 +311,78 @@ export default function OverviewPage({
         </SectionCard>
 
         {/* Productivity */}
-        <SectionCard className="metric-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, borderLeft: "3px solid #4ade80", background: "linear-gradient(135deg,rgba(74,222,128,0.04) 0%,rgba(15,18,34,0.7) 60%)", minHeight: 190, animationDelay: "60ms" }}>
-          <div style={{ fontSize: 11, color: "#4ade80", textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600 }}>Productivity</div>
-          <RadialProgress value={data.productivityPercent} size={150} stroke={12} color="#4ade80" sublabel="%" />
-          {showComparison && prevWellbeing ? (
-            <TrendChip
-              current={data.productivityPercent}
-              previous={prevWellbeing.productivityPercent}
-              mode="pct"
-              isPositiveGood={true}
-            />
-          ) : (
-            <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>of active time on<br />productive work</div>
-          )}
-        </SectionCard>
-
-        {/* Focus */}
-        <SectionCard className="metric-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, borderLeft: "3px solid #60a5fa", background: "linear-gradient(135deg,rgba(96,165,250,0.04) 0%,rgba(15,18,34,0.7) 60%)", minHeight: 190, animationDelay: "120ms" }}>
-          <div style={{ fontSize: 11, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600 }}>Focus</div>
-          <RadialProgress value={data.focusScore ?? 0} size={150} stroke={12} color="#60a5fa" sublabel="%" />
-          {data.deepWorkSeconds ? (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-              <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>
-                <span>deep work</span><br />
-                <span style={{ color: "#475569", fontWeight: 600 }}>{fmtTimeLong(data.deepWorkSeconds)}</span>
-              </div>
-              {showComparison && prevWellbeing?.productivityPercent !== undefined && (
+        {(() => {
+          const prodColor = interpolateColor(data.productivityPercent, [
+            { at: 0, color: "#334155" },
+            { at: 20, color: "#64748b" },
+            { at: 45, color: "#fbbf24" },
+            { at: 65, color: "#4ade80" },
+            { at: 90, color: "#34d399" },
+          ]);
+          return (
+            <SectionCard className="metric-card" style={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
+              border: "1px solid rgba(255,255,255,0.04)",
+              borderLeft: `5px solid ${prodColor}`,
+              background: `linear-gradient(135deg,${prodColor}08 0%,rgba(15,18,34,0.7) 60%)`,
+              minHeight: 190, animationDelay: "60ms", transition: "all 0.6s ease"
+            }}>
+              <div style={{ fontSize: 11, color: prodColor, textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600, transition: "color 0.6s ease" }}>Productivity</div>
+              <RadialProgress value={pC} size={150} stroke={12} color="#4ade80" sublabel="%" />
+              {showComparison && prevWellbeing ? (
                 <TrendChip
-                  current={data.focusScore ?? 0}
+                  current={data.productivityPercent}
                   previous={prevWellbeing.productivityPercent}
                   mode="pct"
                   isPositiveGood={true}
                 />
+              ) : (
+                <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>of active time on<br />productive work</div>
               )}
-            </div>
-          ) : (
-            <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>of time in deep focus</div>
-          )}
-        </SectionCard>
+            </SectionCard>
+          );
+        })()}
+
+        {/* Focus */}
+        {(() => {
+          const focusColor = interpolateColor(data.focusScore ?? 0, [
+            { at: 0, color: "#334155" },
+            { at: 15, color: "#64748b" },
+            { at: 35, color: "#60a5fa" },
+            { at: 65, color: "#4ade80" },
+            { at: 90, color: "#34d399" },
+          ]);
+          return (
+            <SectionCard className="metric-card" style={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
+              border: "1px solid rgba(255,255,255,0.04)",
+              borderLeft: `5px solid ${focusColor}`,
+              background: `linear-gradient(135deg,${focusColor}08 0%,rgba(15,18,34,0.7) 60%)`,
+              minHeight: 190, animationDelay: "120ms", transition: "all 0.6s ease"
+            }}>
+              <div style={{ fontSize: 11, color: focusColor, textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600, transition: "color 0.6s ease" }}>Focus</div>
+              <RadialProgress value={fC} size={150} stroke={12} color="#60a5fa" sublabel="%" />
+              {data.deepWorkSeconds ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                  <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>
+                    <span>deep work</span><br />
+                    <span style={{ color: "#475569", fontWeight: 600 }}>{fmtTimeLong(data.deepWorkSeconds)}</span>
+                  </div>
+                  {showComparison && prevWellbeing?.productivityPercent !== undefined && (
+                    <TrendChip
+                      current={data.focusScore ?? 0}
+                      previous={prevWellbeing.productivityPercent}
+                      mode="pct"
+                      isPositiveGood={true}
+                    />
+                  )}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>of time in deep focus</div>
+              )}
+            </SectionCard>
+          );
+        })()}
 
         {/* Input Activity */}
         <SectionCard className="metric-card" style={{ borderLeft: "3px solid #a78bfa", background: "linear-gradient(135deg,rgba(167,139,250,0.04) 0%,rgba(15,18,34,0.7) 60%)", minHeight: 190, animationDelay: "180ms" }}>
@@ -375,10 +413,40 @@ export default function OverviewPage({
               </div>
             </div>
             <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 14, marginTop: 2 }}>
-              <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>Most used app</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <AppIcon appName={data.mostUsedApp} category={stats.find(s => s.app === data.mostUsedApp)?.main || "other"} size={28} />
-                <span style={{ fontSize: 14, fontWeight: 500, color: "#f8fafc" }}>{data.mostUsedApp.replace(".exe", "")}</span>
+              <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>Top Apps</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(() => {
+                  const topApps = [...stats].sort((a, b) => b.active - a.active).slice(0, 3);
+                  const topMax = topApps[0]?.active || 1;
+                  return topApps.map((app, idx) => (
+                    <div key={app.app} style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      animation: `legend-slide-in 0.3s ease ${idx * 0.08}s both`
+                    }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, color: idx === 0 ? "#fbbf24" : idx === 1 ? "#94a3b8" : "#cd7f32",
+                        width: 14, textAlign: "center", flexShrink: 0
+                      }}>{idx + 1}</span>
+                      <AppIcon appName={app.app} category={app.main || "other"} size={24} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                          <span style={{ fontSize: 12, fontWeight: 500, color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {app.app.replace(".exe", "")}
+                          </span>
+                          <span style={{ fontSize: 10, color: "#64748b", flexShrink: 0, marginLeft: 6 }}>{fmtTime(app.active)}</span>
+                        </div>
+                        <div style={{ height: 2, borderRadius: 2, background: "rgba(255,255,255,0.06)" }}>
+                          <div style={{
+                            height: "100%", borderRadius: 2,
+                            background: idx === 0 ? "linear-gradient(90deg,#fbbf24,#f59e0b)" : idx === 1 ? "linear-gradient(90deg,#94a3b8,#64748b)" : "linear-gradient(90deg,#cd7f32,#a0522d)",
+                            width: `${(app.active / topMax) * 100}%`,
+                            transition: "width 1s cubic-bezier(0.34,1.56,0.64,1)"
+                          }} />
+                        </div>
+                      </div>
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
           </div>
@@ -404,7 +472,7 @@ export default function OverviewPage({
             </div>
           )}
         </div>
-        <HourlyBar data={hourly} peakHour={peakHour} />
+        <HourlyBar data={hourly} peakHour={peakHour} BASE={BASE} selectedDate={selectedDate} />
       </SectionCard>
 
       {/* Donut category breakdown */}

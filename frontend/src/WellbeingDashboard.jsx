@@ -4,19 +4,23 @@ import OverviewPage from "./pages/OverviewPage";
 import AppsPage from "./pages/AppsPage";
 import ActivityPage from "./pages/ActivityPage";
 import LimitsPage from "./pages/LimitsPage";
-import { Skeleton, SkeletonCard, TabPanel } from "./shared/components";
+import DaySummary from "./pages/DaySummary";
+import { Skeleton, SkeletonCard, TabPanel, AppIcon } from "./shared/components";
 import { localYMD, yesterday, fmtTime, fmtTimeFull } from "./shared/utils";
 import { useCountUp, useLiveClock } from "./shared/hooks";
+
+
 
 // ─── DATE NAVIGATOR ───────────────────────────────────────────────────────────
 function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
   const today = localYMD();
   const dateSet = new Set(availableDates);
   const sorted = [...availableDates].sort();
-  const days = Array.from({ length: 14 }, (_, i) => {
-    const we = new Date(selectedDate + "T12:00:00"); we.setDate(we.getDate() + 6);
+  const DAY_COUNT = 14;
+  const days = Array.from({ length: DAY_COUNT }, (_, i) => {
+    const we = new Date(selectedDate + "T12:00:00"); we.setDate(we.getDate() + Math.floor(DAY_COUNT / 2) - 1);
     const ce = we > new Date(today + "T12:00:00") ? new Date(today + "T12:00:00") : we;
-    const s = new Date(ce); s.setDate(s.getDate() - 13 + i);
+    const s = new Date(ce); s.setDate(s.getDate() - (DAY_COUNT - 1) + i);
     return localYMD(s);
   });
   const prev = () => { const e = sorted.filter(d => d < selectedDate); if (e.length) onChange(e[e.length - 1]); };
@@ -35,15 +39,16 @@ function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
 
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: 8, background: "rgba(15,18,30,0.6)",
-      border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "8px 12px", backdropFilter: "blur(20px)"
+      display: "flex", alignItems: "center", gap: 6, background: "rgba(15,18,30,0.6)",
+      border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "8px 8px", backdropFilter: "blur(20px)",
+      width: "100%"
     }}>
       <button onClick={prev} disabled={!canP} style={{
         width: 26, height: 26, borderRadius: 7, border: "none", fontSize: 15, flexShrink: 0,
         background: canP ? "rgba(255, 255, 255, 0.06)" : "transparent", color: canP ? "#475569" : "rgba(255, 255, 255, 0.12)",
         cursor: canP ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center"
       }}>‹</button>
-      <div style={{ display: "flex", gap: 4, overflowX: "auto", flex: 1, scrollbarWidth: "none" }}>
+      <div style={{ display: "flex", gap: 2, overflowX: "auto", flex: 1, scrollbarWidth: "none", justifyContent: "space-evenly" }}>
         {days.map(d => {
           const has = dateSet.has(d), isSel = d === selectedDate, isT = d === today;
           const p = new Date(d + "T12:00:00");
@@ -53,8 +58,8 @@ function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
             <button key={d} onClick={() => has && onChange(d)} disabled={!has}
               title={!has ? "No data tracked" : undefined}
               style={{
-                flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 1,
-                padding: "5px 7px", borderRadius: 8, minWidth: 36,
+                flex: "1 1 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 1,
+                padding: "5px 4px", borderRadius: 8, minWidth: 0, maxWidth: 52,
                 border: isSel ? "1px solid rgba(74,222,128,0.4)" : isT ? "1px solid rgba(255,255,255,0.1)" : "1px solid transparent",
                 background: isSel ? "rgba(74,222,128,0.12)" : "transparent", cursor: has ? "pointer" : "default",
                 opacity: has ? 1 : 0.35, transition: "all 0.2s"
@@ -89,6 +94,8 @@ function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
     </div>
   );
 }
+
+
 
 // ─── EMPTY STATE ──────────────────────────────────────────────────────────────
 function EmptyState() {
@@ -371,6 +378,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
           .grid-4-sm{grid-template-columns:1fr 1fr!important;}
           .header-row{flex-direction:column!important;gap:16px!important;}
           .tab-group{width:100%!important;justify-content:center!important;}
+          .date-bar-row{flex-direction:column!important;}
         }
       `}</style>
 
@@ -479,7 +487,14 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
             </div>
 
             {activeTab !== "limits" && (
-              <DateNavigator selectedDate={selectedDate} onChange={setSelectedDate} availableDates={availableDates} heatmap={heatmapData} />
+              <div className="date-bar-row" style={{ display: "flex", gap: 12, alignItems: "stretch", width: "100%" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <DateNavigator selectedDate={selectedDate} onChange={setSelectedDate} availableDates={availableDates} heatmap={heatmapData} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <DaySummary data={data} stats={stats} hourly={hourly} />
+                </div>
+              </div>
             )}
           </div>
 
@@ -497,6 +512,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               countKey={countKey}
               selectedDate={selectedDate}
               onGoToLimits={() => setActiveTab("limits")}
+              BASE={BASE}
             />
           </TabPanel>
 

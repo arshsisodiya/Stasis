@@ -1,8 +1,6 @@
-import requests
 import os
 import threading
 import subprocess
-from packaging import version
 from pathlib import Path
 import sys
 import win32api
@@ -93,6 +91,8 @@ class UpdateManager:
         thread.start()
 
     def _check_for_update(self):
+        import requests
+        from packaging import version
         self.status = "checking"
         self.error = None
         try:
@@ -129,6 +129,7 @@ class UpdateManager:
         thread.start()
 
     def _download_and_install(self):
+        import requests
         self.status = "downloading"
         self.progress = 0
         self.error = None

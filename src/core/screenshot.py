@@ -2,7 +2,6 @@
 
 import os
 import time
-from PIL import ImageGrab
 from src.config.storage import get_data_dir
 from src.utils.logger import setup_logger
 
@@ -20,6 +19,7 @@ def capture_screenshot():
         filename = f"screenshot_{int(time.time())}.png"
         filepath = os.path.join(app_dir, filename)
 
+        from PIL import ImageGrab
         img = ImageGrab.grab(all_screens=False)
         img.save(filepath, "PNG")
 

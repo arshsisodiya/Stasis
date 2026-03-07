@@ -27,7 +27,6 @@ Bug fixes vs previous version:
 import logging
 import json
 from flask import Blueprint, jsonify, request
-import requests
 
 from src.core.app_controller import AppController
 from src.config.settings_manager import SettingsManager
@@ -49,6 +48,7 @@ def set_app_controller(controller):
 
 def _get_bot_info(token: str) -> dict | None:
     """Calls Telegram getMe. Returns result dict on success, None on failure."""
+    import requests
     try:
         r = requests.get(
             f"https://api.telegram.org/bot{token}/getMe",

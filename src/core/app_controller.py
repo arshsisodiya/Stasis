@@ -2,7 +2,6 @@
 
 from src.config.settings_manager import SettingsManager
 from src.config.crypto import decrypt, encrypt
-from src.core.telegram.service import TelegramService
 
 class AppController:
 
@@ -41,6 +40,7 @@ class AppController:
         if self.telegram_service:
             self.telegram_service.stop()
 
+        from src.core.telegram.service import TelegramService
         self.telegram_service = TelegramService(token, chat_id)
         self.telegram_service.start()
 

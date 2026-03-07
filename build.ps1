@@ -202,6 +202,11 @@ Copy-Item -Force $DistExe $BackendExe
 $exeSize = [math]::Round((Get-Item $BackendExe).Length / 1MB, 1)
 Write-Host "  [OK] stasis-backend.exe copied ($exeSize MB)" -ForegroundColor Green
 
+$VersionedExeName = "stasis-backend-v$Version.exe"
+$VersionedExePath = Join-Path $ProjectRoot "dist\$VersionedExeName"
+Rename-Item -Path $DistExe -NewName $VersionedExeName -Force
+Write-Host "  [OK] Standalone backend saved as dist\$VersionedExeName" -ForegroundColor Green
+
 # -------------------------------------------------------
 # 3. npm install (if needed)
 # -------------------------------------------------------
@@ -250,6 +255,10 @@ if (Test-Path $BundleDir) {
 }
 else {
     Write-Host "  Bundle directory not found. Check Tauri build output above." -ForegroundColor Yellow
+}
+
+if (Test-Path $VersionedExePath) {
+    Write-Host "    $VersionedExePath  ($exeSize MB)" -ForegroundColor Green
 }
 
 # Cleanup

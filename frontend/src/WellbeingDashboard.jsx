@@ -13,6 +13,7 @@ import { useCountUp, useLiveClock } from "./shared/hooks";
 
 // ─── DATE NAVIGATOR ───────────────────────────────────────────────────────────
 function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
+
   const today = localYMD();
   const dateSet = new Set(availableDates);
   const sorted = [...availableDates].sort();
@@ -553,9 +554,31 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
             textAlign: "center", marginTop: 40, fontSize: 11, color: "#1e293b", display: "flex",
             alignItems: "center", justifyContent: "center", gap: 16
           }}>
-            <span style={{ letterSpacing: "0.04em" }}>Stasis · Your Focus Core</span>
-            <span style={{ color: "#1a2035" }}>·</span>
-            <span>Press 1–4 to switch tabs</span>
+
+            <a
+              href="https://github.com/arshsisodiya/Stasis"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                letterSpacing: "0.04em",
+                opacity: 0.75,
+                fontVariantNumeric: "tabular-nums",
+                textDecoration: "none",
+                color: "inherit",
+                transition: "opacity 0.15s ease, transform 0.15s ease",
+                cursor: "pointer"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = "1";
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = "0.75";
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              Stasis{appVersion ? ` v${appVersion}` : ""} · © {new Date().getFullYear()} Arsh Sisodiya
+            </a>
           </div>
         </div>
       </div>

@@ -416,7 +416,22 @@ export default function OverviewPage({
               <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>Top Apps</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {(() => {
-                  const topApps = [...stats].sort((a, b) => b.active - a.active).slice(0, 3);
+                  const mergedStats = Object.values(stats.reduce((acc, curr) => {
+                    const normApp = curr.app;
+                    if (!acc[normApp]) {
+                      acc[normApp] = { ...curr };
+                      acc[normApp]._dom_active = curr.active;
+                    } else {
+                      acc[normApp].active += curr.active;
+                      if (curr.active > acc[normApp]._dom_active) {
+                        acc[normApp].main = curr.main;
+                        acc[normApp]._dom_active = curr.active;
+                      }
+                    }
+                    return acc;
+                  }, {}));
+
+                  const topApps = mergedStats.sort((a, b) => b.active - a.active).slice(0, 3);
                   const topMax = topApps[0]?.active || 1;
                   return topApps.map((app, idx) => (
                     <div key={app.app} style={{

@@ -363,7 +363,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
         .tab-btn:hover{color:#94a3b8;background:rgba(255,255,255,0.04);}
         .tab-btn.active-green{color:#4ade80!important;background:rgba(74,222,128,0.1)!important;border-color:rgba(74,222,128,0.25)!important;}
         .tab-btn.active-blue{color:#60a5fa!important;background:rgba(96,165,250,0.1)!important;border-color:rgba(96,165,250,0.25)!important;}
-        .kbd-hint{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;
+        .kbd-hint{display:none;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;
           background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);font-size:10px;color:#334155;margin-left:6px;}
         .metric-card{animation:card-fade-in 0.45s cubic-bezier(0.34,1.2,0.64,1) both;}
         .db-scroll-wrapper::-webkit-scrollbar{width:4px;}

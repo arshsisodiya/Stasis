@@ -531,6 +531,65 @@ def hourly():
 
 
 # =====================================
+# Hourly Top Apps Stats
+# =====================================
+
+@wellbeing_bp.route("/api/hourly-stats")
+def hourly_stats():
+    """
+    Returns the top 3 apps for each hour of the day for the given date.
+    Output: { "00": [{"app": "Chrome", "active": 3600}, ...], "01": ... }
+    """
+    selected_date = get_selected_date()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        # We group by hour and app name, summing the active seconds
+        cursor.execute("""
+            SELECT
+                strftime('%H', timestamp) as hour,
+                app_name,
+                SUM(active_seconds) as active
+            FROM activity_logs
+            WHERE timestamp LIKE ?
+            GROUP BY 1, 2
+            HAVING active > 0
+        """, (selected_date + "%",))
+
+        rows = cursor.fetchall()
+        
+        # Structure the data by hour
+        by_hour = {}
+        for row in rows:
+            hour_str, app_name, active = row
+            if is_ignored(app_name):
+                continue
+            
+            h = hour_str # Keeping it as string "00", "01"...
+            if h not in by_hour:
+                by_hour[h] = []
+            
+            by_hour[h].append({
+                "app": app_name.replace(".exe", ""),
+                "active": int(active)
+            })
+            
+        # For each hour, sort by active time and take top 3
+        result = {}
+        for h in range(24):
+            h_str = f"{h:02d}"
+            apps = by_hour.get(h_str, [])
+            apps.sort(key=lambda x: x["active"], reverse=True)
+            result[h_str] = apps[:3]
+
+        return jsonify(result)
+
+    finally:
+        conn.close()
+
+
+# =====================================
 # Focus Score
 # =====================================
 

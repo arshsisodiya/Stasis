@@ -19,6 +19,7 @@ IDLE_THRESHOLD = 120        # seconds of no input = idle
 SLEEP_DELTA_THRESHOLD = 15 # seconds gap = assume sleep/resume
 POLL_INTERVAL = 1          # main loop interval in seconds
 BATCH_COMMIT_INTERVAL = 15 # commit to disk every N seconds
+PERIODIC_FLUSH_INTERVAL = 60 # flush active session to DB every N seconds even without tab switch
 
 # Browser process names — used to match SMTC source_app_user_model_id
 BROWSER_PROCESSES = {"chrome", "msedge", "brave", "firefox", "opera"}
@@ -653,6 +654,11 @@ def start_logging():
             else:
                 # Same session — update idle accounting
                 session.tick_idle(currently_idle, idle_secs)
+                
+                # Periodic flush to keep DB fresh even without window switch
+                if time.monotonic() - session.wall_start > PERIODIC_FLUSH_INTERVAL:
+                    flush_session(session, cursor)
+                    reset_session(info)
 
             # ---- Database Batching Commit ----
             if time.monotonic() - last_commit_mono > BATCH_COMMIT_INTERVAL:

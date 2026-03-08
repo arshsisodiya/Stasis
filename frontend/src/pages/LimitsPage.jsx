@@ -105,17 +105,31 @@ function LimitCard({ limit, onToggle, onEdit, onDelete, onUnblock, todayUsage, i
 }
 
 // ─── LIMIT MODAL ─────────────────────────────────────────────────────────────
-function LimitModal({ onClose, onSave, knownApps, editTarget }) {
+function LimitModal({ onClose, onSave, knownApps, editTarget, BASE }) {
   const [app, setApp] = useState(editTarget?.app_name || "");
   const [h, setH] = useState(editTarget ? Math.floor(editTarget.daily_limit_seconds / 3600) : "");
   const [m, setM] = useState(editTarget ? Math.floor((editTarget.daily_limit_seconds % 3600) / 60) : "");
   const [saving, setSaving] = useState(false);
+  const [systemApps, setSystemApps] = useState([]);
+  const [showD, setShowD] = useState(false);
+  const [query, setQuery] = useState(editTarget?.app_name?.replace(".exe", "") || "");
+
+  useEffect(() => {
+    if (editTarget || !BASE) return;
+    fetch(`${BASE}/api/system/apps`).then(r => r.json()).then(data => setSystemApps(data)).catch(() => setSystemApps([]));
+  }, [BASE, editTarget]);
+
+  const filtered = query.trim().length > 1 ? systemApps.filter(a =>
+    (a.name && a.name.toLowerCase().includes(query.toLowerCase())) ||
+    (a.exe && a.exe.toLowerCase().includes(query.toLowerCase()))
+  ).slice(0, 8) : [];
   const secs = (parseInt(h) || 0) * 3600 + (parseInt(m) || 0) * 60;
-  const ok = app.trim().length > 0 && secs > 0;
+  const targetApp = app || (query.trim().length > 0 ? (query.trim().toLowerCase().endsWith(".exe") ? query.trim() : query.trim() + ".exe") : "");
+  const ok = targetApp.length > 0 && secs > 0;
   const save = async () => {
     if (!ok) return;
     setSaving(true);
-    const name = app.trim().toLowerCase().endsWith(".exe") ? app.trim() : app.trim() + ".exe";
+    const name = targetApp.toLowerCase().replace(/\s+/g, "");
     await onSave(name, secs);
     setSaving(false);
     onClose();
@@ -147,16 +161,53 @@ function LimitModal({ onClose, onSave, knownApps, editTarget }) {
             background: "rgba(255, 255, 255, 0.06)", color: "#64748b", cursor: "pointer", fontSize: 16
           }}>✕</button>
         </div>
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 20, position: "relative" }}>
           <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>App Name</div>
-          <input value={app} onChange={e => setApp(e.target.value)} placeholder="e.g. chrome.exe"
-            disabled={!!editTarget} style={{ ...inp, opacity: editTarget ? 0.5 : 1, cursor: editTarget ? "not-allowed" : "text" }}
-            onFocus={e => e.target.style.border = "1px solid rgba(74,222,128,0.4)"}
-            onBlur={e => e.target.style.border = "1px solid rgba(255,255,255,0.1)"} />
-          {!editTarget && knownApps.length > 0 && (
+          <div style={{ position: "relative" }}>
+            <input value={query} onChange={e => { setQuery(e.target.value); setShowD(true); if (!editTarget) setApp(""); }}
+              placeholder="Search app or type .exe name"
+              disabled={!!editTarget} style={{ ...inp, opacity: editTarget ? 0.5 : 1, cursor: editTarget ? "not-allowed" : "text" }}
+              onFocus={e => { e.target.style.border = "1px solid rgba(74,222,128,0.4)"; setShowD(true); }}
+              onBlur={e => {
+                e.target.style.border = "1px solid rgba(255,255,255,0.1)";
+                setTimeout(() => setShowD(false), 200);
+              }} />
+            {showD && filtered.length > 0 && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 110,
+                background: "rgba(15,18,34,0.95)", border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 12, overflow: "hidden", backdropFilter: "blur(20px)",
+                boxShadow: "0 10px 40px rgba(0,0,0,0.5)"
+              }}>
+                {filtered.map(a => (
+                  <div key={a.appid + a.name} onClick={() => {
+                    setQuery(a.name);
+                    setApp(a.exe || a.name.toLowerCase().replace(/\s+/g, "") + ".exe");
+                    setShowD(false);
+                  }}
+                    style={{
+                      padding: "10px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between",
+                      alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)",
+                      background: "transparent", transition: "all 0.2s"
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(74,222,128,0.1)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <span style={{ fontSize: 13, color: "#f8fafc", fontWeight: 500 }}>{a.name}</span>
+                    <span style={{ fontSize: 11, color: "#475569" }}>{a.exe || "auto-detect"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {!editTarget && app && (
+            <div style={{ marginTop: 8, fontSize: 11, color: "#4ade80", display: "flex", alignItems: "center", gap: 6 }}>
+              <span>Target: <strong>{app}</strong></span>
+            </div>
+          )}
+          {!editTarget && knownApps.length > 0 && !app && query.length === 0 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
               {knownApps.slice(0, 6).map(a => (
-                <button key={a} onClick={() => setApp(a)}
+                <button key={a} onClick={() => { setApp(a); setQuery(a.replace(".exe", "")); }}
                   style={{
                     padding: "4px 10px", borderRadius: 8, fontSize: 11, cursor: "pointer",
                     fontFamily: "'DM Sans',sans-serif", border: "1px solid rgba(255,255,255,0.08)",
@@ -442,7 +493,7 @@ export default function LimitsPage({ BASE, stats }) {
         </SectionCard>
       )}
 
-      {showModal && <LimitModal onClose={() => { setShowModal(false); setEditTarget(null); }} onSave={save} knownApps={knownApps} editTarget={editTarget} />}
+      {showModal && <LimitModal onClose={() => { setShowModal(false); setEditTarget(null); }} onSave={save} knownApps={knownApps} editTarget={editTarget} BASE={BASE} />}
       {unblockTarget && <UnblockModal appName={unblockTarget} onClose={() => setUnblockTarget(null)} onUnblock={unblock} />}
     </div>
   );

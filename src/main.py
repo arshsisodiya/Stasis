@@ -10,7 +10,7 @@ from src.core.app_controller import AppController
 from src.core.file_monitor import start_file_watchdog
 from src.core.single_instance import ensure_single_instance
 from src.core.startup import add_to_startup
-from src.database.database import init_db
+from src.database.database import init_db, get_all_limits
 from src.services.blocking_service import BlockingService
 from src.services.update_manager import UpdateManager
 from src.utils.logger import setup_logger
@@ -87,8 +87,12 @@ def main():
     time.sleep(1) # Reduced startup delay
 
     blocking_service = BlockingService()
-    blocking_service.start()
-    logger.info("Blocking Service started")
+    limits = get_all_limits()
+    if limits:
+        blocking_service.start()
+        logger.info("Blocking Service started on startup (limits found)")
+    else:
+        logger.info("Blocking Service skipped on startup (no limits found)")
 
     # Start tracking threads
     t_api = threading.Thread(target=api_server_vessel, daemon=True, name="APIServerThread")

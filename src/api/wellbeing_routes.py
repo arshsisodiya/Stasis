@@ -27,6 +27,7 @@ from src.database.database import (
 )
 from src.config.storage import get_icons_dir
 from src.utils.icon_extractor import extract_icon_as_base64, get_exe_path_by_name
+from src.utils.app_discovery import get_installed_apps
 
 wellbeing_bp = Blueprint("wellbeing", __name__)
 
@@ -977,6 +978,11 @@ def site_stats():
 def api_set_limit():
     data = request.json
     set_app_limit(data["app_name"], int(data["limit_seconds"]))
+    
+    # Ensure blocking service starts as soon as a limit is added
+    from src.services.blocking_service import BlockingService
+    BlockingService().start()
+    
     return jsonify({"status": "success"})
 
 
@@ -1017,6 +1023,17 @@ def api_delete_limit():
 @wellbeing_bp.route("/limits/blocked", methods=["GET"])
 def api_blocked_apps():
     return jsonify(get_blocked_apps())
+
+@wellbeing_bp.route("/api/system/apps", methods=["GET"])
+def api_system_apps():
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        apps = get_installed_apps(cursor)
+        return jsonify(apps)
+    finally:
+        conn.close()
+
 # =====================================
 # Danger
 # =====================================

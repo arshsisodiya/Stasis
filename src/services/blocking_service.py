@@ -3,16 +3,9 @@ import time
 import psutil
 from datetime import datetime
 
-from src.database.database import (
-    get_all_limits,
-    add_blocked_app,
-    remove_blocked_app,
-    get_today_usage,
-    clear_expired_unblocks,
-    get_blocked_apps,
-)
+from src.database.database import get_blocked_apps
 
-LIMIT_CHECK_INTERVAL = 10
+LIMIT_CHECK_INTERVAL = 15
 PROCESS_CHECK_INTERVAL = 0.5
 
 
@@ -40,26 +33,24 @@ class BlockingService:
         self.initialized = True
 
     def start(self):
-
         if self.running:
             return
 
         self.running = True
 
-        # Load initial blocked apps
+        # Load initial blocked apps into memory cache
         try:
             self.blocked_apps = set(get_blocked_apps())
-        except:
+        except Exception:
             self.blocked_apps = set()
 
         self.limit_thread = threading.Thread(
-            target=self.limit_monitor,
+            target=self._limit_monitor,
             daemon=True,
             name="LimitMonitor"
         )
-
         self.guard_thread = threading.Thread(
-            target=self.process_guard,
+            target=self._process_guard,
             daemon=True,
             name="ProcessGuard"
         )
@@ -72,78 +63,119 @@ class BlockingService:
     def stop(self):
         self.running = False
 
-    # ----------------------------
-    # LIMIT MONITOR
-    # ----------------------------
-    def limit_monitor(self):
+    # ─── LIMIT MONITOR ────────────────────────────────────────────────────────
+    def _limit_monitor(self):
+        """
+        Evaluates app usage against limits every LIMIT_CHECK_INTERVAL seconds.
+
+        Key design: all reads + writes for ONE cycle share a SINGLE connection
+        and are committed in ONE transaction. Previously, each helper function
+        (clear_expired_unblocks, get_all_limits, get_today_usage,
+        add/remove_blocked_app) opened its own connection — up to 8 per cycle —
+        which raced with Flask API writes and caused 'database is locked'.
+        """
+        from src.database.database import get_connection
 
         while self.running:
-
             try:
+                now = datetime.now()
+                now_iso = now.isoformat()
+                today = now.date().isoformat()
 
-                clear_expired_unblocks()
+                conn = get_connection()
+                try:
+                    cursor = conn.cursor()
 
-                limits = get_all_limits()
+                    # 1. Expire any temporary unblocks in one shot
+                    cursor.execute("""
+                        UPDATE app_limits
+                        SET unblock_until = NULL
+                        WHERE unblock_until IS NOT NULL
+                          AND unblock_until <= ?
+                    """, (now_iso,))
 
-                new_blocked = set()
+                    # 2. Fetch all limits (single read)
+                    cursor.execute("""
+                        SELECT app_name, daily_limit_seconds, is_enabled, unblock_until
+                        FROM app_limits
+                    """)
+                    limits = cursor.fetchall()
 
-                for limit in limits:
+                    new_blocked = set()
 
-                    app_name = limit[1]
-                    daily_limit = limit[2]
-                    is_enabled = limit[3]
-                    unblock_until = limit[4]
+                    for app_name, daily_limit, is_enabled, unblock_until in limits:
 
-                    if not is_enabled:
-                        remove_blocked_app(app_name)
-                        continue
+                        # Paused limit → never blocked
+                        if not is_enabled:
+                            cursor.execute(
+                                "DELETE FROM blocked_apps WHERE app_name = ?",
+                                (app_name,)
+                            )
+                            continue
 
-                    if unblock_until:
-                        try:
-                            unblock_time = datetime.fromisoformat(unblock_until)
+                        # Still within a temporary unblock window
+                        if unblock_until:
+                            try:
+                                if now < datetime.fromisoformat(unblock_until):
+                                    cursor.execute(
+                                        "DELETE FROM blocked_apps WHERE app_name = ?",
+                                        (app_name,)
+                                    )
+                                    continue
+                            except Exception:
+                                pass
 
-                            if datetime.now() < unblock_time:
-                                remove_blocked_app(app_name)
-                                continue
+                        # 3. Today's usage for this app (same connection, no extra open/close)
+                        cursor.execute("""
+                            SELECT COALESCE(SUM(active_seconds), 0)
+                            FROM activity_logs
+                            WHERE app_name = ? AND timestamp LIKE ?
+                        """, (app_name, f"{today}%"))
+                        usage = cursor.fetchone()[0] or 0
 
-                        except:
-                            pass
+                        if usage >= daily_limit:
+                            cursor.execute(
+                                "INSERT OR REPLACE INTO blocked_apps (app_name) VALUES (?)",
+                                (app_name,)
+                            )
+                            new_blocked.add(app_name)
+                        else:
+                            cursor.execute(
+                                "DELETE FROM blocked_apps WHERE app_name = ?",
+                                (app_name,)
+                            )
 
-                    usage = get_today_usage(app_name)
+                    # Single commit for the entire cycle
+                    conn.commit()
+                    self.blocked_apps = new_blocked
 
-                    if usage >= daily_limit:
-                        add_blocked_app(app_name)
-                        new_blocked.add(app_name)
-                    else:
-                        remove_blocked_app(app_name)
-
-                self.blocked_apps = new_blocked
+                finally:
+                    conn.close()
 
             except Exception as e:
+                if "locked" in str(e).lower():
+                    time.sleep(0.2)
+                    continue
                 print("LimitMonitor error:", e)
-
             time.sleep(LIMIT_CHECK_INTERVAL)
 
-    # ----------------------------
-    # PROCESS GUARD
-    # ----------------------------
-    def process_guard(self):
-
+    # ─── PROCESS GUARD ────────────────────────────────────────────────────────
+    def _process_guard(self):
+        """
+        Scans running processes every PROCESS_CHECK_INTERVAL seconds and kills
+        any that match the in-memory blocked_apps set. No DB access here —
+        reads from the set updated by _limit_monitor.
+        """
         while self.running:
-
             try:
-
                 if not self.blocked_apps:
                     time.sleep(PROCESS_CHECK_INTERVAL)
                     continue
 
                 for proc in psutil.process_iter(['name']):
-
                     try:
-
                         if proc.info['name'] in self.blocked_apps:
                             proc.kill()
-
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue
 

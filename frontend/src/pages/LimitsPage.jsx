@@ -116,7 +116,7 @@ function LimitModal({ onClose, onSave, knownApps, editTarget, BASE }) {
 
   useEffect(() => {
     if (editTarget || !BASE) return;
-    fetch(`${BASE}/api/system/apps`).then(r => r.json()).then(data => setSystemApps(data)).catch(() => setSystemApps([]));
+    fetch(`${BASE}/api/system/apps`).then(r => r.json()).then(data => setSystemApps(data.apps || [])).catch(() => setSystemApps([]));
   }, [BASE, editTarget]);
 
   const filtered = query.trim().length > 1 ? systemApps.filter(a =>

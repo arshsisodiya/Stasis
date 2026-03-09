@@ -1030,10 +1030,12 @@ def api_system_apps():
     cursor = conn.cursor()
     try:
         apps = get_installed_apps(cursor)
-        return jsonify(apps)
+        return jsonify({
+            "total": len(apps),
+            "apps": apps
+        })
     finally:
         conn.close()
-
 # =====================================
 # Danger
 # =====================================

@@ -1,69 +1,75 @@
-import subprocess
-import json
 import os
 import time
-from typing import Dict, List
+import winreg
+from src.utils.logger import setup_logger
+logger = setup_logger()
 
-# -----------------------------
-# Configuration
-# -----------------------------
+# ---------------------------------------------------
+# Cache
+# ---------------------------------------------------
 
 APP_CACHE = {
     "data": None,
     "timestamp": 0
 }
 
-CACHE_TTL = 600  # seconds (10 minutes)
+CACHE_TTL = 600  # seconds
 
 
-# -----------------------------
-# Utility Functions
-# -----------------------------
+# ---------------------------------------------------
+# Helpers
+# ---------------------------------------------------
 
-def normalize_exe_name(exe: str) -> str:
-    """Normalize executable name for consistent matching."""
-    if not exe:
+def normalize_key(name):
+    if not name:
         return ""
-    exe = exe.lower()
-    return exe.replace(".exe", "").strip()
+    return name.lower().replace(".exe", "").strip()
 
 
-def clean_display_name(name: str) -> str:
-    """Convert exe or raw name to user friendly format."""
+def clean_name(name):
     if not name:
         return "Unknown"
-
     name = os.path.splitext(name)[0]
-    name = name.replace("_", " ").strip()
-    return name.title()
+    return name.replace("_", " ").title()
 
 
-# -----------------------------
-# Database App Discovery
-# -----------------------------
+def safe_run(func, *args):
+    try:
+        return func(*args)
+    except Exception as e:
+        logger.info(f"[app_discovery] {func.__name__} failed: {e}")
+        return {}
 
-def get_apps_from_history(db_cursor) -> Dict[str, dict]:
-    """
-    Get apps discovered from activity logs.
-    """
+
+# ---------------------------------------------------
+# Source 1 — Activity Logs (Most Important)
+# ---------------------------------------------------
+
+def get_apps_from_history(cursor):
+
     apps = {}
 
-    if not db_cursor:
+    if not cursor:
+        logger.info("[app_discovery] No DB cursor provided for history discovery")
         return apps
 
     try:
-        db_cursor.execute("""
+        cursor.execute("""
             SELECT DISTINCT app_name
             FROM activity_logs
             WHERE active_seconds > 5
         """)
 
-        for row in db_cursor.fetchall():
+        rows = cursor.fetchall()
+        logger.info(f"[app_discovery] history apps found: {len(rows)}")
+
+        for row in rows:
+
             exe = row[0]
-            key = normalize_exe_name(exe)
+            key = normalize_key(exe)
 
             apps[key] = {
-                "name": clean_display_name(exe),
+                "name": clean_name(exe),
                 "exe": exe,
                 "appid": "",
                 "type": "desktop",
@@ -71,142 +77,109 @@ def get_apps_from_history(db_cursor) -> Dict[str, dict]:
             }
 
     except Exception as e:
-        print(f"[app_discovery] DB error: {e}")
+        logger.info(f"[app_discovery] history query error: {e}")
 
     return apps
 
 
-# -----------------------------
-# System App Discovery
-# -----------------------------
+# ---------------------------------------------------
+# Source 2 — Installed Apps (Registry)
+# ---------------------------------------------------
 
-def run_powershell_app_discovery() -> List[dict]:
-    """
-    Uses PowerShell Get-StartApps to detect installed apps.
-    """
-    try:
-        cmd = [
-            "powershell",
-            "-Command",
-            "Get-StartApps | Select-Object Name,AppID | ConvertTo-Json"
-        ]
+def scan_registry_apps():
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-
-        if not result.stdout.strip():
-            return []
-
-        data = json.loads(result.stdout)
-
-        if not isinstance(data, list):
-            data = [data]
-
-        return data
-
-    except Exception as e:
-        print(f"[app_discovery] PowerShell error: {e}")
-        return []
-
-
-def extract_exe_from_appid(appid: str) -> str:
-    """Attempt to extract exe name from AppID."""
-    if not appid:
-        return ""
-
-    appid = appid.strip()
-
-    if appid.lower().endswith(".exe"):
-        return os.path.basename(appid)
-
-    if "\\" in appid:
-        parts = appid.split("\\")
-        last = parts[-1]
-        if last.lower().endswith(".exe"):
-            return last
-
-    return ""
-
-
-def detect_app_type(appid: str, exe: str) -> str:
-    """Detect application type."""
-    if "!" in appid:
-        return "uwp"
-    if exe:
-        return "desktop"
-    return "unknown"
-
-
-def get_apps_from_system() -> Dict[str, dict]:
-    """
-    Discover apps using PowerShell.
-    """
     apps = {}
 
-    ps_apps = run_powershell_app_discovery()
+    registry_paths = [
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+    ]
 
-    for app in ps_apps:
-        name = app.get("Name", "")
-        appid = app.get("AppID", "")
+    for path in registry_paths:
 
-        exe = extract_exe_from_appid(appid)
+        try:
+            reg = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path)
 
-        key = normalize_exe_name(exe or name)
+            subkey_count = winreg.QueryInfoKey(reg)[0]
+            logger.info(f"[app_discovery] scanning registry: {path} ({subkey_count} keys)")
 
-        apps[key] = {
-            "name": name or clean_display_name(exe),
-            "exe": exe,
-            "appid": appid,
-            "type": detect_app_type(appid, exe),
-            "source": "system"
-        }
+            for i in range(subkey_count):
+
+                try:
+                    subkey_name = winreg.EnumKey(reg, i)
+                    subkey = winreg.OpenKey(reg, subkey_name)
+
+                    name, _ = winreg.QueryValueEx(subkey, "DisplayName")
+
+                    key = normalize_key(name)
+
+                    apps[key] = {
+                        "name": name,
+                        "exe": "",
+                        "appid": "",
+                        "type": "desktop",
+                        "source": "registry"
+                    }
+
+                except Exception:
+                    continue
+
+        except Exception as e:
+            logger.info(f"[app_discovery] registry scan failed for {path}: {e}")
+
+    logger.info(f"[app_discovery] registry apps discovered: {len(apps)}")
 
     return apps
 
 
-# -----------------------------
-# Main App Discovery
-# -----------------------------
+# ---------------------------------------------------
+# Merge Sources
+# ---------------------------------------------------
 
-def get_installed_apps(db_cursor=None) -> List[dict]:
-    """
-    Returns merged list of apps from:
-    - activity logs
-    - system discovery
-    """
+def merge_sources(*sources):
+
+    apps = {}
+
+    for source in sources:
+
+        for key, value in source.items():
+
+            if key not in apps:
+                apps[key] = value
+            else:
+                existing = apps[key]
+
+                if not existing.get("exe") and value.get("exe"):
+                    existing["exe"] = value["exe"]
+
+    return apps
+
+
+# ---------------------------------------------------
+# Main Discovery
+# ---------------------------------------------------
+
+def get_installed_apps(cursor=None):
 
     now = time.time()
 
-    if APP_CACHE["data"] and (now - APP_CACHE["timestamp"] < CACHE_TTL):
+    if APP_CACHE["data"] and now - APP_CACHE["timestamp"] < CACHE_TTL:
+        logger.info("[app_discovery] returning cached apps")
         return APP_CACHE["data"]
 
-    apps: Dict[str, dict] = {}
+    logger.info("[app_discovery] starting discovery")
 
-    # historical apps
-    history_apps = get_apps_from_history(db_cursor)
+    history_apps = safe_run(get_apps_from_history, cursor)
+    registry_apps = safe_run(scan_registry_apps)
 
-    for key, value in history_apps.items():
-        apps[key] = value
+    merged = merge_sources(
+        history_apps,
+        registry_apps
+    )
 
-    # system apps
-    system_apps = get_apps_from_system()
+    result = sorted(merged.values(), key=lambda x: x["name"].lower())
 
-    for key, value in system_apps.items():
-        if key not in apps:
-            apps[key] = value
-        else:
-            # merge missing fields
-            if not apps[key].get("exe") and value.get("exe"):
-                apps[key]["exe"] = value["exe"]
-
-            if not apps[key].get("appid") and value.get("appid"):
-                apps[key]["appid"] = value["appid"]
-
-    result = sorted(apps.values(), key=lambda x: x["name"].lower())
+    logger.info(f"[app_discovery] total apps discovered: {len(result)}")
 
     APP_CACHE["data"] = result
     APP_CACHE["timestamp"] = now

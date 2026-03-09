@@ -1,17 +1,19 @@
 import threading
 import time
 import psutil
-from datetime import datetime, timezone
+from datetime import datetime
+
 from src.database.database import (
     get_all_limits,
     add_blocked_app,
     remove_blocked_app,
     get_today_usage,
     clear_expired_unblocks,
-    get_connection,
     get_blocked_apps,
 )
-CHECK_INTERVAL = 5  # seconds
+
+LIMIT_CHECK_INTERVAL = 10
+PROCESS_CHECK_INTERVAL = 0.5
 
 
 class BlockingService:
@@ -28,100 +30,124 @@ class BlockingService:
     def __init__(self):
         if self.initialized:
             return
+
         self.running = False
-        self.thread = None
+        self.blocked_apps = set()
+
+        self.limit_thread = None
+        self.guard_thread = None
+
         self.initialized = True
 
     def start(self):
-        if not self.running:
-            self.running = True
-            self.thread = threading.Thread(target=self._run, daemon=True, name="BlockingServiceThread")
-            self.thread.start()
-            print("Blocking Service started")
+
+        if self.running:
+            return
+
+        self.running = True
+
+        # Load initial blocked apps
+        try:
+            self.blocked_apps = set(get_blocked_apps())
+        except:
+            self.blocked_apps = set()
+
+        self.limit_thread = threading.Thread(
+            target=self.limit_monitor,
+            daemon=True,
+            name="LimitMonitor"
+        )
+
+        self.guard_thread = threading.Thread(
+            target=self.process_guard,
+            daemon=True,
+            name="ProcessGuard"
+        )
+
+        self.limit_thread.start()
+        self.guard_thread.start()
+
+        print("Blocking Service started")
 
     def stop(self):
         self.running = False
 
-    def _run(self):
+    # ----------------------------
+    # LIMIT MONITOR
+    # ----------------------------
+    def limit_monitor(self):
+
         while self.running:
+
             try:
-                self.check_limits()
-                self.enforce_blocks()
-            except Exception as e:
-                print("BlockingService Error:", e)
 
-            time.sleep(CHECK_INTERVAL)
+                clear_expired_unblocks()
 
+                limits = get_all_limits()
 
-    def check_limits(self):
-        try:
-            clear_expired_unblocks()  # auto clean expired overrides
-            limits = get_all_limits()
-        except Exception as e:
-            # Handle "database is locked" or other DB errors gracefully in the thread
-            if "locked" in str(e).lower():
-                return
-            raise e
+                new_blocked = set()
 
-        if not limits:
-            # Only attempt to clear if we actually have anything blocked
-            try:
-                blocked_apps = get_blocked_apps()
-                if blocked_apps:
-                    for app in blocked_apps:
-                        remove_blocked_app(app)
-            except Exception as e:
-                if "locked" not in str(e).lower():
-                    print(f"Error clearing blocks: {e}")
-            return
+                for limit in limits:
 
-        for limit in limits:
-            app_name = limit[1]
-            daily_limit = limit[2]
-            is_enabled = limit[3]
-            unblock_until = limit[4]
+                    app_name = limit[1]
+                    daily_limit = limit[2]
+                    is_enabled = limit[3]
+                    unblock_until = limit[4]
 
-            if not is_enabled:
-                remove_blocked_app(app_name)
-                continue
-
-            # Skip if temporary override active
-            if unblock_until:
-                try:
-                    unblock_time = datetime.fromisoformat(unblock_until)
-                    if datetime.now() < unblock_time:
+                    if not is_enabled:
                         remove_blocked_app(app_name)
                         continue
-                except Exception as e:
-                    print("Invalid unblock_until format:", e)
+
+                    if unblock_until:
+                        try:
+                            unblock_time = datetime.fromisoformat(unblock_until)
+
+                            if datetime.now() < unblock_time:
+                                remove_blocked_app(app_name)
+                                continue
+
+                        except:
+                            pass
+
+                    usage = get_today_usage(app_name)
+
+                    if usage >= daily_limit:
+                        add_blocked_app(app_name)
+                        new_blocked.add(app_name)
+                    else:
+                        remove_blocked_app(app_name)
+
+                self.blocked_apps = new_blocked
+
+            except Exception as e:
+                print("LimitMonitor error:", e)
+
+            time.sleep(LIMIT_CHECK_INTERVAL)
+
+    # ----------------------------
+    # PROCESS GUARD
+    # ----------------------------
+    def process_guard(self):
+
+        while self.running:
+
+            try:
+
+                if not self.blocked_apps:
+                    time.sleep(PROCESS_CHECK_INTERVAL)
                     continue
 
-            try:
-                usage = get_today_usage(app_name)
+                for proc in psutil.process_iter(['name']):
 
-                if usage >= daily_limit:
-                    add_blocked_app(app_name)
-                else:
-                    remove_blocked_app(app_name)
+                    try:
+
+                        if proc.info['name'] in self.blocked_apps:
+                            proc.kill()
+
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+
             except Exception as e:
-                if "locked" not in str(e).lower():
-                    print(f"Error checking usage for {app_name}: {e}")
+                print("ProcessGuard error:", e)
 
-    # 🔹 Kill blocked apps continuously
-    def enforce_blocks(self):
-        try:
-            blocked_apps = get_blocked_apps()
-        except Exception as e:
-            if "locked" in str(e).lower():
-                return
-            raise e
-
-        if not blocked_apps:
-            return
-
-        for proc in psutil.process_iter(['name']):
-            try:
-                if proc.info['name'] in blocked_apps:
-                    proc.kill()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
+            time.sleep(PROCESS_CHECK_INTERVAL)

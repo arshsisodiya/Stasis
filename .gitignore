@@ -70,3 +70,5 @@ htmlcov/
 # =========================
 *.tmp
 *.bak
+.agents/
+skills-lock.json

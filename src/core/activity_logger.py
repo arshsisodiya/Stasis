@@ -292,6 +292,19 @@ media_monitor  = MediaSessionMonitor()
 
 
 # ===============================
+# GLOBAL SESSION TRACKER
+# ===============================
+# Used by API to show "Live Session" duration on frontend
+_current_session_start_mono: float | None = None
+
+def get_current_session_duration() -> float:
+    """Returns the seconds elapsed in the current unbroken window session."""
+    if _current_session_start_mono is None:
+        return 0.0
+    return time.monotonic() - _current_session_start_mono
+
+
+# ===============================
 # HELPERS
 # ===============================
 
@@ -578,7 +591,9 @@ def start_logging():
 
     def reset_session(new_info: dict | None):
         nonlocal session
+        global _current_session_start_mono
         session = SessionState(new_info) if new_info else None
+        _current_session_start_mono = session.wall_start if session else None
         input_tracker.get_and_reset_counts()  # discard stale counts
 
     try:

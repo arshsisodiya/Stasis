@@ -439,11 +439,20 @@ def wellbeing():
             "totalSessions": total_sessions,
             "productivityPercent": productivity_percent,
             "mostUsedApp": top_app,
+            "sessionDuration": get_session_duration()
         })
 
     finally:
         conn.close()
-        
+
+# Helper to get session duration safely
+def get_session_duration():
+    try:
+        from src.core.activity_logger import get_current_session_duration
+        return int(get_current_session_duration())
+    except Exception:
+        return 0
+
 # =====================================
 # Daily App Stats
 # =====================================

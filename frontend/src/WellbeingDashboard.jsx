@@ -493,7 +493,14 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
                   <DateNavigator selectedDate={selectedDate} onChange={setSelectedDate} availableDates={availableDates} heatmap={heatmapData} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <DaySummary data={data} stats={stats} hourly={hourly} />
+                  <DaySummary
+                    data={data}
+                    stats={stats}
+                    hourly={hourly}
+                    prevWellbeing={prevWellbeing}
+                    focusData={focusData}
+                    sessionDuration={isToday ? (data?.sessionDuration || 0) : 0}
+                  />
                 </div>
               </div>
             )}

@@ -7,7 +7,7 @@ import time
 from src.api.api_server import APIServer
 from src.core.activity_logger import start_logging
 from src.core.app_controller import AppController
-from src.core.file_monitor import start_file_watchdog
+from src.core.file_monitor import file_monitor_controller
 from src.core.single_instance import ensure_single_instance
 from src.core.startup import add_to_startup
 from src.database.database import init_db, get_all_limits
@@ -33,12 +33,7 @@ def safe_activity_logger():
         logger.exception("Activity logger crashed unexpectedly")
 
 
-def safe_file_watchdog():
-    try:
-        logger.info("File watchdog thread started")
-        start_file_watchdog()
-    except Exception:
-        logger.exception("File watchdog crashed unexpectedly")
+# FileMonitor is managed by FileMonitorController — no wrapper needed.
 
 
 def get_executable_path():
@@ -97,11 +92,14 @@ def main():
     # Start tracking threads
     t_api = threading.Thread(target=api_server_vessel, daemon=True, name="APIServerThread")
     t_log = threading.Thread(target=safe_activity_logger, daemon=True, name="ActivityLoggerThread")
-    t_file = threading.Thread(target=safe_file_watchdog, daemon=True, name="FileWatchdogThread")
 
-    for t in [t_api, t_log, t_file]:
+    for t in [t_api, t_log]:
         t.start()
         threads.append(t)
+
+    # Start file monitor controller — starts the Observer only if the toggle is enabled.
+    # It responds instantly to setting changes without polling.
+    file_monitor_controller.start_manager()
 
     logger.info("Activity tracking services started")
 

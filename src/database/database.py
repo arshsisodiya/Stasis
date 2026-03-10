@@ -4,7 +4,6 @@ from src.config.storage import get_data_dir
 from datetime import datetime, timedelta
 DB_PATH = os.path.join(get_data_dir(), "stasis.db")
 
-
 def get_connection():
     conn = sqlite3.connect(
         DB_PATH,
@@ -66,6 +65,15 @@ def init_db():
         keystrokes INTEGER DEFAULT 0,
         clicks INTEGER DEFAULT 0,
         PRIMARY KEY (date, app_name, main_category)
+    )
+    """)
+    # ===============================
+    # GLOBAL SETTINGS
+    # ===============================
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
     )
     """)
 
@@ -393,3 +401,111 @@ def factory_reset():
 
     finally:
         conn.close()
+def set_auto_delete_days(days: int | None):
+    """
+    Store data retention setting.
+    None = keep forever
+    """
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    value = "forever" if days is None else str(days)
+
+    cursor.execute("""
+        INSERT INTO settings (key, value)
+        VALUES ('auto_delete_days', ?)
+        ON CONFLICT(key)
+        DO UPDATE SET value = excluded.value
+    """, (value,))
+
+    conn.commit()
+    conn.close()
+
+def get_auto_delete_days():
+    """
+    Returns retention days or None if forever
+    """
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT value
+        FROM settings
+        WHERE key = 'auto_delete_days'
+    """)
+
+    row = cursor.fetchone()
+
+    conn.close()
+
+    if not row:
+        return None
+
+    value = row[0]
+
+    if value == "forever":
+        return None
+
+    return int(value)
+
+def delete_activity_older_than(days: int):
+    """
+    Delete activity records older than N days
+    """
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+
+    cursor.execute("""
+        DELETE FROM activity_logs
+        WHERE timestamp < ?
+    """, (cutoff,))
+
+    conn.commit()
+    conn.close()
+
+def run_retention_cleanup():
+    """
+    Execute retention cleanup based on current setting
+    """
+
+    days = get_auto_delete_days()
+
+    if days is None:
+        return
+
+    delete_activity_older_than(days)
+
+def set_setting(key: str, value: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT INTO settings (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key)
+        DO UPDATE SET value = excluded.value
+    """, (key, value))
+
+    conn.commit()
+    conn.close()
+
+def get_setting(key: str, default=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT value FROM settings WHERE key = ?
+    """, (key,))
+
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return default
+
+    return row[0]

@@ -16,6 +16,7 @@ from src.services.update_manager import UpdateManager
 from src.utils.logger import setup_logger
 from src.core.shutdown import trigger_shutdown, shutdown_event
 import signal
+from src.core.data_retention import retention_worker
 
 logger = setup_logger()
 ENABLE_UPDATER = False
@@ -32,7 +33,12 @@ def safe_activity_logger():
     except Exception:
         logger.exception("Activity logger crashed unexpectedly")
 
-
+def safe_data_retention():
+    try:
+        logger.info("Data retention thread started")
+        retention_worker()
+    except Exception:
+        logger.exception("Data retention worker crashed unexpectedly")
 # FileMonitor is managed by FileMonitorController — no wrapper needed.
 
 
@@ -92,8 +98,9 @@ def main():
     # Start tracking threads
     t_api = threading.Thread(target=api_server_vessel, daemon=True, name="APIServerThread")
     t_log = threading.Thread(target=safe_activity_logger, daemon=True, name="ActivityLoggerThread")
+    t_ret = threading.Thread(target=safe_data_retention, daemon=True, name="DataRetentionThread")
 
-    for t in [t_api, t_log]:
+    for t in [t_api, t_log, t_ret]:
         t.start()
         threads.append(t)
 

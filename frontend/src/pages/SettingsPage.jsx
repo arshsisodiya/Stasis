@@ -49,29 +49,48 @@ const GLOBAL_CSS = `
   @keyframes sp-spin        { to{transform:rotate(360deg)} }
   @keyframes sp-overlay-in  { from{opacity:0} to{opacity:1} }
   @keyframes sp-panel-in    { from{opacity:0;transform:translateY(28px) scale(0.97)} to{opacity:1;transform:none} }
-  @keyframes sp-slide-in    { from{opacity:0;transform:translateX(18px)} to{opacity:1;transform:none} }
+  @keyframes sp-slide-in    { from{opacity:0;transform:translateX(10px)} to{opacity:1;transform:translateX(0)} }
+  @keyframes sp-fade-in     { from{opacity:0} to{opacity:1} }
   @keyframes sp-modal-in    { from{opacity:0;transform:scale(0.9) translateY(20px)} to{opacity:1;transform:none} }
-  @keyframes sp-banner-in   { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
+  @keyframes sp-banner-in   { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
   @keyframes sp-toast-in    { from{opacity:0;transform:translateX(28px)} to{opacity:1;transform:none} }
   @keyframes sp-shimmer     { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
   @keyframes sp-shake       { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-5px)} 40%,80%{transform:translateX(5px)} }
-  .sp-nav-btn               { transition:background 0.18s,color 0.18s,box-shadow 0.18s; }
-  .sp-nav-btn:hover         { background:rgba(255,255,255,0.055)!important; }
+  @keyframes sp-pop-in      { from{opacity:0;transform:scale(0.94) translateY(6px)} to{opacity:1;transform:none} }
+
+  .sp-nav-btn               { transition:background 0.16s,color 0.16s,box-shadow 0.16s; }
+  .sp-nav-btn:hover         { background:rgba(255,255,255,0.05)!important; }
   .sp-nav-btn.active        { background:rgba(74,222,128,0.09)!important; color:#4ade80!important;
                                box-shadow:inset 0 0 0 1px rgba(74,222,128,0.18)!important; }
-  .sp-action                { transition:background 0.15s,border-color 0.15s,transform 0.15s,box-shadow 0.2s; }
+
+  .sp-action                { transition:background 0.15s,border-color 0.15s,transform 0.12s,box-shadow 0.2s,opacity 0.15s; }
   .sp-action:hover          { background:rgba(255,255,255,0.09)!important; border-color:rgba(255,255,255,0.16)!important; }
-  .sp-action:active         { transform:scale(0.96); }
+  .sp-action:active         { transform:scale(0.96)!important; }
   .sp-primary:hover         { box-shadow:0 0 26px rgba(74,222,128,0.5)!important; }
   .sp-danger:hover          { background:rgba(248,113,113,0.13)!important; border-color:rgba(248,113,113,0.38)!important; }
   .sp-warning-btn:hover     { background:rgba(251,191,36,0.13)!important; border-color:rgba(251,191,36,0.35)!important; }
   .sp-close:hover           { background:rgba(255,255,255,0.1)!important; color:#f0f4f8!important; }
-  .sp-input                 { transition:border 0.2s,background 0.2s; }
-  .sp-input:focus           { border-color:rgba(74,222,128,0.42)!important; background:rgba(255,255,255,0.07)!important; outline:none; }
-  .sp-input.err:focus       { border-color:rgba(248,113,113,0.5)!important; }
+
+  .sp-select                { -webkit-appearance:none; appearance:none; color-scheme:dark; transition:border-color 0.2s,box-shadow 0.2s; }
+  .sp-select:focus          { border-color:rgba(74,222,128,0.42)!important; outline:none!important; box-shadow:0 0 0 3px rgba(74,222,128,0.1)!important; }
+  .sp-select option         { background:#0f1222!important; color:#f0f4f8!important; }
+
+  .sp-input                 { transition:border 0.2s,background 0.2s,box-shadow 0.2s; }
+  .sp-input:focus           { border-color:rgba(74,222,128,0.42)!important; background:rgba(255,255,255,0.07)!important; outline:none; box-shadow:0 0 0 3px rgba(74,222,128,0.08)!important; }
+  .sp-input.err:focus       { border-color:rgba(248,113,113,0.5)!important; box-shadow:0 0 0 3px rgba(248,113,113,0.1)!important; }
+
+  .sp-setting-row           { transition:background 0.15s; border-radius:10px; margin:0 -10px; padding-left:10px!important; padding-right:10px!important; }
+  .sp-setting-row:hover     { background:rgba(255,255,255,0.025)!important; }
+
   .sp-scroll::-webkit-scrollbar       { width:3px; }
   .sp-scroll::-webkit-scrollbar-track { background:transparent; }
   .sp-scroll::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08);border-radius:4px; }
+  .sp-scroll::-webkit-scrollbar-thumb:hover { background:rgba(255,255,255,0.15); }
+
+  .sp-card                  { transition:border-color 0.2s,box-shadow 0.2s; }
+  .sp-card:hover            { box-shadow:0 2px 24px rgba(0,0,0,0.25)!important; }
+
+  .sp-sticky-bar            { animation:sp-pop-in 0.22s cubic-bezier(0.34,1.56,0.64,1); }
 `;
 
 // ─── PRIMITIVES ───────────────────────────────────────────────────────────────
@@ -136,7 +155,7 @@ function InputField({ label, value, onChange, placeholder, secret, hint, error, 
 
 function Card({ children, style = {}, accent, danger, dashed }) {
   return (
-    <div style={{ background: C.surface, border: `1px ${dashed ? "dashed" : "solid"} ${danger ? "rgba(248,113,113,0.2)" : accent ? accent + "28" : C.border}`, borderRadius: 18, padding: "22px 24px", backdropFilter: "blur(16px)", ...style }}>
+    <div className="sp-card" style={{ background: C.surface, border: `1px ${dashed ? "dashed" : "solid"} ${danger ? "rgba(248,113,113,0.2)" : accent ? accent + "28" : C.border}`, borderRadius: 18, padding: "20px 22px", backdropFilter: "blur(16px)", boxShadow: "0 1px 12px rgba(0,0,0,0.18)", ...style }}>
       {children}
     </div>
   );
@@ -248,12 +267,16 @@ function SectionLabel({ children }) {
   return <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.13em", textTransform: "uppercase", color: C.textMuted, marginBottom: 12 }}>{children}</div>;
 }
 
+function Label({ children }) {
+  return <label style={{ display: "block", marginBottom: 6, fontSize: 11, fontWeight: 600, letterSpacing: "0.09em", textTransform: "uppercase", color: C.textSub }}>{children}</label>;
+}
+
 function SettingRow({ label, desc, control, borderless }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "13px 0", borderBottom: borderless ? "none" : `1px solid ${C.border}` }}>
+    <div className="sp-setting-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "13px 10px", borderBottom: borderless ? "none" : `1px solid ${C.border}` }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: C.text }}>{label}</div>
-        {desc && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3, lineHeight: 1.4 }}>{desc}</div>}
+        <div style={{ fontSize: 13, fontWeight: 500, color: C.text, lineHeight: 1.3 }}>{label}</div>
+        {desc && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3, lineHeight: 1.45 }}>{desc}</div>}
       </div>
       <div style={{ flexShrink: 0 }}>{control}</div>
     </div>
@@ -642,11 +665,16 @@ function TelegramSection({ push }) {
 // GENERAL SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 function GeneralSection({ push }) {
-  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", file_logging_enabled: true, file_logging_essential_only: true, show_yesterday_comparison: true, hardware_acceleration: true };
+  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: false, file_logging_enabled: true, file_logging_essential_only: true, show_yesterday_comparison: true, hardware_acceleration: true };
   const [s, setS] = useState({ ...DEFAULTS });
   const [saved, setSaved] = useState({ ...DEFAULTS });
   const [confirmReset, setConfirmReset] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [togglingIdle, setTogglingIdle] = useState(false);
+  const [togglingBrowser, setTogglingBrowser] = useState(false);
+  const [savingRetention, setSavingRetention] = useState(false);
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
+  const [cleaningUp, setCleaningUp] = useState(false);
 
   useEffect(() => {
     fetch(`${BASE_URL}/api/settings`)
@@ -661,7 +689,6 @@ function GeneralSection({ push }) {
   }, []);
 
   const isDirty = JSON.stringify(s) !== JSON.stringify(saved);
-
   const set = (k, v) => setS(p => ({ ...p, [k]: v }));
 
   const handleSave = async () => {
@@ -684,10 +711,71 @@ function GeneralSection({ push }) {
     }
   };
 
-  const handleReset = () => {
-    setS({ ...DEFAULTS });
-    setConfirmReset(false);
+  const handleReset = () => { setS({ ...DEFAULTS }); setConfirmReset(false); };
+
+  // Wire: idle detection toggle
+  const handleIdleToggle = async (v) => {
+    setTogglingIdle(true);
+    set("idle", v);
+    try {
+      const r = await fetch(`${BASE_URL}/api/settings/idle-detection`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: v })
+      });
+      const d = await r.json();
+      if (d.status === "success") push(`Idle detection ${v ? "enabled" : "disabled"}`, "success");
+      else { push(d.message || "Failed to update idle detection", "error"); set("idle", !v); }
+    } catch { push("Network error", "error"); set("idle", !v); }
+    setTogglingIdle(false);
   };
+
+  // Wire: browser tracking toggle
+  const handleBrowserToggle = async (v) => {
+    setTogglingBrowser(true);
+    set("browser_tracking", v);
+    try {
+      const r = await fetch(`${BASE_URL}/api/settings/browser-tracking`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: v })
+      });
+      const d = await r.json();
+      if (d.status === "success") push(`Browser tracking ${v ? "enabled" : "disabled"}`, "success");
+      else { push(d.message || "Failed to update browser tracking", "error"); set("browser_tracking", !v); }
+    } catch { push("Network error", "error"); set("browser_tracking", !v); }
+    setTogglingBrowser(false);
+  };
+
+  // Wire: data retention change
+  const handleRetentionChange = async (val) => {
+    set("retention", val);
+    setSavingRetention(true);
+    try {
+      const r = await fetch(`${BASE_URL}/api/settings/data-retention`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: val === "0" ? "forever" : val })
+      });
+      const d = await r.json();
+      if (d.status === "success") push(`Retention set to ${val === "0" ? "forever" : val + " days"}`, "success");
+      else push(d.message || "Failed to update retention", "error");
+    } catch { push("Network error", "error"); }
+    setSavingRetention(false);
+  };
+
+  // Wire: immediate cleanup
+  const handleCleanupNow = async () => {
+    setShowCleanupConfirm(false);
+    setCleaningUp(true);
+    try {
+      const r = await fetch(`${BASE_URL}/api/settings/data-retention/cleanup`, { method: "POST" });
+      const d = await r.json();
+      if (d.status === "success") push(`Deleted data older than ${d.deleted_older_than_days} days`, "success");
+      else if (d.status === "skipped") push("Retention is set to forever — nothing to clean up", "warn");
+      else push(d.message || "Cleanup failed", "error");
+    } catch { push("Network error", "error"); }
+    setCleaningUp(false);
+  };
+
+  const retentionLabel = { "30": "30 days", "60": "60 days", "90": "90 days", "180": "6 months", "365": "1 year", "0": "forever" }[s.retention] || s.retention + " days";
 
   if (loading) return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -703,61 +791,110 @@ function GeneralSection({ push }) {
         <SettingRow label="Run in system tray" desc="Minimise to tray instead of closing" control={<Toggle on={s.tray} onChange={v => set("tray", v)} />} />
         <SettingRow label="Desktop notifications" desc="Alerts for limit warnings and events" control={<Toggle on={s.notifications} onChange={v => set("notifications", v)} />} />
         <SettingRow label="Show yesterday comparison" desc="Show 'vs yesterday' indicators on dashboard" control={<Toggle on={s.show_yesterday_comparison} onChange={v => set("show_yesterday_comparison", v)} />} />
-        <SettingRow label="Hardware Acceleration" desc="Boost performance using GPU, turn off to save RAM (requires restart)" control={<Toggle on={s.hardware_acceleration} onChange={v => set("hardware_acceleration", v)} />} />
-        <SettingRow borderless label="Data retention" desc="Delete activity older than"
-          control={<select value={s.retention} onChange={e => set("retention", e.target.value)} style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, padding: "6px 12px", fontSize: 12, fontFamily: "'DM Sans',sans-serif", outline: "none", cursor: "pointer" }}>
-            {[["30", "30 days"], ["60", "60 days"], ["90", "90 days"], ["180", "6 months"], ["365", "1 year"], ["0", "Forever"]].map(([v, l]) => <option key={v} value={v} style={{ background: "#0f1222" }}>{l}</option>)}
-          </select>} />
+        <SettingRow borderless label="Hardware Acceleration" desc="Boost performance using GPU, turn off to save RAM (requires restart)" control={<Toggle on={s.hardware_acceleration} onChange={v => set("hardware_acceleration", v)} />} />
       </Card>
+
+      {/* Data Retention Card */}
+      <Card>
+        <SectionLabel>Data Retention</SectionLabel>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, paddingBottom: 14, borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: C.text }}>Auto-delete activity older than</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3, lineHeight: 1.4 }}>Data outside this window is permanently removed on next cleanup cycle</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {savingRetention && <span style={{ width: 10, height: 10, borderRadius: "50%", border: `2px solid ${C.green}40`, borderTopColor: C.green, animation: "sp-spin 0.65s linear infinite", display: "inline-block" }} />}
+            <div style={{ position: "relative" }}>
+              <select
+                className="sp-select"
+                value={s.retention}
+                onChange={e => handleRetentionChange(e.target.value)}
+                style={{
+                  background: "rgba(20,24,40,0.9)", border: `1px solid ${C.borderMed}`,
+                  borderRadius: 10, color: C.text, padding: "7px 36px 7px 14px", fontSize: 12,
+                  fontFamily: "'DM Sans',sans-serif", cursor: "pointer",
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)", minWidth: 110
+                }}>
+                {[["30", "30 days"], ["60", "60 days"], ["90", "90 days"], ["180", "6 months"], ["365", "1 year"], ["0", "Forever"]].map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
+              <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 10, color: C.textMuted }}>▾</span>
+            </div>
+          </div>
+        </div>
+        {s.retention !== "0" && (
+          <div style={{ paddingTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
+                <span style={{ color: C.yellow, fontWeight: 500 }}>Cleanup now</span> — immediately delete all activity older than <span style={{ color: C.text, fontWeight: 500 }}>{retentionLabel}</span>. This cannot be undone.
+              </div>
+            </div>
+            <Btn variant="warning" size="sm" loading={cleaningUp} onClick={() => setShowCleanupConfirm(true)}>
+              {cleaningUp ? "Cleaning…" : "🗑 Clean Now"}
+            </Btn>
+          </div>
+        )}
+      </Card>
+
       <Card>
         <SectionLabel>Tracking</SectionLabel>
-        <SettingRow label="Idle detection" desc="Detect when you step away" control={<Toggle on={s.idle} onChange={v => set("idle", v)} />} />
+        <SettingRow label="Idle detection" desc="Detect when you step away from the keyboard" control={<Toggle on={s.idle} onChange={handleIdleToggle} loading={togglingIdle} />} />
         <SettingRow label="File system logging" desc="Monitor local files created, modified or deleted" control={<Toggle on={s.file_logging_enabled} onChange={v => set("file_logging_enabled", v)} />} />
         {s.file_logging_enabled && <SettingRow label="Essential files only" desc="Only track common documents, code and media types" control={<Toggle on={s.file_logging_essential_only} onChange={v => set("file_logging_essential_only", v)} />} />}
-        <SettingRow borderless label="Browser tab tracking" desc="Track active website titles" control={<Toggle on={false} onChange={() => { }} />} />
+        <SettingRow borderless label="Browser tab tracking" desc="Track active website titles in supported browsers" control={<Toggle on={s.browser_tracking} onChange={handleBrowserToggle} loading={togglingBrowser} />} />
       </Card>
 
-      {/* Reset confirmation row */}
-      {
-        confirmReset && (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 10, padding: "12px 16px",
-            background: "rgba(251,191,36,0.07)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 12,
-            animation: "sp-banner-in 0.2s ease"
-          }}>
-            <span style={{ fontSize: 12, color: C.yellow, flex: 1 }}>Reset all settings to defaults?</span>
-            <button onClick={handleReset} style={{
-              fontSize: 12, color: C.yellow, background: "rgba(251,191,36,0.12)",
-              border: "1px solid rgba(251,191,36,0.3)", borderRadius: 8, padding: "4px 14px", cursor: "pointer"
-            }}>
-              Yes, reset
-            </button>
-            <button onClick={() => setConfirmReset(false)} style={{
-              fontSize: 12, color: C.textMuted, background: "transparent",
-              border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 14px", cursor: "pointer"
-            }}>
-              Cancel
-            </button>
-          </div>
-        )
-      }
+      {/* Cleanup Confirmation Modal */}
+      {showCleanupConfirm && (
+        <WarningModal
+          variant="danger"
+          title="Run cleanup now?"
+          body={`This will immediately and permanently delete all activity data older than ${retentionLabel}. This action cannot be undone.`}
+          confirmLabel={`Delete data older than ${retentionLabel}`}
+          onConfirm={handleCleanupNow}
+          onCancel={() => setShowCleanupConfirm(false)}
+        />
+      )}
 
-      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center" }}>
-        {/* Dirty state indicator */}
-        {isDirty && (
+      {/* Reset confirmation row */}
+      {confirmReset && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, padding: "12px 16px",
+          background: "rgba(251,191,36,0.07)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 12,
+          animation: "sp-banner-in 0.2s ease"
+        }}>
+          <span style={{ fontSize: 12, color: C.yellow, flex: 1 }}>Reset all settings to defaults?</span>
+          <button onClick={handleReset} style={{
+            fontSize: 12, color: C.yellow, background: "rgba(251,191,36,0.12)",
+            border: "1px solid rgba(251,191,36,0.3)", borderRadius: 8, padding: "4px 14px", cursor: "pointer"
+          }}>Yes, reset</button>
+          <button onClick={() => setConfirmReset(false)} style={{
+            fontSize: 12, color: C.textMuted, background: "transparent",
+            border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 14px", cursor: "pointer"
+          }}>Cancel</button>
+        </div>
+      )}
+
+      {isDirty && (
+        <div className="sp-sticky-bar" style={{
+          position: "sticky", bottom: 0, marginTop: 4, marginLeft: -28, marginRight: -28,
+          padding: "14px 28px",
+          background: "linear-gradient(0deg, rgba(8,11,20,0.98) 80%, transparent)",
+          display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center",
+          zIndex: 10,
+        }}>
           <span style={{
             fontSize: 11, color: C.yellow, background: "rgba(251,191,36,0.08)",
-            border: "1px solid rgba(251,191,36,0.2)", borderRadius: 8, padding: "3px 10px",
-            animation: "sp-banner-in 0.2s ease"
+            border: "1px solid rgba(251,191,36,0.2)", borderRadius: 8, padding: "4px 12px",
+            fontWeight: 500, letterSpacing: "0.01em"
           }}>
             ● Unsaved changes
           </span>
-        )}
-        <Btn variant="secondary" onClick={() => setConfirmReset(true)}>Reset defaults</Btn>
-        <Btn variant={isDirty ? "primary" : "secondary"} onClick={handleSave}>
-          {isDirty ? "Save changes" : "Saved ✓"}
-        </Btn>
-      </div>
+          <Btn variant="secondary" size="sm" onClick={() => setConfirmReset(true)}>Reset</Btn>
+          <Btn variant="primary" size="sm" onClick={handleSave}>Save changes</Btn>
+        </div>
+      )}
     </div >
   );
 }
@@ -1219,51 +1356,63 @@ function SideNav({ active, onChange, tgStatus, tgConfig, updateState }) {
   const tgSt = tgConfig ? computeStatus(tgConfig.enabled, tgStatus?.running, !!(tgConfig.token)) : null;
   const hasUpdate = updateState?.status === "update_available";
   return (
-    <nav style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      {NAV_ITEMS.map(({ id, icon, label, sub }) => {
+    <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {NAV_ITEMS.map(({ id, icon, label, sub }, idx) => {
         const isAct = active === id;
         const badge = id === "telegram" && tgSt && tgSt.key !== "running" && tgSt.key !== "disabled";
         const updateBadge = id === "updates" && hasUpdate;
+        const showDivider = idx === 3; // divider before Updates+About
         return (
-          <button key={id} onClick={() => onChange(id)} className={`sp-nav-btn${isAct ? " active" : ""}`}
-            style={{
-              display: "flex", alignItems: "center", gap: 12, padding: "11px 14px 11px 16px",
-              borderRadius: 12, border: "none", cursor: "pointer", textAlign: "left", width: "100%",
-              position: "relative", background: isAct ? "rgba(74,222,128,0.09)" : "transparent",
-              color: isAct ? C.green : C.textSub
-            }}>
-            {/* Left edge accent bar */}
-            <div style={{
-              position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", width: 3,
-              borderRadius: 4, height: isAct ? "60%" : 0, background: C.green,
-              boxShadow: isAct ? `0 0 8px ${C.green}` : "none",
-              transition: "height 0.25s cubic-bezier(0.34,1.56,0.64,1)"
-            }} />
-            <span style={{ fontSize: 17 }}>{icon}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: isAct ? 600 : 400, fontFamily: "'DM Sans',sans-serif" }}>{label}</div>
-              <div style={{ fontSize: 11, color: isAct ? C.green + "aa" : C.textMuted, marginTop: 1 }}>{sub}</div>
-            </div>
-            {badge && (
-              <span style={{
-                fontSize: 9, fontWeight: 600, color: tgSt.color, background: `${tgSt.color}18`,
-                border: `1px solid ${tgSt.color}33`, borderRadius: 10, padding: "2px 7px",
-                letterSpacing: "0.03em", textTransform: "uppercase"
+          <div key={id}>
+            {showDivider && <div style={{ height: 1, background: C.border, margin: "8px 4px", borderRadius: 1 }} />}
+            <button onClick={() => onChange(id)} className={`sp-nav-btn${isAct ? " active" : ""}`}
+              style={{
+                display: "flex", alignItems: "center", gap: 11, padding: "10px 12px 10px 14px",
+                borderRadius: 12, border: "none", cursor: "pointer", textAlign: "left", width: "100%",
+                position: "relative", background: isAct ? "rgba(74,222,128,0.09)" : "transparent",
+                color: isAct ? C.green : C.textSub
               }}>
-                {tgSt.label}
-              </span>
-            )}
-            {updateBadge && (
-              <span style={{
-                fontSize: 9, fontWeight: 700, color: C.green, background: "rgba(74,222,128,0.15)",
-                border: "1px solid rgba(74,222,128,0.35)", borderRadius: 10, padding: "2px 7px",
-                letterSpacing: "0.03em", textTransform: "uppercase",
-                animation: "sp-ping 2s cubic-bezier(0,0,0.2,1) infinite",
+              {/* Left accent bar */}
+              <div style={{
+                position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", width: 3,
+                borderRadius: 4, height: isAct ? "55%" : 0, background: C.green,
+                boxShadow: isAct ? `0 0 8px ${C.green}88` : "none",
+                transition: "height 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s"
+              }} />
+              {/* Icon with background */}
+              <div style={{
+                width: 30, height: 30, borderRadius: 9, flexShrink: 0,
+                background: isAct ? "rgba(74,222,128,0.12)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${isAct ? "rgba(74,222,128,0.2)" : C.border}`,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15,
+                transition: "background 0.18s, border-color 0.18s"
               }}>
-                New
-              </span>
-            )}
-          </button>
+                {icon}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: isAct ? 600 : 400, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.2 }}>{label}</div>
+                <div style={{ fontSize: 10, color: isAct ? C.green + "99" : C.textMuted, marginTop: 2, lineHeight: 1 }}>{sub}</div>
+              </div>
+              {badge && (
+                <span style={{
+                  fontSize: 9, fontWeight: 600, color: tgSt.color, background: `${tgSt.color}18`,
+                  border: `1px solid ${tgSt.color}33`, borderRadius: 10, padding: "2px 7px",
+                  letterSpacing: "0.03em", textTransform: "uppercase", flexShrink: 0
+                }}>
+                  {tgSt.label}
+                </span>
+              )}
+              {updateBadge && (
+                <span style={{
+                  fontSize: 9, fontWeight: 700, color: C.green, background: "rgba(74,222,128,0.15)",
+                  border: "1px solid rgba(74,222,128,0.35)", borderRadius: 10, padding: "2px 7px",
+                  letterSpacing: "0.03em", textTransform: "uppercase", flexShrink: 0
+                }}>
+                  New
+                </span>
+              )}
+            </button>
+          </div>
         );
       })}
     </nav>
@@ -1354,16 +1503,28 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
             <div style={{ width: 200, flexShrink: 0, padding: "16px 12px", borderRight: `1px solid ${C.border}`, background: "rgba(255,255,255,0.008)", overflowY: "auto" }}>
               <SideNav active={section} onChange={setSection} tgStatus={tgStatus} tgConfig={tgConfig} updateState={updateState} />
             </div>
-            <div key={section} className="sp-scroll" style={{ flex: 1, overflowY: "auto", padding: "24px 28px", animation: "sp-slide-in 0.24s ease" }}>
-              <div style={{ marginBottom: 22 }}>
-                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: C.text, fontWeight: 400 }}>{meta[section]?.label}</div>
-                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5 }}>{meta[section]?.sub}</div>
-              </div>
-              {section === "general" && <GeneralSection push={push} />}
-              {section === "telegram" && <TelegramSection push={push} />}
-              {section === "security" && <SecuritySection push={push} />}
-              {section === "updates" && <UpdateSection push={push} />}
-              {section === "about" && <AboutSection push={push} />}
+            {/* Single stable scroll container — no remount on tab switch */}
+            <div className="sp-scroll" style={{ flex: 1, overflowY: "auto", padding: "24px 28px", position: "relative" }}>
+              {Object.keys(meta).map(id => (
+                <div key={id} style={{
+                  position: id === section ? "relative" : "absolute",
+                  top: 0, left: 0, right: 0,
+                  opacity: id === section ? 1 : 0,
+                  pointerEvents: id === section ? "auto" : "none",
+                  transition: "opacity 0.22s ease",
+                  visibility: id === section ? "visible" : "hidden",
+                }}>
+                  <div style={{ marginBottom: 24, paddingBottom: 18, borderBottom: `1px solid ${C.border}` }}>
+                    <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 21, color: C.text, fontWeight: 400, lineHeight: 1.1 }}>{meta[id]?.label}</div>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5, lineHeight: 1.4 }}>{meta[id]?.sub}</div>
+                  </div>
+                  {id === "general" && <GeneralSection push={push} />}
+                  {id === "telegram" && <TelegramSection push={push} />}
+                  {id === "security" && <SecuritySection push={push} />}
+                  {id === "updates" && <UpdateSection push={push} />}
+                  {id === "about" && <AboutSection push={push} />}
+                </div>
+              ))}
             </div>
           </div>
         </div>

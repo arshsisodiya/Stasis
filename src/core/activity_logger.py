@@ -8,7 +8,7 @@ from pynput import mouse, keyboard
 
 from src.core.url_sniffer import get_browser_url
 from src.analytics.daily_summary import update_daily_stats
-from src.database.database import get_connection
+from src.database.database import get_connection, get_setting
 from src.core.process_cache import process_cache
 from src.core.shutdown import shutdown_event
 import win32con
@@ -391,10 +391,12 @@ def get_active_window_info() -> dict | None:
         if not app_name:
             return None
 
+        browser_tracking = get_setting("browser_tracking", "1") == "1"
+
         url = "N/A"
-        if any(b in app_name.lower() for b in ["chrome", "msedge", "brave", "firefox", "opera"]):
+
+        if browser_tracking and any(b in app_name.lower() for b in ["chrome", "msedge", "brave", "firefox", "opera"]):
             try:
-                # Pass hwnd directly — avoids a redundant GetForegroundWindow call
                 detected = get_browser_url(hwnd=hwnd)
                 if detected:
                     url = detected
@@ -630,11 +632,14 @@ def start_logging():
             info = get_active_window_info()
 
             # ---- determine idle state ----
-            idle_secs     = input_tracker.get_idle_seconds()
+            idle_detection_enabled = get_setting("idle_detection", "1") == "1"
+            idle_secs = input_tracker.get_idle_seconds() if idle_detection_enabled else 0
             media_playing = is_media_active(info)
+            
             # User is idle if: there's a window, no input for threshold, and no media
             currently_idle = (
-                info is not None
+                idle_detection_enabled
+                and info is not None
                 and idle_secs > IDLE_THRESHOLD
                 and not media_playing
             )

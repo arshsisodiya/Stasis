@@ -604,6 +604,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
                     data={data} stats={stats} hourly={hourly}
                     prevWellbeing={prevWellbeing} focusData={focusData}
                     sessionDuration={isToday ? (data?.sessionDuration || 0) : 0}
+                    dateKey={selectedDate}
                   />
                 </div>
               </div>

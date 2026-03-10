@@ -11,9 +11,10 @@ def create_app(app_controller):
     app = Flask(__name__)
     CORS(app)
 
-    # Inject controller into routes
+    # Inject controller into telegram routes
     set_app_controller(app_controller)
 
+    # Register API modules
     app.register_blueprint(telegram_bp)
     app.register_blueprint(wellbeing_bp)
     app.register_blueprint(update_bp)
@@ -22,6 +23,7 @@ def create_app(app_controller):
 
 
 class APIServer:
+
     def __init__(self, app_controller, host="127.0.0.1", port=7432):
         self.host = host
         self.port = port
@@ -30,7 +32,9 @@ class APIServer:
 
     def start(self):
         self.server = make_server(self.host, self.port, self.app)
+
         print(f"API running on http://{self.host}:{self.port}")
+
         self.server.serve_forever()
 
     def stop(self):

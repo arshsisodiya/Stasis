@@ -493,6 +493,12 @@ def set_setting(key: str, value: str):
 
     conn.commit()
     conn.close()
+    # Refresh settings cache
+    try:
+        from src.core.settings_cache import settings_cache
+        settings_cache.refresh()
+    except Exception:
+        pass
 
 def get_setting(key: str, default=None):
     conn = get_connection()

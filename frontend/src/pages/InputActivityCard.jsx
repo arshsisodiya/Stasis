@@ -1,13 +1,14 @@
 import { fmtTime } from "../shared/utils";
 import { useCountUp } from "../shared/hooks";
 import { SectionCard, AppIcon } from "../shared/components";
+import { Sparkline } from "../WellbeingDashboard";
 
 // ─── INPUT ACTIVITY CARD ──────────────────────────────────────────────────────
 // Props:
 //   data     – wellbeing data { totalKeystrokes, totalClicks }
 //   stats    – array of app stat rows (for Top Apps list)
 //   countKey – key to re-trigger count-up animation
-export default function InputActivityCard({ data, stats, countKey }) {
+export default function InputActivityCard({ data, stats, countKey, sparkValues }) {
   const kC = useCountUp(data?.totalKeystrokes || 0, 1600, countKey);
   const clC = useCountUp(data?.totalClicks || 0, 1600, countKey);
 
@@ -37,9 +38,12 @@ export default function InputActivityCard({ data, stats, countKey }) {
     <SectionCard
       className="metric-card"
       style={{
+        display: "flex", flexDirection: "column",
+        flex: 1,
         borderLeft: "3px solid #a78bfa",
         background: "linear-gradient(135deg,rgba(167,139,250,0.04) 0%,rgba(15,18,34,0.7) 60%)",
-        minHeight: 190, animationDelay: "180ms",
+        animationDelay: "180ms",
+        paddingBottom: sparkValues?.length >= 2 ? 0 : undefined,
       }}
     >
       <div style={{
@@ -131,6 +135,18 @@ export default function InputActivityCard({ data, stats, countKey }) {
           </div>
         </div>
       </div>
+
+      {sparkValues?.length >= 2 && (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          width: "calc(100% + 48px)", marginLeft: -24, marginTop: "auto",
+          padding: "6px 16px 10px",
+          borderTop: "1px solid rgba(255,255,255,0.04)",
+        }}>
+          <span style={{ fontSize: 9, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.08em" }}>7d input</span>
+          <Sparkline values={sparkValues} color="#a78bfa" width={72} height={20} />
+        </div>
+      )}
     </SectionCard>
   );
 }

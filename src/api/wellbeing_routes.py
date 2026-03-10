@@ -59,3 +59,4 @@ import src.api.dashboard_routes
 import src.api.focus_routes
 import src.api.limits_routes
 import src.api.danger_routes
+import src.api.spark_routes

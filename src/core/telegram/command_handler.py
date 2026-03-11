@@ -8,6 +8,7 @@ from src.core.telegram.system_status import get_status_text
 from src.core.telegram.screenshot import capture_screenshot
 from src.core.system_actions import shutdown_system, restart_system, lock_system
 from src.core.telegram.webcam import capture_webcam, record_video
+from src.config.settings_manager import TelegramSettingsManager
 from src.config.settings_manager import SettingsManager
 from src.utils.dependency_manager import is_installed
 
@@ -51,6 +52,10 @@ class CommandHandler:
                 self.api.send_message(get_status_text())
 
             elif command == "/screenshot":
+                if not TelegramSettingsManager.get_bool("telegram_screenshot_allowed", True):
+                    self.api.send_message("❌ Screenshot access is disabled in settings.")
+                    return
+
                 if not is_installed("Pillow"):
                     self.api.send_message("First-time setup: Installing screenshot dependencies... This may take a minute.")
                 
@@ -62,28 +67,45 @@ class CommandHandler:
                     self.api.send_message("Failed to capture screenshot. Make sure dependencies are installed.")
 
             elif command == "/lock":
+                if not TelegramSettingsManager.get_bool("telegram_system_control_allowed", True):
+                    self.api.send_message("❌ System control is disabled in settings.")
+                    return
                 self.api.send_message("Locking system...")
                 lock_system()
 
             elif command == "/shutdown":
+                if not TelegramSettingsManager.get_bool("telegram_system_control_allowed", True):
+                    self.api.send_message("❌ System control is disabled in settings.")
+                    return
                 self.api.send_message(
                     "Shutdown requested.\nSend `/shutdown confirm` to proceed."
                 )
 
             elif command == "/shutdown confirm":
+                if not TelegramSettingsManager.get_bool("telegram_system_control_allowed", True):
+                    return
                 self.api.send_message("Shutting down...")
                 shutdown_system()
 
             elif command == "/restart":
+                if not TelegramSettingsManager.get_bool("telegram_system_control_allowed", True):
+                    self.api.send_message("❌ System control is disabled in settings.")
+                    return
                 self.api.send_message(
                     "Restart requested.\nSend `/restart confirm` to proceed."
                 )
 
             elif command == "/restart confirm":
+                if not TelegramSettingsManager.get_bool("telegram_system_control_allowed", True):
+                    return
                 self.api.send_message("Restarting...")
                 restart_system()
 
             elif command == "/camera":
+                if not TelegramSettingsManager.get_bool("telegram_webcam_allowed", True):
+                    self.api.send_message("❌ Webcam access is disabled in settings.")
+                    return
+
                 if not is_installed("opencv-python-headless"):
                     self.api.send_message("First-time setup: Installing camera dependencies... This may take a minute.")
                 
@@ -98,12 +120,16 @@ class CommandHandler:
                 self._send_logs()
 
             elif command.startswith("/video"):
+                if not TelegramSettingsManager.get_bool("telegram_webcam_allowed", True):
+                    self.api.send_message("❌ Webcam access is disabled in settings.")
+                    return
+
                 parts = command.split()
                 duration = 10
                 if len(parts) > 1 and parts[1].isdigit():
                     duration = int(parts[1])
 
-                if not is_installed("opencv-python"):
+                if not is_installed("opencv-python-headless"):
                     self.api.send_message("First-time setup: Installing camera dependencies... This may take a minute.")
 
                 self.api.send_message(f"Recording {duration}s video...")

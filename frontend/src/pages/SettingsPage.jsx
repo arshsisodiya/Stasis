@@ -436,14 +436,76 @@ function TelegramSetupForm({ onSuccess, push }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // TELEGRAM — LIVE CARD (running)
 // ═══════════════════════════════════════════════════════════════════════════════
-function TelegramLiveCard({ status, config, onAction, loadingAction }) {
+// ═══════════════════════════════════════════════════════════════════════════════
+// TELEGRAM — LIVE CARD (running)
+// ═══════════════════════════════════════════════════════════════════════════════
+function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRefresh }) {
   const [showLogs, setShowLogs] = useState(false);
+  const [updatingPerms, setUpdatingPerms] = useState({});
+  const [installing, setInstalling] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
+
   const st = computeStatus(config?.enabled, status?.running, !!config?.token);
   const borderColor = st.key === "running" ? "rgba(74,222,128,0.2)" : st.key === "degraded" || st.key === "paused" ? "rgba(251,191,36,0.14)" : C.border;
 
   const recentCmds = config?.recent_commands || [];
   const lastCmd = recentCmds[0];
   const lastCmdText = lastCmd ? `Last command received: ${timeAgo(lastCmd.timestamp)}` : "No commands yet";
+
+  const togglePermission = async (key, val) => {
+    // Specialized logic for webcam
+    if (key === "webcam_allowed" && val) {
+      try {
+        const r = await fetch(`${BASE_URL}/api/dependencies/check?package=opencv-python-headless`);
+        const d = await r.json();
+        if (!d.installed) {
+          setShowInstallModal(true);
+          return;
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    applyPermission(key, val);
+  };
+
+  const applyPermission = async (key, val) => {
+    setUpdatingPerms(p => ({ ...p, [key]: true }));
+    try {
+      const r = await fetch(`${BASE_URL}/api/telegram/update-permissions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: val })
+      });
+      const d = await r.json();
+      if (d.success) {
+        push(d.message, "success");
+        if (onRefresh) onRefresh();
+      } else {
+        push(d.error || "Update failed", "error");
+      }
+    } catch (e) { push("Network error", "error"); }
+    setUpdatingPerms(p => ({ ...p, [key]: false }));
+  };
+
+  const handleInstall = async () => {
+    setInstalling(true);
+    try {
+      const r = await fetch(`${BASE_URL}/api/dependencies/install`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ package: "opencv-python-headless" })
+      });
+      const d = await r.json();
+      if (d.success) {
+        push("OpenCV installed successfully", "success");
+        setShowInstallModal(false);
+        applyPermission("webcam_allowed", true);
+      } else {
+        push("Installation failed", "error");
+      }
+    } catch (e) { push("Installation failed — check connection", "error"); }
+    setInstalling(false);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -456,7 +518,7 @@ function TelegramLiveCard({ status, config, onAction, loadingAction }) {
               <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px" }}>
                 <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Uptime</div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: st.key === "running" ? C.green : C.textMuted, marginTop: 2 }}>
-                  {st.key === "running" ? "Active 2h 14m" : "Offline"}
+                  {st.key === "running" ? "Active" : "Offline"}
                 </div>
               </div>
               <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px" }}>
@@ -466,8 +528,8 @@ function TelegramLiveCard({ status, config, onAction, loadingAction }) {
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 24 }}>
-            <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>Bot Token</div>
-            <code style={{ fontSize: 11, color: C.textSub, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 7, padding: "4px 10px", fontFamily: "monospace" }}>{config?.token || "—"}</code>
+            <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>Bot Username</div>
+            <code style={{ fontSize: 11, color: C.textSub, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 7, padding: "4px 10px", fontFamily: "monospace" }}>{config?.bot_username || "—"}</code>
             <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginTop: 10, marginBottom: 5 }}>Chat ID</div>
             <code style={{ fontSize: 11, color: C.textSub, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 7, padding: "4px 10px", fontFamily: "monospace" }}>{config?.chat_id || "—"}</code>
           </div>
@@ -525,11 +587,23 @@ function TelegramLiveCard({ status, config, onAction, loadingAction }) {
       {/* ── Security & Permissions ── */}
       <Card>
         <SectionLabel>Security & Permissions</SectionLabel>
-        <SettingRow label="Allow remote screen capture" desc="Allow bot to send screenshots of your display" control={<Toggle on={true} onChange={() => { }} />} />
-        <SettingRow label="Allow webcam access" desc="Allow bot to take photos or record video" control={<Toggle on={true} onChange={() => { }} />} />
-        <SettingRow label="System control commands" desc="Enable /shutdown, /restart and /lock" control={<Toggle on={true} onChange={() => { }} />} />
+        <SettingRow label="Allow remote screen capture" desc="Allow bot to send screenshots of your display" control={<Toggle on={config?.screenshot_allowed} onChange={v => togglePermission("screenshot_allowed", v)} loading={updatingPerms.screenshot_allowed} />} />
+        <SettingRow label="Allow webcam access" desc="Allow bot to take photos or record video" control={<Toggle on={config?.webcam_allowed} onChange={v => togglePermission("webcam_allowed", v)} loading={updatingPerms.webcam_allowed} />} />
+        <SettingRow label="System control commands" desc="Enable /shutdown, /restart and /lock" control={<Toggle on={config?.system_control_allowed} onChange={v => togglePermission("system_control_allowed", v)} loading={updatingPerms.system_control_allowed} />} />
         <SettingRow borderless label="Interactive confirmation" desc="Ask for confirmation on destructive commands" control={<Toggle on={true} onChange={() => { }} />} />
       </Card>
+
+      {showInstallModal && (
+        <WarningModal
+          variant="warning"
+          title="Library Required"
+          body="Webcam access requires the 'opencv-python-headless' library (approx 30 MB). Would you like to download it now?"
+          confirmLabel={installing ? "Downloading..." : "Download & Enable"}
+          onConfirm={handleInstall}
+          onCancel={() => setShowInstallModal(false)}
+          loading={installing}
+        />
+      )}
     </div>
   );
 }
@@ -651,7 +725,7 @@ function TelegramSection({ push }) {
         )}
       </Card>
 
-      {hasCreds && <TelegramLiveCard status={status} config={config} onAction={requestAction} loadingAction={loadingAction} />}
+      {hasCreds && <TelegramLiveCard status={status} config={config} onAction={requestAction} loadingAction={loadingAction} push={push} onRefresh={fetchAll} />}
       {!hasCreds && <TelegramSetupForm onSuccess={fetchAll} push={push} />}
 
       {modal === "disable" && <WarningModal variant="warning" title="Disable Telegram?" body="The bot service will stop. Your credentials are kept — you can re-enable anytime." confirmLabel="Disable" onConfirm={() => executeAction("disable")} onCancel={() => setModal(null)} />}

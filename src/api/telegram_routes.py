@@ -133,6 +133,54 @@ def telegram_config():
         "chat_id": chat_masked,
         "bot_username": TelegramSettingsManager.get("telegram_bot_username"),
         "recent_commands": recent_cmds,
+        "webcam_allowed": TelegramSettingsManager.get_bool("telegram_webcam_allowed", True),
+        "screenshot_allowed": TelegramSettingsManager.get_bool("telegram_screenshot_allowed", True),
+        "system_control_allowed": TelegramSettingsManager.get_bool("telegram_system_control_allowed", True),
+    })
+
+
+@telegram_bp.route("/api/telegram/update-permissions", methods=["POST"])
+def update_telegram_permissions():
+    """Updates Telegram-specific security permissions."""
+    data = request.get_json(silent=True) or {}
+    
+    if "webcam_allowed" in data:
+        TelegramSettingsManager.set("telegram_webcam_allowed", "true" if data["webcam_allowed"] else "false")
+    if "screenshot_allowed" in data:
+        TelegramSettingsManager.set("telegram_screenshot_allowed", "true" if data["screenshot_allowed"] else "false")
+    if "system_control_allowed" in data:
+        TelegramSettingsManager.set("telegram_system_control_allowed", "true" if data["system_control_allowed"] else "false")
+        
+    return jsonify({"success": True, "message": "Permissions updated"})
+
+
+@telegram_bp.route("/api/dependencies/check", methods=["GET"])
+def check_dependency():
+    """Checks if a specific python package is installed."""
+    package = request.args.get("package")
+    if not package:
+        return jsonify({"error": "package parameter required"}), 400
+        
+    from src.utils.dependency_manager import is_installed
+    return jsonify({
+        "package": package,
+        "installed": is_installed(package)
+    })
+
+
+@telegram_bp.route("/api/dependencies/install", methods=["POST"])
+def install_dependency():
+    """Triggers installation of a python package."""
+    data = request.get_json(silent=True) or {}
+    package = data.get("package")
+    if not package:
+        return jsonify({"error": "package is required"}), 400
+        
+    from src.utils.dependency_manager import install_package
+    success = install_package(package)
+    return jsonify({
+        "package": package,
+        "success": success
     })
 
 

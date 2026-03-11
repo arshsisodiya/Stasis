@@ -29,7 +29,7 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    excludes=['unittest', 'lib2to3', 'pydoc', 'doctest', 'curses', 'turtle', 'antigravity', 'distutils', 'test', 'matplotlib', 'scipy', 'pandas', 'IPython', 'pywinauto', 'PyQt5', 'PySide2', 'OpenGL'],
+    excludes=['unittest', 'lib2to3', 'pydoc', 'doctest', 'curses', 'turtle', 'antigravity', 'distutils', 'test', 'matplotlib', 'scipy', 'pandas', 'IPython', 'pywinauto', 'PyQt5', 'PySide2', 'OpenGL', 'cv2', 'numpy'],
     optimize=0,
 )
 pyz = PYZ(a.pure)

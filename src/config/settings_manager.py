@@ -119,7 +119,10 @@ class TelegramSettingsManager(BaseSettingsManager):
         defaults = {
             "telegram_enabled": "false",
             "telegram_token": None,
-            "telegram_chat_id": None
+            "telegram_chat_id": None,
+            "telegram_webcam_allowed": "true",
+            "telegram_screenshot_allowed": "true",
+            "telegram_system_control_allowed": "true"
         }
 
         for key, value in defaults.items():

@@ -2719,13 +2719,53 @@
     // loadRelease();
 
     /* ── Documentation overlay ── */
-    const docsOverlay = document.getElementById('docsOverlay');
-    const docsSearch = document.getElementById('docsSearch');
-    const docsContent = document.getElementById('docsContent');
-    const docsNoResult = document.getElementById('docsNoResult');
+    let docsOverlay, docsSearch, docsContent, docsNoResult;
     let currentPage = 'overview';
+    let docsInitialized = false;
+
+    function initDocs() {
+      if (docsInitialized) return;
+      docsOverlay  = document.getElementById('docsOverlay');
+      docsSearch   = document.getElementById('docsSearch');
+      docsContent  = document.getElementById('docsContent');
+      docsNoResult = document.getElementById('docsNoResult');
+      document.querySelectorAll('.docs-nav-link').forEach(btn => {
+        btn.addEventListener('click', () => showDocPage(btn.dataset.page));
+      });
+      docsSearch.addEventListener('input', () => {
+        const term = docsSearch.value.trim().toLowerCase();
+        clearDocSearch();
+        if (!term) {
+          showDocPage(currentPage);
+          return;
+        }
+        // search across all pages
+        const pages = document.querySelectorAll('.doc-page');
+        let firstMatch = null;
+        pages.forEach(pg => {
+          // clone to test
+          const text = pg.textContent.toLowerCase();
+          if (text.includes(term)) {
+            if (!firstMatch) firstMatch = pg.id.replace('doc-', '');
+            highlight(pg, term);
+          }
+        });
+        if (firstMatch) {
+          showDocPage(firstMatch);
+          docsNoResult.style.display = 'none';
+          // scroll to first highlight
+          const firstHL = docsContent.querySelector('mark.doc-highlight');
+          if (firstHL) firstHL.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        } else {
+          document.querySelectorAll('.doc-page').forEach(pg => pg.classList.remove('active'));
+          docsNoResult.style.display = 'block';
+        }
+      });
+      docsInitialized = true;
+    }
 
     function openDocs(page) {
+      initDocs();
       docsOverlay.classList.add('open');
       document.body.style.overflow = 'hidden';
       if (page) showDocPage(page);
@@ -2754,14 +2794,9 @@
       clearDocSearch();
     }
 
-    // sidebar clicks
-    document.querySelectorAll('.docs-nav-link').forEach(btn => {
-      btn.addEventListener('click', () => showDocPage(btn.dataset.page));
-    });
-
     // Escape key closes overlay
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && docsOverlay.classList.contains('open')) closeDocs();
+      if (docsOverlay && e.key === 'Escape' && docsOverlay.classList.contains('open')) closeDocs();
     });
 
     // Search
@@ -2802,35 +2837,6 @@
       }
     }
 
-    docsSearch.addEventListener('input', () => {
-      const term = docsSearch.value.trim().toLowerCase();
-      clearDocSearch();
-      if (!term) {
-        showDocPage(currentPage);
-        return;
-      }
-      // search across all pages
-      const pages = document.querySelectorAll('.doc-page');
-      let firstMatch = null;
-      pages.forEach(pg => {
-        // clone to test
-        const text = pg.textContent.toLowerCase();
-        if (text.includes(term)) {
-          if (!firstMatch) firstMatch = pg.id.replace('doc-', '');
-          highlight(pg, term);
-        }
-      });
-      if (firstMatch) {
-        showDocPage(firstMatch);
-        docsNoResult.style.display = 'none';
-        // scroll to first highlight
-        const firstHL = docsContent.querySelector('mark.doc-highlight');
-        if (firstHL) firstHL.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      } else {
-        document.querySelectorAll('.doc-page').forEach(pg => pg.classList.remove('active'));
-        docsNoResult.style.display = 'block';
-      }
-    });
   </script>
   <!-- ═══ DOCUMENTATION OVERLAY ═══ -->
   <div class="docs-overlay" id="docsOverlay" role="dialog" aria-modal="true" aria-label="Documentation">

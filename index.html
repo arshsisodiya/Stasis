@@ -1590,6 +1590,457 @@
         padding: 28px 20px
       }
     }
+
+    /* ───────────────────────────────────────────────
+   DOCUMENTATION OVERLAY
+─────────────────────────────────────────────── */
+    .docs-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 400;
+      display: flex;
+      flex-direction: column;
+      background: var(--ink);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .3s;
+    }
+
+    .docs-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* top bar */
+    .docs-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      height: 58px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(6, 9, 13, .92);
+      backdrop-filter: blur(20px);
+      flex-shrink: 0;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .docs-topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .docs-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: .78rem;
+      font-weight: 600;
+      color: var(--muted);
+      background: none;
+      border: 1px solid var(--border-m);
+      border-radius: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      transition: color .2s, border-color .2s;
+    }
+
+    .docs-back:hover {
+      color: var(--txt);
+      border-color: rgba(255, 255, 255, .22);
+    }
+
+    .docs-title-bar {
+      font-family: var(--f-head);
+      font-size: .88rem;
+      font-weight: 700;
+      color: var(--txt);
+      letter-spacing: -.02em;
+    }
+
+    .docs-topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .docs-search-wrap {
+      position: relative;
+    }
+
+    .docs-search {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 12px 7px 32px;
+      font-family: var(--f-body);
+      font-size: .78rem;
+      color: var(--txt);
+      width: 220px;
+      outline: none;
+      transition: border-color .2s;
+    }
+
+    .docs-search:focus {
+      border-color: var(--border-g);
+    }
+
+    .docs-search-ico {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted2);
+      font-size: .82rem;
+      pointer-events: none;
+    }
+
+    /* body: sidebar + content */
+    .docs-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* sidebar */
+    .docs-sidebar {
+      width: 230px;
+      flex-shrink: 0;
+      background: var(--ink2);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 20px 0 40px;
+    }
+
+    .docs-sidebar::-webkit-scrollbar {
+      width: 3px
+    }
+
+    .docs-sidebar-group {
+      margin-bottom: 6px;
+    }
+
+    .docs-sidebar-label {
+      font-family: var(--f-mono);
+      font-size: .58rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted2);
+      padding: 12px 22px 6px;
+    }
+
+    .docs-nav-link {
+      display: block;
+      padding: 8px 22px;
+      font-size: .82rem;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      background: none;
+      border: none;
+      width: 100%;
+      text-align: left;
+      transition: color .15s, background .15s;
+      border-left: 2px solid transparent;
+    }
+
+    .docs-nav-link:hover {
+      color: var(--txt);
+      background: rgba(255, 255, 255, .03);
+    }
+
+    .docs-nav-link.active {
+      color: var(--g0);
+      background: rgba(74, 222, 128, .06);
+      border-left-color: var(--g0);
+    }
+
+    /* content */
+    .docs-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 48px 64px 80px;
+    }
+
+    .docs-content::-webkit-scrollbar {
+      width: 4px
+    }
+
+    .docs-content::-webkit-scrollbar-thumb {
+      background: var(--lift);
+      border-radius: 10px
+    }
+
+    .doc-page {
+      display: none;
+      max-width: 760px;
+      animation: fade-in .25s both;
+    }
+
+    .doc-page.active {
+      display: block;
+    }
+
+    /* doc content typography */
+    .doc-page h1 {
+      font-family: var(--f-head);
+      font-weight: 800;
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      letter-spacing: -.04em;
+      line-height: 1.1;
+      margin-bottom: 12px;
+    }
+
+    .doc-page .doc-lead {
+      font-size: 1rem;
+      color: var(--muted);
+      line-height: 1.78;
+      font-weight: 300;
+      margin-bottom: 40px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 32px;
+    }
+
+    .doc-page h2 {
+      font-family: var(--f-head);
+      font-weight: 700;
+      font-size: 1.18rem;
+      letter-spacing: -.03em;
+      margin: 44px 0 14px;
+      color: var(--txt);
+    }
+
+    .doc-page h2:first-of-type {
+      margin-top: 0;
+    }
+
+    .doc-page h3 {
+      font-family: var(--f-head);
+      font-weight: 700;
+      font-size: .95rem;
+      letter-spacing: -.02em;
+      margin: 26px 0 10px;
+      color: var(--g2);
+    }
+
+    .doc-page p {
+      font-size: .9rem;
+      color: var(--muted);
+      line-height: 1.8;
+      margin-bottom: 14px;
+    }
+
+    .doc-page ul, .doc-page ol {
+      padding-left: 22px;
+      margin: 8px 0 18px;
+    }
+
+    .doc-page li {
+      font-size: .88rem;
+      color: var(--muted);
+      line-height: 1.72;
+      margin-bottom: 6px;
+    }
+
+    .doc-page li::marker {
+      color: var(--g0);
+    }
+
+    .doc-page code {
+      font-family: var(--f-mono);
+      font-size: .78rem;
+      background: rgba(74, 222, 128, .07);
+      border: 1px solid rgba(74, 222, 128, .14);
+      border-radius: 4px;
+      padding: 1px 6px;
+      color: var(--g2);
+    }
+
+    .doc-page pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 20px 22px;
+      overflow-x: auto;
+      margin: 16px 0 22px;
+    }
+
+    .doc-page pre::-webkit-scrollbar {
+      height: 3px
+    }
+
+    .doc-page pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: .8rem;
+      color: var(--g2);
+    }
+
+    .doc-page pre .sh-comment { color: var(--muted2) }
+
+    /* doc table */
+    .doc-table-wrap {
+      overflow-x: auto;
+      margin: 16px 0 24px;
+      border-radius: var(--r);
+      border: 1px solid var(--border);
+    }
+
+    .doc-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .82rem;
+    }
+
+    .doc-table th {
+      background: rgba(74, 222, 128, .05);
+      color: var(--g2);
+      font-family: var(--f-mono);
+      font-size: .66rem;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      font-weight: 600;
+      padding: 11px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .doc-table td {
+      padding: 10px 16px;
+      color: var(--muted);
+      border-bottom: 1px solid rgba(255, 255, 255, .04);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .doc-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .doc-table tr:hover td {
+      background: rgba(255, 255, 255, .02);
+    }
+
+    .doc-table code {
+      font-size: .75rem;
+    }
+
+    /* callout boxes */
+    .doc-callout {
+      background: rgba(74, 222, 128, .05);
+      border: 1px solid rgba(74, 222, 128, .18);
+      border-radius: var(--r);
+      padding: 16px 20px;
+      margin: 18px 0;
+      font-size: .85rem;
+      color: var(--muted);
+      line-height: 1.72;
+    }
+
+    .doc-callout strong {
+      color: var(--g0);
+    }
+
+    .doc-callout.warn {
+      background: rgba(251, 191, 36, .05);
+      border-color: rgba(251, 191, 36, .2);
+    }
+
+    .doc-callout.warn strong {
+      color: #fbbf24;
+    }
+
+    .doc-callout.danger {
+      background: rgba(239, 68, 68, .05);
+      border-color: rgba(239, 68, 68, .2);
+    }
+
+    .doc-callout.danger strong {
+      color: #ef4444;
+    }
+
+    /* endpoint method badges */
+    .ep-method {
+      display: inline-block;
+      font-family: var(--f-mono);
+      font-size: .62rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-right: 8px;
+    }
+
+    .ep-get { background: rgba(74, 222, 128, .12); color: #4ade80; border: 1px solid rgba(74, 222, 128, .25) }
+    .ep-post { background: rgba(59, 130, 246, .12); color: #60a5fa; border: 1px solid rgba(59, 130, 246, .25) }
+    .ep-delete { background: rgba(239, 68, 68, .12); color: #f87171; border: 1px solid rgba(239, 68, 68, .25) }
+
+    .ep-row {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      padding: 9px 14px;
+      border-radius: 8px;
+      margin: 4px 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .ep-path {
+      font-family: var(--f-mono);
+      font-size: .78rem;
+      color: var(--txt);
+      flex-shrink: 0;
+    }
+
+    .ep-desc {
+      font-size: .78rem;
+      color: var(--muted2);
+    }
+
+    /* search highlight */
+    .doc-highlight {
+      background: rgba(74, 222, 128, .25);
+      border-radius: 2px;
+    }
+
+    /* search no result */
+    .docs-no-result {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--muted2);
+      font-size: .9rem;
+    }
+
+    /* responsive docs */
+    @media(max-width: 768px) {
+      .docs-sidebar {
+        display: none;
+      }
+
+      .docs-content {
+        padding: 32px 22px 60px;
+      }
+
+      .docs-search {
+        width: 140px;
+      }
+
+      .docs-topbar {
+        padding: 0 16px;
+      }
+
+      .docs-title-bar {
+        display: none;
+      }
+    }
   </style>
 </head>
 
@@ -1610,6 +2061,7 @@
         <li><a href="#upcoming">Roadmap</a></li>
         <li><a href="#privacy">Privacy</a></li>
         <li><a href="#release">Releases</a></li>
+        <li><a href="#" onclick="openDocs();return false;">Docs</a></li>
         <li><a href="https://github.com/arshsisodiya/Stasis" target="_blank" class="nav-gh">&#8599; GitHub</a></li>
       </ul>
       <button class="nav-ham" id="hamBtn" aria-label="Menu">
@@ -1624,6 +2076,7 @@
     <a href="#upcoming">Roadmap</a>
     <a href="#privacy">Privacy</a>
     <a href="#release">Releases</a>
+    <a href="#" onclick="openDocs();mobNav.classList.remove('open');return false;">Docs</a>
     <a href="https://github.com/arshsisodiya/Stasis" target="_blank">GitHub ↗</a>
   </div>
 
@@ -2085,6 +2538,7 @@
         <a href="#upcoming">Roadmap</a>
         <a href="#privacy">Privacy</a>
         <a href="#release">Releases</a>
+        <a href="#" onclick="openDocs();return false;">Docs</a>
         <a href="https://github.com/arshsisodiya/Stasis" target="_blank">GitHub</a>
       </div>
       <span class="foot-cr">Digital Wellbeing for your PC.</span>
@@ -2263,7 +2717,700 @@
     loadVersion();
     loadStats();
     // loadRelease();
+
+    /* ── Documentation overlay ── */
+    const docsOverlay = document.getElementById('docsOverlay');
+    const docsSearch = document.getElementById('docsSearch');
+    const docsContent = document.getElementById('docsContent');
+    const docsNoResult = document.getElementById('docsNoResult');
+    let currentPage = 'overview';
+
+    function openDocs(page) {
+      docsOverlay.classList.add('open');
+      document.body.style.overflow = 'hidden';
+      if (page) showDocPage(page);
+    }
+
+    function closeDocs() {
+      docsOverlay.classList.remove('open');
+      document.body.style.overflow = '';
+      docsSearch.value = '';
+      clearDocSearch();
+    }
+
+    function showDocPage(pageId) {
+      // update nav
+      document.querySelectorAll('.docs-nav-link').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.page === pageId);
+      });
+      // update content
+      document.querySelectorAll('.doc-page').forEach(pg => {
+        pg.classList.toggle('active', pg.id === 'doc-' + pageId);
+      });
+      docsNoResult.style.display = 'none';
+      docsContent.scrollTop = 0;
+      currentPage = pageId;
+      docsSearch.value = '';
+      clearDocSearch();
+    }
+
+    // sidebar clicks
+    document.querySelectorAll('.docs-nav-link').forEach(btn => {
+      btn.addEventListener('click', () => showDocPage(btn.dataset.page));
+    });
+
+    // Escape key closes overlay
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && docsOverlay.classList.contains('open')) closeDocs();
+    });
+
+    // Search
+    function clearDocSearch() {
+      document.querySelectorAll('.doc-page').forEach(pg => {
+        pg.querySelectorAll('mark.doc-highlight').forEach(m => {
+          m.outerHTML = m.textContent;
+        });
+      });
+    }
+
+    function highlight(node, term) {
+      if (node.nodeType === 3) {
+        const lower = node.textContent.toLowerCase();
+        let idx = lower.indexOf(term);
+        if (idx === -1) return;
+        // Collect all match positions first to avoid live DOM mutation issues
+        const positions = [];
+        let pos = idx;
+        while (pos !== -1) {
+          positions.push(pos);
+          pos = lower.indexOf(term, pos + term.length);
+        }
+        // Walk backwards so earlier indices stay valid after splits
+        for (let i = positions.length - 1; i >= 0; i--) {
+          const start = positions[i];
+          const mark = document.createElement('mark');
+          mark.className = 'doc-highlight';
+          mark.textContent = node.textContent.slice(start, start + term.length);
+          const after = node.splitText(start);
+          after.textContent = after.textContent.slice(term.length);
+          node.parentNode.insertBefore(mark, after);
+        }
+        return;
+      }
+      if (node.nodeType === 1 && !['SCRIPT', 'STYLE', 'MARK'].includes(node.tagName)) {
+        Array.from(node.childNodes).forEach(c => highlight(c, term));
+      }
+    }
+
+    docsSearch.addEventListener('input', () => {
+      const term = docsSearch.value.trim().toLowerCase();
+      clearDocSearch();
+      if (!term) {
+        showDocPage(currentPage);
+        return;
+      }
+      // search across all pages
+      const pages = document.querySelectorAll('.doc-page');
+      let firstMatch = null;
+      pages.forEach(pg => {
+        // clone to test
+        const text = pg.textContent.toLowerCase();
+        if (text.includes(term)) {
+          if (!firstMatch) firstMatch = pg.id.replace('doc-', '');
+          highlight(pg, term);
+        }
+      });
+      if (firstMatch) {
+        showDocPage(firstMatch);
+        docsNoResult.style.display = 'none';
+        // scroll to first highlight
+        const firstHL = docsContent.querySelector('mark.doc-highlight');
+        if (firstHL) firstHL.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      } else {
+        document.querySelectorAll('.doc-page').forEach(pg => pg.classList.remove('active'));
+        docsNoResult.style.display = 'block';
+      }
+    });
   </script>
+  <!-- ═══ DOCUMENTATION OVERLAY ═══ -->
+  <div class="docs-overlay" id="docsOverlay" role="dialog" aria-modal="true" aria-label="Documentation">
+
+    <!-- top bar -->
+    <div class="docs-topbar">
+      <div class="docs-topbar-left">
+        <button class="docs-back" onclick="closeDocs()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </button>
+        <span class="docs-title-bar">Stasis — Documentation</span>
+      </div>
+      <div class="docs-topbar-right">
+        <div class="docs-search-wrap">
+          <span class="docs-search-ico">🔍</span>
+          <input class="docs-search" id="docsSearch" type="text" placeholder="Search docs…" autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+    </div>
+
+    <!-- body -->
+    <div class="docs-body">
+
+      <!-- sidebar -->
+      <nav class="docs-sidebar" id="docsSidebar">
+        <div class="docs-sidebar-group">
+          <div class="docs-sidebar-label">Getting Started</div>
+          <button class="docs-nav-link active" data-page="overview">Overview</button>
+          <button class="docs-nav-link" data-page="installation">Installation</button>
+        </div>
+        <div class="docs-sidebar-group">
+          <div class="docs-sidebar-label">Core Concepts</div>
+          <button class="docs-nav-link" data-page="architecture">Architecture</button>
+          <button class="docs-nav-link" data-page="configuration">Configuration</button>
+          <button class="docs-nav-link" data-page="database">Database Schema</button>
+        </div>
+        <div class="docs-sidebar-group">
+          <div class="docs-sidebar-label">Integrations</div>
+          <button class="docs-nav-link" data-page="telegram">Telegram</button>
+          <button class="docs-nav-link" data-page="limits">App Limits</button>
+          <button class="docs-nav-link" data-page="focus">Focus Scoring</button>
+        </div>
+        <div class="docs-sidebar-group">
+          <div class="docs-sidebar-label">Reference</div>
+          <button class="docs-nav-link" data-page="api">API Reference</button>
+          <button class="docs-nav-link" data-page="developer">Developer Guide</button>
+        </div>
+      </nav>
+
+      <!-- content -->
+      <main class="docs-content" id="docsContent">
+
+        <!-- ── OVERVIEW ── -->
+        <div class="doc-page active" id="doc-overview">
+          <h1>Stasis Documentation</h1>
+          <p class="doc-lead">Stasis is a privacy-first, fully local screen-time tracker, focus scorer, app blocker, and Telegram remote-control tool for Windows. All data lives in a local SQLite database — nothing leaves your machine unless you explicitly request it.</p>
+
+          <h2>What Stasis does</h2>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead><tr><th>Capability</th><th>Details</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Screen-time tracking</strong></td><td>Logs every foreground app with second-granularity, including window title and (for browsers) the active URL.</td></tr>
+                <tr><td><strong>Productivity &amp; focus scoring</strong></td><td>A configurable weighted formula rates each day 0–100 using deep-work time, engagement, flow streaks, and switch/idle penalties.</td></tr>
+                <tr><td><strong>App limit enforcement</strong></td><td>Set per-app daily time budgets. Stasis automatically terminates processes once limits are reached, with optional temporary unblocks.</td></tr>
+                <tr><td><strong>Telegram remote control</strong></td><td>Receive boot notifications, capture screenshots, pull activity logs, and lock/shutdown your PC from anywhere.</td></tr>
+                <tr><td><strong>File system monitoring</strong></td><td>Optional background watcher for file create/modify/delete events across all drives.</td></tr>
+                <tr><td><strong>Automatic self-updates</strong></td><td>Checks GitHub Releases and installs new versions in the background.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Key design principles</h2>
+          <ul>
+            <li><strong>Local-first</strong> — SQLite database at <code>%LOCALAPPDATA%\Stasis\data\stasis.db</code>. No external servers, no cloud sync.</li>
+            <li><strong>Privacy-aware</strong> — Telegram credentials are encrypted at rest with Fernet symmetric encryption. The Flask API binds only to <code>127.0.0.1</code>.</li>
+            <li><strong>Minimal footprint</strong> — A compiled Python backend (~100 MB, standalone <code>.exe</code>) + a Tauri WebView2 shell. No Node or Python runtime required at runtime.</li>
+            <li><strong>Configurable</strong> — Categories, ignored processes, limits, and all toggles are editable from the UI or directly in JSON/SQLite.</li>
+          </ul>
+
+          <h2>Quick start</h2>
+          <pre><code><span class="sh-comment"># Clone the repository</span>
+git clone https://github.com/arshsisodiya/Stasis.git
+cd Stasis
+
+<span class="sh-comment"># Run backend only (no frontend UI needed for testing)</span>
+python -m venv venv && venv\Scripts\activate
+pip install -r requirements.txt
+python src/main.py
+<span class="sh-comment"># API is now available at http://127.0.0.1:7432</span></code></pre>
+          <p>Or download the pre-built installer from the <a href="https://github.com/arshsisodiya/Stasis/releases/latest" target="_blank" style="color:var(--g0)">Releases page ↗</a>.</p>
+        </div>
+
+        <!-- ── INSTALLATION ── -->
+        <div class="doc-page" id="doc-installation">
+          <h1>Installation</h1>
+          <p class="doc-lead">Stasis is distributed as a Windows NSIS installer. It requires no external runtimes — everything is bundled inside the setup EXE.</p>
+
+          <h2>System Requirements</h2>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead><tr><th>Requirement</th><th>Minimum</th><th>Recommended</th></tr></thead>
+              <tbody>
+                <tr><td>OS</td><td>Windows 10 64-bit</td><td>Windows 11 64-bit</td></tr>
+                <tr><td>RAM available</td><td>150 MB</td><td>256 MB</td></tr>
+                <tr><td>Disk space</td><td>250 MB</td><td>500 MB</td></tr>
+                <tr><td>WebView2 Runtime</td><td>Required</td><td>Pre-installed on Win 11</td></tr>
+                <tr><td>Admin rights</td><td colspan="2">Required for per-machine install</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Installing the pre-built release</h2>
+          <ol>
+            <li>Go to the <a href="https://github.com/arshsisodiya/Stasis/releases/latest" target="_blank" style="color:var(--g0)">latest release page ↗</a>.</li>
+            <li>Download <code>Stasis-&lt;version&gt;-setup.exe</code>.</li>
+            <li>Run the installer. Administrator privileges are required.</li>
+            <li>If WebView2 Runtime is not present, the installer silently downloads and installs it.</li>
+            <li>Stasis starts automatically after installation and registers itself in the Windows startup registry.</li>
+          </ol>
+          <div class="doc-callout warn"><strong>Note:</strong> Some antivirus products may flag the PyInstaller-compiled backend. Add <code>%LOCALAPPDATA%\Stasis\</code> to your AV exclusions if needed.</div>
+
+          <h2>First-run setup</h2>
+          <p>On the very first launch, Stasis will:</p>
+          <ul>
+            <li>Initialize the SQLite database at <code>%LOCALAPPDATA%\Stasis\data\stasis.db</code>.</li>
+            <li>Set default settings and begin tracking the active foreground application immediately.</li>
+            <li>Show the Loading Screen while the Flask API warms up (usually &lt;2 seconds).</li>
+          </ul>
+
+          <h2>Storage locations</h2>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead><tr><th>Path</th><th>Contents</th></tr></thead>
+              <tbody>
+                <tr><td><code>%LOCALAPPDATA%\Stasis\data\stasis.db</code></td><td>SQLite database (all tracking data, settings, limits)</td></tr>
+                <tr><td><code>%LOCALAPPDATA%\Stasis\logs\stasis_YYYY-MM-DD.log</code></td><td>Daily application logs (last 7 days kept)</td></tr>
+                <tr><td><code>%LOCALAPPDATA%\Stasis\icons\</code></td><td>Cached app icons extracted from EXEs</td></tr>
+                <tr><td><code>%LOCALAPPDATA%\Stasis\secret.key</code></td><td>Fernet encryption key for Telegram credentials</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Uninstalling</h2>
+          <p>Use <strong>Windows Settings → Apps → Stasis → Uninstall</strong>. The uninstaller removes the application binaries and startup registry entry. It does <em>not</em> delete <code>%LOCALAPPDATA%\Stasis\</code> — delete that folder manually for a full clean removal.</p>
+        </div>
+
+        <!-- ── ARCHITECTURE ── -->
+        <div class="doc-page" id="doc-architecture">
+          <h1>Architecture</h1>
+          <p class="doc-lead">Stasis uses a dual-process architecture: a compiled Python telemetry engine that runs headlessly, and a React/Tauri desktop shell that provides the UI.</p>
+
+          <h2>High-level overview</h2>
+          <pre><code>┌─────────────────────────────────────────────────────┐
+│  Tauri Shell  (Rust + WebView2)                      │
+│  ┌───────────────────────────────────────────────┐   │
+│  │  React 19 Frontend  (Vite)                    │   │
+│  │  Overview / Activity / Apps / Limits / Settings│   │
+│  └──────────────────┬────────────────────────────┘   │
+│                     │  HTTP  localhost:7432           │
+└─────────────────────┼───────────────────────────────┘
+                      │
+┌─────────────────────▼───────────────────────────────┐
+│  Python Backend  (Flask / Werkzeug)                  │
+│                                                      │
+│  ActivityLogger  BlockingService  TelegramService    │
+│       │                │                             │
+│  ┌────▼────────────────▼───────────────────────┐    │
+│  │     SQLite (WAL)   stasis.db                │    │
+│  │  activity_logs · daily_stats · app_limits   │    │
+│  │  blocked_apps · file_logs · settings        │    │
+│  └─────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────┘</code></pre>
+
+          <h2>Thread model</h2>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead><tr><th>Thread</th><th>Purpose</th></tr></thead>
+              <tbody>
+                <tr><td><code>ActivityLoggerThread</code></td><td>Win32 window-focus hook + pynput input listener</td></tr>
+                <tr><td><code>APIServerThread</code></td><td>Flask/Werkzeug HTTP server on 127.0.0.1:7432</td></tr>
+                <tr><td><code>DataRetentionThread</code></td><td>Purges old records every 6 hours</td></tr>
+                <tr><td><code>FileMonitorController</code></td><td>Watchdog observer (optional, toggled in settings)</td></tr>
+                <tr><td><code>BlockingService._limit_monitor</code></td><td>Checks usage vs limits every 15 s</td></tr>
+                <tr><td><code>BlockingService._process_guard</code></td><td>Terminates blocked processes every 0.5 s</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Data pipeline</h2>
+          <pre><code>pynput keyboard/mouse listener
+    │
+    ▼
+ActivityLogger ── Win32 GetForegroundWindow
+    │              URL sniffer (accessibility API)
+    │              idle detector (GetLastInputInfo)
+    ▼
+activity_logs table  (one row per ~5-second focus window)
+    │
+    ▼
+daily_stats table  (aggregated by app + category per day)
+    │
+    ▼
+Flask REST API ──► React Dashboard</code></pre>
+
+          <h2>Security model</h2>
+          <ul>
+            <li><strong>Credentials</strong> — Telegram token and chat ID are stored encrypted with Fernet symmetric encryption (AES-128-CBC + HMAC-SHA256).</li>
+            <li><strong>Network exposure</strong> — Flask binds only to <code>127.0.0.1</code>. No listener on external interfaces.</li>
+            <li><strong>Single instance</strong> — Win32 named mutex <code>Local\StasisSingleInstance</code> prevents duplicate runs.</li>
+            <li><strong>Danger operations</strong> — Destructive API endpoints require custom confirmation HTTP headers.</li>
+          </ul>
+        </div>
+
+        <!-- ── CONFIGURATION ── -->
+        <div class="doc-page" id="doc-configuration">
+          <h1>Configuration</h1>
+          <p class="doc-lead">Stasis stores all runtime configuration in the <code>settings</code> table of the SQLite database. You can change any setting from the Settings tab in the UI.</p>
+
+          <h2>Settings reference</h2>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>telegram_enabled</code></td><td><code>false</code></td><td>Whether the Telegram bot starts on boot</td></tr>
+                <tr><td><code>file_logging_enabled</code></td><td><code>false</code></td><td>Enable file system monitoring</td></tr>
+                <tr><td><code>file_logging_essential_only</code></td><td><code>false</code></td><td>Restrict file logging to key folders only</td></tr>
+                <tr><td><code>show_yesterday_comparison</code></td><td><code>true</code></td><td>Show yesterday delta in the Apps tab</td></tr>
+                <tr><td><code>hardware_acceleration</code></td><td><code>true</code></td><td>WebView2 GPU acceleration</td></tr>
+                <tr><td><code>browser_tracking</code></td><td><code>true</code></td><td>Capture active URL from browsers</td></tr>
+                <tr><td><code>idle_detection</code></td><td><code>true</code></td><td>Subtract idle time from screen time totals</td></tr>
+                <tr><td><code>data_retention_days</code></td><td><code>0</code></td><td>Auto-delete records older than N days (0 = forever)</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>App categories (<code>app_categories.json</code>)</h2>
+          <p>Every tracked executable is mapped to a <strong>main category</strong> and optional <strong>sub-category</strong>. URL rules override app rules when a browser is active.</p>
+          <pre><code>{
+  "apps": {
+    "code.exe":     { "main": "productive",    "sub": "development" },
+    "chrome.exe":   { "main": "neutral",        "sub": "browser"     },
+    "discord.exe":  { "main": "communication",  "sub": "chat"        },
+    "vlc.exe":      { "main": "entertainment",  "sub": "video"       }
+  },
+  "url_rules": {
+    "github.com":        { "main": "productive",    "sub": "development" },
+    "youtube.com/watch": { "main": "entertainment", "sub": "video"       },
+    "mail.google.com":   { "main": "communication", "sub": "email"       }
+  }
+}</code></pre>
+          <p>Wildcard patterns like <code>*.github.com</code> are supported in URL rules.</p>
+
+          <h2>Ignored processes (<code>ignored_apps.json</code>)</h2>
+          <p>Processes in this list are silently filtered from all reports. It is pre-populated with Windows system processes (e.g., <code>dwm.exe</code>, <code>svchost.exe</code>).</p>
+        </div>
+
+        <!-- ── DATABASE SCHEMA ── -->
+        <div class="doc-page" id="doc-database">
+          <h1>Database Schema</h1>
+          <p class="doc-lead">Stasis uses SQLite with WAL mode at <code>%LOCALAPPDATA%\Stasis\data\stasis.db</code>. The database has 6 tables covering raw telemetry, daily aggregates, limits, blocking state, settings, and optional file events.</p>
+
+          <h2>Tables</h2>
+
+          <h3>activity_logs — Raw telemetry</h3>
+          <pre><code>CREATE TABLE activity_logs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       TEXT NOT NULL,      -- YYYY-MM-DD HH:MM:SS
+    app_name        TEXT,               -- e.g. "chrome.exe"
+    exe_path        TEXT,
+    pid             INTEGER,
+    window_title    TEXT,
+    url             TEXT,               -- browsers only; NULL otherwise
+    active_seconds  INTEGER DEFAULT 0,
+    idle_seconds    INTEGER DEFAULT 0,
+    keystrokes      INTEGER DEFAULT 0,
+    clicks          INTEGER DEFAULT 0
+);</code></pre>
+
+          <h3>daily_stats — Aggregated daily data</h3>
+          <pre><code>CREATE TABLE daily_stats (
+    date            TEXT NOT NULL,
+    app_name        TEXT NOT NULL,
+    main_category   TEXT,
+    sub_category    TEXT,
+    active_seconds  INTEGER DEFAULT 0,
+    idle_seconds    INTEGER DEFAULT 0,
+    sessions        INTEGER DEFAULT 0,
+    keystrokes      INTEGER DEFAULT 0,
+    clicks          INTEGER DEFAULT 0,
+    PRIMARY KEY (date, app_name, main_category)
+);</code></pre>
+
+          <h3>app_limits — User-defined daily budgets</h3>
+          <pre><code>CREATE TABLE app_limits (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    app_name             TEXT UNIQUE NOT NULL,
+    daily_limit_seconds  INTEGER NOT NULL,
+    is_enabled           INTEGER DEFAULT 1,  -- 0=paused, 1=active
+    created_at           TEXT,
+    unblock_until        TEXT                -- ISO-8601 for temp unblocks
+);</code></pre>
+
+          <h3>blocked_apps · settings · file_logs</h3>
+          <ul>
+            <li><code>blocked_apps (app_name PK, blocked_at)</code> — Runtime cache of processes currently over their limit.</li>
+            <li><code>settings (key PK, value)</code> — Key-value store for all settings and encrypted credentials.</li>
+            <li><code>file_logs (id, timestamp, action, file_path)</code> — Optional file system event log.</li>
+          </ul>
+
+          <h2>SQLite pragmas</h2>
+          <pre><code>PRAGMA journal_mode = WAL;       -- concurrent reads during writes
+PRAGMA synchronous  = NORMAL;    -- balanced speed / durability
+PRAGMA busy_timeout = 10000;     -- wait up to 10 s if locked</code></pre>
+
+          <h2>Useful queries</h2>
+          <pre><code><span class="sh-comment">-- Today's screen time by app</span>
+SELECT app_name, SUM(active_seconds) AS total
+FROM daily_stats
+WHERE date = date('now')
+GROUP BY app_name
+ORDER BY total DESC;
+
+<span class="sh-comment">-- 14-day productivity trend</span>
+SELECT date,
+    ROUND(100.0 *
+        SUM(CASE WHEN main_category='productive'
+                 THEN active_seconds ELSE 0 END)
+        / MAX(SUM(active_seconds), 1), 1) AS pct
+FROM daily_stats
+GROUP BY date
+ORDER BY date DESC LIMIT 14;</code></pre>
+        </div>
+
+        <!-- ── TELEGRAM ── -->
+        <div class="doc-page" id="doc-telegram">
+          <h1>Telegram Integration</h1>
+          <p class="doc-lead">Stasis includes a private Telegram Bot integration that turns your phone into a remote control for your PC — no inbound ports required, works behind NAT and corporate firewalls.</p>
+
+          <h2>Setup</h2>
+          <ol>
+            <li>Open Telegram and message <strong>@BotFather</strong> → send <code>/newbot</code> → copy your <strong>Bot Token</strong>.</li>
+            <li>Message <strong>@userinfobot</strong> to find your numeric <strong>Chat ID</strong>.</li>
+            <li>In Stasis, open <strong>Settings → Telegram Integration</strong>.</li>
+            <li>Enter both values, click <strong>Validate</strong>, then click <strong>Enable</strong>.</li>
+          </ol>
+          <p>Both credentials are immediately encrypted with Fernet and stored only in the local SQLite database.</p>
+
+          <h2>Commands</h2>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead><tr><th>Command</th><th>Description</th><th>Confirm?</th></tr></thead>
+              <tbody>
+                <tr><td><code>/ping</code></td><td>Check if system is online + uptime</td><td>No</td></tr>
+                <tr><td><code>/screenshot</code></td><td>Capture screen and send it</td><td>No</td></tr>
+                <tr><td><code>/camera</code></td><td>Capture webcam frame</td><td>No</td></tr>
+                <tr><td><code>/video [s]</code></td><td>Record webcam clip (default 10 s)</td><td>No</td></tr>
+                <tr><td><code>/lock</code></td><td>Lock Windows session (Win+L)</td><td>No</td></tr>
+                <tr><td><code>/log</code></td><td>Send today's activity summary</td><td>No</td></tr>
+                <tr><td><code>/shutdown</code></td><td>Shut down the PC</td><td><strong>Yes</strong></td></tr>
+                <tr><td><code>/restart</code></td><td>Restart the PC</td><td><strong>Yes</strong></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Service states</h2>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead><tr><th>State</th><th>Meaning</th></tr></thead>
+              <tbody>
+                <tr><td><code>running</code></td><td>Bot is actively polling and responsive</td></tr>
+                <tr><td><code>paused</code></td><td>Manually stopped; credentials preserved</td></tr>
+                <tr><td><code>degraded</code></td><td>Crashed or lost connectivity; auto-retry active</td></tr>
+                <tr><td><code>disabled</code></td><td>No credentials configured</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="doc-callout warn"><strong>Privacy note:</strong> Stasis only responds to the exact Chat ID you configure. Messages from any other user are silently ignored.</div>
+        </div>
+
+        <!-- ── APP LIMITS ── -->
+        <div class="doc-page" id="doc-limits">
+          <h1>App Limits &amp; Blocking</h1>
+          <p class="doc-lead">Set daily time budgets per application. Stasis automatically enforces them by terminating the process when the limit is reached — with an option to temporarily unblock for a meeting or exception.</p>
+
+          <h2>How it works</h2>
+          <ol>
+            <li>Go to the <strong>Limits</strong> tab and click <strong>Add Limit</strong>.</li>
+            <li>Select an app (from activity history or the Windows registry).</li>
+            <li>Set a daily limit in hours and minutes using the slider.</li>
+            <li><code>BlockingService._limit_monitor</code> checks usage every <strong>15 seconds</strong>. When today's cumulative <code>active_seconds</code> exceeds the limit, the app is added to <code>blocked_apps</code>.</li>
+            <li><code>BlockingService._process_guard</code> scans running processes every <strong>0.5 seconds</strong> and terminates any that are in <code>blocked_apps</code>.</li>
+          </ol>
+
+          <h2>Temporary unblock</h2>
+          <p>Click <strong>Unblock for X minutes</strong> to override a block. This sets <code>unblock_until = now + X minutes</code> in the database. The blocking service respects this expiry timestamp and won't re-block until it passes.</p>
+
+          <h2>Enable / Disable toggle</h2>
+          <p>Toggle a limit off without deleting it — useful for weekends or vacations. <code>is_enabled = 0</code> makes <code>BlockingService</code> skip that limit entirely.</p>
+
+          <h2>Limits API</h2>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/limits/all</span> <span class="ep-desc">All limits with status</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/limits/set</span> <span class="ep-desc">Create or update a limit</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/limits/toggle</span> <span class="ep-desc">Enable / disable a limit</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/limits/unblock</span> <span class="ep-desc">Temp unblock for N minutes</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/limits/delete</span> <span class="ep-desc">Remove a limit</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/limits/blocked</span> <span class="ep-desc">Currently blocked apps</span></div>
+        </div>
+
+        <!-- ── FOCUS SCORING ── -->
+        <div class="doc-page" id="doc-focus">
+          <h1>Focus Scoring</h1>
+          <p class="doc-lead">The focus score (0–100) is computed live by the <code>/api/focus</code> endpoint using data from <code>activity_logs</code>. It rewards sustained deep work and penalises excessive task-switching and idle time.</p>
+
+          <h2>Formula</h2>
+          <pre><code>Focus Score = min(100,
+    deepWorkScore
+  + flowBonus
+  + engagementScore
+  - switchPenalty
+  - idlePenalty
+)</code></pre>
+
+          <h2>Components</h2>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead><tr><th>Component</th><th>Formula</th><th>Max points</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Deep work score</strong></td><td>(productiveSeconds / totalActive) × 100 × engagementMultiplier</td><td>~65</td></tr>
+                <tr><td><strong>Flow bonus</strong></td><td>Number of unbroken ≥20-min productive streaks × 5</td><td>20</td></tr>
+                <tr><td><strong>Engagement score</strong></td><td>min(15, (KPM / 35) × 15) where 35 KPM = baseline</td><td>15</td></tr>
+                <tr><td><strong>Switch penalty</strong></td><td>max(0, (taskSwitches − 10) × 0.5)</td><td>—</td></tr>
+                <tr><td><strong>Idle penalty</strong></td><td>(idleSeconds / totalTime) × 20</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>The API returns all raw values alongside the final score so the UI can display a detailed breakdown card per component.</p>
+
+          <h2>Productivity %</h2>
+          <p>A separate simpler metric: percentage of active time spent in <code>productive</code>-category apps, optionally weighted by keystroke intensity (KPM ratio). Available at <code>/api/wellbeing</code>.</p>
+        </div>
+
+        <!-- ── API REFERENCE ── -->
+        <div class="doc-page" id="doc-api">
+          <h1>API Reference</h1>
+          <p class="doc-lead">The Python backend exposes a local REST API on <code>http://127.0.0.1:7432</code>. All endpoints return JSON. Use <code>?date=YYYY-MM-DD</code> to select a historical day; omit for today.</p>
+
+          <h2>Health</h2>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/health</span> <span class="ep-desc">Returns <code>{"status":"running"}</code></span></div>
+
+          <h2>Dashboard &amp; Analytics</h2>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/dashboard</span> <span class="ep-desc">Daily summary: per-app screen time, hourly chart, top app, category totals</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/wellbeing</span> <span class="ep-desc">Productivity % and aggregate daily metrics</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/focus</span> <span class="ep-desc">Focus score (0–100) with full breakdown</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/daily-stats</span> <span class="ep-desc">Per-app daily breakdown with keystrokes and clicks</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/available-dates</span> <span class="ep-desc">Dates with recorded activity (DESC order)</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/heatmap</span> <span class="ep-desc">Last 60 days: <code>{date: {screenTime, productivityPct}}</code></span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/sessions</span> <span class="ep-desc">Chronological activity log entries for the day</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/weekly-trend</span> <span class="ep-desc">Last 14 days screen time and productivity</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/hourly</span> <span class="ep-desc">24-element array of active minutes per hour</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/hourly-stats</span> <span class="ep-desc">Top 3 apps per hour</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/site-stats</span> <span class="ep-desc">Top 50 domains by time (optional <code>?app=</code> filter)</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/spark-series</span> <span class="ep-desc">Last N days aggregate for sparkline charts</span></div>
+
+          <h2>System &amp; Apps</h2>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/ignored-apps</span> <span class="ep-desc">List of ignored process names</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/app-icon/&lt;name&gt;</span> <span class="ep-desc">PNG icon for an executable (cached)</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/system/apps</span> <span class="ep-desc">Installed apps from history + Windows registry</span></div>
+
+          <h2>Settings</h2>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/settings</span> <span class="ep-desc">Current settings object</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/api/settings/update</span> <span class="ep-desc">Update one or more settings</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/api/settings/data-retention</span> <span class="ep-desc">Set auto-delete threshold (days)</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/api/settings/browser-tracking</span> <span class="ep-desc">Toggle URL tracking in browsers</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/api/settings/idle-detection</span> <span class="ep-desc">Toggle idle-time subtraction</span></div>
+
+          <h2>Telegram</h2>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/telegram/status</span> <span class="ep-desc">Lightweight status: enabled, running, state</span></div>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/telegram/config</span> <span class="ep-desc">Masked credentials + last 10 commands</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/api/telegram/validate</span> <span class="ep-desc">Validate a bot token without storing</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/api/telegram/enable</span> <span class="ep-desc">First-time setup or re-enable existing credentials</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/api/telegram/disable</span> <span class="ep-desc">Stop bot (credentials preserved)</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/api/telegram/restart</span> <span class="ep-desc">Restart the bot service</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/api/telegram/reset</span> <span class="ep-desc">Permanently wipe all credentials</span></div>
+
+          <h2>Danger Zone</h2>
+          <div class="doc-callout danger"><strong>Warning:</strong> These operations permanently delete data and require custom confirmation headers.</div>
+          <div class="ep-row"><span class="ep-method ep-delete">DELETE</span> <span class="ep-path">/api/clear-data</span> <span class="ep-desc">Delete all activity records — requires header <code>X-Confirm-Clear: yes</code></span></div>
+          <div class="ep-row"><span class="ep-method ep-delete">DELETE</span> <span class="ep-path">/api/factory-reset</span> <span class="ep-desc">Wipe everything &amp; restart — requires header <code>X-Confirm-Reset: RESET_ALL</code></span></div>
+
+          <h2>Updates</h2>
+          <div class="ep-row"><span class="ep-method ep-get">GET</span> <span class="ep-path">/api/update/status</span> <span class="ep-desc">Current update manager state + version info</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/api/update/check</span> <span class="ep-desc">Start async check against GitHub Releases</span></div>
+          <div class="ep-row"><span class="ep-method ep-post">POST</span> <span class="ep-path">/api/update/install</span> <span class="ep-desc">Start async download and install</span></div>
+        </div>
+
+        <!-- ── DEVELOPER GUIDE ── -->
+        <div class="doc-page" id="doc-developer">
+          <h1>Developer Guide</h1>
+          <p class="doc-lead">Everything you need to run Stasis locally, build the full application, and contribute to the project.</p>
+
+          <h2>Prerequisites</h2>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead><tr><th>Tool</th><th>Version</th><th>Purpose</th></tr></thead>
+              <tbody>
+                <tr><td>Python</td><td>3.11+</td><td>Backend engine</td></tr>
+                <tr><td>PyInstaller</td><td>latest</td><td>Compile Python → standalone <code>.exe</code></td></tr>
+                <tr><td>Node.js</td><td>20 LTS</td><td>Frontend build</td></tr>
+                <tr><td>Rust (stable)</td><td>via rustup</td><td>Tauri shell compilation</td></tr>
+                <tr><td>NSIS</td><td>3.x</td><td>Windows installer generation</td></tr>
+                <tr><td>UPX (optional)</td><td>—</td><td>EXE compression</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Run backend in development</h2>
+          <pre><code><span class="sh-comment"># Create and activate virtual environment</span>
+python -m venv venv
+venv\Scripts\activate
+
+<span class="sh-comment"># Install dependencies</span>
+pip install -r requirements.txt
+
+<span class="sh-comment"># Start the backend (API on http://127.0.0.1:7432)</span>
+python src/main.py</code></pre>
+
+          <h2>Run frontend in development</h2>
+          <pre><code><span class="sh-comment"># Make sure the Python backend is running first</span>
+cd frontend
+npm install       <span class="sh-comment"># first time only</span>
+npm run dev       <span class="sh-comment"># Vite dev server on http://localhost:5173</span></code></pre>
+          <div class="doc-callout"><strong>Tip:</strong> The Tauri shell is not needed for frontend development. A regular browser works fine since the frontend only needs the HTTP API.</div>
+
+          <h2>Full production build</h2>
+          <pre><code><span class="sh-comment"># From PowerShell in the project root</span>
+.\build.ps1 -Version 1.2.3</code></pre>
+          <p>The build script:</p>
+          <ol>
+            <li>Syncs the version into <code>tauri.conf.json</code>, <code>package.json</code>, and <code>Cargo.toml</code></li>
+            <li>Generates Windows EXE version metadata</li>
+            <li>Runs PyInstaller → <code>dist/stasis-backend.exe</code></li>
+            <li>Copies the backend EXE to <code>frontend/src-tauri/bin/</code></li>
+            <li>Runs <code>npm install</code> + <code>npm run tauri:build</code></li>
+          </ol>
+          <p>Output: <code>frontend/src-tauri/target/release/bundle/nsis/Stasis-*.exe</code></p>
+
+          <h2>Linting</h2>
+          <pre><code>cd frontend
+npm run lint        <span class="sh-comment"># ESLint 9 with React + Hooks rules</span>
+npm run lint -- --fix</code></pre>
+
+          <h2>Common issues</h2>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead><tr><th>Issue</th><th>Fix</th></tr></thead>
+              <tbody>
+                <tr><td><code>ModuleNotFoundError: win32api</code></td><td>Run <code>pip install pywin32</code> then <code>python Scripts/pywin32_postinstall.py -install</code></td></tr>
+                <tr><td>Tauri build: MSVC not found</td><td>Install Visual Studio Build Tools 2022 with "Desktop development with C++"</td></tr>
+                <tr><td>Frontend blank screen</td><td>Backend is not running on port 7432 — start <code>python src/main.py</code> first</td></tr>
+                <tr><td>App icon not showing</td><td>Delete <code>%LOCALAPPDATA%\Stasis\icons\</code> and restart to clear icon cache</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- search no-result state -->
+        <div class="docs-no-result" id="docsNoResult" style="display:none">
+          <div style="font-size:2rem;margin-bottom:12px">🔍</div>
+          <strong>No results found</strong>
+          <p style="margin-top:8px;font-size:.82rem">Try a different search term.</p>
+        </div>
+
+      </main>
+    </div><!-- /docs-body -->
+  </div><!-- /docs-overlay -->
+
 </body>
 
 </html>

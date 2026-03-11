@@ -4,10 +4,10 @@ import os
 import glob
 import json
 from datetime import datetime
-from src.core.system_status import get_status_text
-from src.core.screenshot import capture_screenshot
+from src.core.telegram.system_status import get_status_text
+from src.core.telegram.screenshot import capture_screenshot
 from src.core.system_actions import shutdown_system, restart_system, lock_system
-from src.core.webcam import capture_webcam, record_video
+from src.core.telegram.webcam import capture_webcam, record_video
 from src.config.settings_manager import SettingsManager
 
 class CommandHandler:

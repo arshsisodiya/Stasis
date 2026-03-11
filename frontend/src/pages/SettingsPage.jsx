@@ -197,7 +197,7 @@ function Modal({ onClose, children, maxW = 480 }) {
   );
 }
 
-function WarningModal({ title, body, bullets, confirmLabel = "Confirm", onConfirm, onCancel, variant = "danger" }) {
+function WarningModal({ title, body, bullets, confirmLabel = "Confirm", onConfirm, onCancel, variant = "danger", loading = false, progress = 0 }) {
   const ac = variant === "danger" ? C.red : C.yellow;
   return (
     <Modal onClose={onCancel} maxW={460}>
@@ -223,13 +223,23 @@ function WarningModal({ title, body, bullets, confirmLabel = "Confirm", onConfir
         <div style={{ display: "flex", gap: 10 }}>
           <Btn onClick={onCancel} style={{ flex: 1 }}>Cancel</Btn>
           <button onClick={onConfirm} className="sp-action sp-primary"
+            disabled={loading}
             style={{
               flex: 1, padding: "11px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif",
               background: variant === "danger" ? "linear-gradient(135deg,#f87171,#ef4444)" : "linear-gradient(135deg,#fbbf24,#f59e0b)",
               color: variant === "danger" ? "#f8fafc" : "#0a0c14",
-              boxShadow: variant === "danger" ? "0 0 20px rgba(248,113,113,0.4)" : "0 0 20px rgba(251,191,36,0.4)"
+              boxShadow: variant === "danger" ? "0 0 20px rgba(248,113,113,0.4)" : "0 0 20px rgba(251,191,36,0.4)",
+              position: "relative", overflow: "hidden"
             }}>
-            {confirmLabel}
+            {loading && progress > 0 && progress < 100 && (
+              <div style={{
+                position: "absolute", left: 0, top: 0, bottom: 0, width: `${progress}%`,
+                background: "rgba(255,255,255,0.25)", transition: "width 0.3s ease"
+              }} />
+            )}
+            <span style={{ position: "relative", zIndex: 1 }}>
+              {loading && progress > 0 ? `${confirmLabel} (${progress}%)` : confirmLabel}
+            </span>
           </button>
         </div>
       </div>
@@ -433,17 +443,13 @@ function TelegramSetupForm({ onSuccess, push }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TELEGRAM — LIVE CARD (running)
-// ═══════════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════════
-// TELEGRAM — LIVE CARD (running)
-// ═══════════════════════════════════════════════════════════════════════════════
 function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRefresh }) {
   const [showLogs, setShowLogs] = useState(false);
   const [updatingPerms, setUpdatingPerms] = useState({});
   const [installing, setInstalling] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
+  const [installProgress, setInstallProgress] = useState(0);
+  const [installMessage, setInstallMessage] = useState("");
 
   const st = computeStatus(config?.enabled, status?.running, !!config?.token);
   const borderColor = st.key === "running" ? "rgba(74,222,128,0.2)" : st.key === "degraded" || st.key === "paused" ? "rgba(251,191,36,0.14)" : C.border;
@@ -489,22 +495,52 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
 
   const handleInstall = async () => {
     setInstalling(true);
+    setInstallProgress(5);
+    setInstallMessage("Starting...");
+    
     try {
+      // Start async installation
       const r = await fetch(`${BASE_URL}/api/dependencies/install`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ package: "opencv-python-headless" })
       });
+      
       const d = await r.json();
       if (d.success) {
-        push("OpenCV installed successfully", "success");
-        setShowInstallModal(false);
-        applyPermission("webcam_allowed", true);
+        // Start polling for progress
+        const pollInterval = setInterval(async () => {
+          try {
+            const pr = await fetch(`${BASE_URL}/api/dependencies/progress?package=opencv-python-headless`);
+            const pd = await pr.json();
+            
+            setInstallProgress(pd.progress);
+            setInstallMessage(pd.message);
+            
+            if (pd.status === "success") {
+              clearInterval(pollInterval);
+              push("OpenCV installed successfully", "success");
+              setShowInstallModal(false);
+              setInstalling(false);
+              applyPermission("webcam_allowed", true);
+            } else if (pd.status === "error") {
+              clearInterval(pollInterval);
+              push(`Installation failed: ${pd.message}`, "error");
+              setInstalling(false);
+            }
+          } catch (e) {
+            clearInterval(pollInterval);
+            setInstalling(false);
+          }
+        }, 1000);
       } else {
-        push("Installation failed", "error");
+        push("Failed to start installation", "error");
+        setInstalling(false);
       }
-    } catch (e) { push("Installation failed — check connection", "error"); }
-    setInstalling(false);
+    } catch (e) { 
+      push("Installation failed — check connection", "error"); 
+      setInstalling(false);
+    }
   };
 
   return (
@@ -597,11 +633,16 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
         <WarningModal
           variant="warning"
           title="Library Required"
-          body="Webcam access requires the 'opencv-python-headless' library (approx 30 MB). Would you like to download it now?"
-          confirmLabel={installing ? "Downloading..." : "Download & Enable"}
+          body={installing ? (
+            <div style={{ marginTop: 10, textAlign: "center", fontSize: 12, color: C.textSub }}>
+              {installMessage}...
+            </div>
+          ) : "Webcam access requires the 'opencv-python-headless' library (approx 30 MB). Would you like to download it now?"}
+          confirmLabel={installing ? "Downloading" : "Download & Enable"}
           onConfirm={handleInstall}
-          onCancel={() => setShowInstallModal(false)}
+          onCancel={() => !installing && setShowInstallModal(false)}
           loading={installing}
+          progress={installProgress}
         />
       )}
     </div>

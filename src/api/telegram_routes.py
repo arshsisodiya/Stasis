@@ -168,19 +168,31 @@ def check_dependency():
     })
 
 
+@telegram_bp.route("/api/dependencies/progress", methods=["GET"])
+def get_dependency_progress():
+    """Returns the current installation progress for a package."""
+    package = request.args.get("package")
+    if not package:
+        return jsonify({"error": "package parameter required"}), 400
+        
+    from src.utils.dependency_manager import get_install_progress
+    return jsonify(get_install_progress(package))
+
+
 @telegram_bp.route("/api/dependencies/install", methods=["POST"])
 def install_dependency():
-    """Triggers installation of a python package."""
+    """Triggers background installation of a python package."""
     data = request.get_json(silent=True) or {}
     package = data.get("package")
     if not package:
         return jsonify({"error": "package is required"}), 400
         
-    from src.utils.dependency_manager import install_package
-    success = install_package(package)
+    from src.utils.dependency_manager import install_package_async
+    install_package_async(package)
     return jsonify({
         "package": package,
-        "success": success
+        "success": True,
+        "message": "Installation started in background"
     })
 
 

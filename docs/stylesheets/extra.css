@@ -1,0 +1,69 @@
+/* Stasis brand colours — matches the app's dark green palette */
+
+:root {
+  --md-primary-fg-color:        #4ade80;
+  --md-primary-fg-color--light: #86efac;
+  --md-primary-fg-color--dark:  #16a34a;
+  --md-primary-bg-color:        #06090d;
+
+  --md-accent-fg-color:         #4ade80;
+  --md-accent-fg-color--transparent: rgba(74, 222, 128, 0.12);
+
+  /* Tweak the slate background to match the app */
+  --md-default-bg-color:        #0a0f17;
+  --md-default-fg-color:        #e8edf5;
+  --md-default-fg-color--light: rgba(232, 237, 245, 0.70);
+  --md-default-fg-color--lighter: rgba(232, 237, 245, 0.40);
+
+  --md-code-bg-color:           #0f1520;
+  --md-code-fg-color:           #e8edf5;
+}
+
+/* Header */
+.md-header {
+  background-color: #06090d;
+  border-bottom: 1px solid rgba(74, 222, 128, 0.15);
+}
+
+/* Nav tabs */
+.md-tabs {
+  background-color: #06090d;
+}
+
+.md-tabs__link--active,
+.md-tabs__link:hover {
+  color: #4ade80 !important;
+}
+
+/* Sidebar */
+.md-nav__link--active,
+.md-nav__link:hover {
+  color: #4ade80 !important;
+}
+
+/* Code blocks */
+.highlight pre {
+  border-left: 3px solid rgba(74, 222, 128, 0.4);
+}
+
+/* Admonition colours */
+.md-typeset .admonition.danger,
+.md-typeset details.danger {
+  border-color: #ef4444;
+}
+
+/* Tables */
+.md-typeset table:not([class]) th {
+  background-color: rgba(74, 222, 128, 0.08);
+}
+
+/* Footer */
+.md-footer {
+  background-color: #06090d;
+}
+
+/* Hero badge on home page */
+.hero-badge {
+  display: block;
+  margin-bottom: 1rem;
+}

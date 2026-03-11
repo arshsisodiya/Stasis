@@ -41,6 +41,9 @@ class AppController:
         if self.telegram_service:
             self.telegram_service.stop()
 
+        from src.utils.dependency_manager import ensure_package
+        ensure_package("psutil")
+        
         from src.core.telegram.service import TelegramService
         self.telegram_service = TelegramService(token, chat_id)
         self.telegram_service.start()

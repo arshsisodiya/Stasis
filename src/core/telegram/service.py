@@ -1,17 +1,20 @@
 # src/core/telegram/service.py
 import platform
 import socket
-import psutil
+from src.utils.dependency_manager import ensure_package
 from datetime import datetime
 import threading
 from src.core.telegram.api import TelegramAPI
 from src.core.telegram.command_handler import CommandHandler
 from src.core.telegram.listener import TelegramListener
+from src.utils.logger import setup_logger
 
 class TelegramService:
     def __init__(self, token: str, chat_id: str):
         self.token = token
         self.chat_id = chat_id
+        self.logger = setup_logger()
+        self.logger.info(f"TelegramService initialized for chat_id: {chat_id}")
 
         self.api = TelegramAPI(token, chat_id)
         self.handler = CommandHandler(self.api)
@@ -21,6 +24,10 @@ class TelegramService:
 
     def _build_status_text(self) -> str:
         try:
+            if not ensure_package("psutil"):
+                return "System status unavailable (psutil setup failed)."
+            
+            import psutil
             hostname = socket.gethostname()
             os_name = platform.system()
             os_release = platform.release()
@@ -57,7 +64,9 @@ class TelegramService:
     # -------------------------
 
     def start(self, notify: bool = True):
+        self.logger.info("Starting TelegramService listener...")
         if self.thread and self.thread.is_alive():
+            self.logger.info("TelegramService listener is already running.")
             return
 
         self.thread = threading.Thread(

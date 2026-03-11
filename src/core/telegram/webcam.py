@@ -3,6 +3,7 @@ import os
 import time
 from src.utils.logger import setup_logger
 from src.config.storage import  get_data_dir
+from src.utils.dependency_manager import ensure_package
 logger = setup_logger()
 
 
@@ -10,6 +11,10 @@ def capture_webcam():
     """
     Captures an image from the webcam and returns the file path.
     """
+    if not ensure_package("opencv-python-headless"):
+        logger.error("Webcam failed: opencv-python-headless library not available.")
+        return None
+
     import cv2
     cap = cv2.VideoCapture(0)
 
@@ -47,6 +52,10 @@ def record_video(duration=10):
     """
     Records video from webcam for a specific duration (seconds) and returns the file path.
     """
+    if not ensure_package("opencv-python-headless"):
+        logger.error("Video recording failed: opencv-python-headless library not available.")
+        return None
+
     import cv2
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():

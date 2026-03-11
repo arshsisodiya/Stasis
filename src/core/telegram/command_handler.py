@@ -9,6 +9,7 @@ from src.core.telegram.screenshot import capture_screenshot
 from src.core.system_actions import shutdown_system, restart_system, lock_system
 from src.core.telegram.webcam import capture_webcam, record_video
 from src.config.settings_manager import SettingsManager
+from src.utils.dependency_manager import is_installed
 
 class CommandHandler:
     def __init__(self, api):
@@ -37,60 +38,87 @@ class CommandHandler:
 
         command = text.lower()
         if command:
+            from src.utils.logger import setup_logger
+            logger = setup_logger()
+            logger.info(f"Bot received command: {command}")
             self._log_command(command)
 
-        if command == "/ping":
-            self.api.send_message(get_status_text())
+        try:
+            if not command:
+                return
 
-        elif command == "/screenshot":
-            path = capture_screenshot()
-            if path:
-                self.api.send_photo(path, "Current Screen")
-                os.remove(path)
+            if command == "/ping":
+                self.api.send_message(get_status_text())
 
-        elif command == "/lock":
-            self.api.send_message("Locking system...")
-            lock_system()
+            elif command == "/screenshot":
+                if not is_installed("Pillow"):
+                    self.api.send_message("First-time setup: Installing screenshot dependencies... This may take a minute.")
+                
+                path = capture_screenshot()
+                if path:
+                    self.api.send_photo(path, "Current Screen")
+                    os.remove(path)
+                else:
+                    self.api.send_message("Failed to capture screenshot. Make sure dependencies are installed.")
 
-        elif command == "/shutdown":
-            self.api.send_message(
-                "Shutdown requested.\nSend `/shutdown confirm` to proceed."
-            )
+            elif command == "/lock":
+                self.api.send_message("Locking system...")
+                lock_system()
 
-        elif command == "/shutdown confirm":
-            self.api.send_message("Shutting down...")
-            shutdown_system()
+            elif command == "/shutdown":
+                self.api.send_message(
+                    "Shutdown requested.\nSend `/shutdown confirm` to proceed."
+                )
 
-        elif command == "/restart":
-            self.api.send_message(
-                "Restart requested.\nSend `/restart confirm` to proceed."
-            )
+            elif command == "/shutdown confirm":
+                self.api.send_message("Shutting down...")
+                shutdown_system()
 
-        elif command == "/restart confirm":
-            self.api.send_message("Restarting...")
-            restart_system()
+            elif command == "/restart":
+                self.api.send_message(
+                    "Restart requested.\nSend `/restart confirm` to proceed."
+                )
 
-        elif command == "/camera":
-            path = capture_webcam()
-            if path:
-                self.api.send_photo(path, "Webcam Snapshot")
-                os.remove(path)
+            elif command == "/restart confirm":
+                self.api.send_message("Restarting...")
+                restart_system()
 
-        elif command == "/getlog":
-            self._send_logs()
+            elif command == "/camera":
+                if not is_installed("opencv-python-headless"):
+                    self.api.send_message("First-time setup: Installing camera dependencies... This may take a minute.")
+                
+                path = capture_webcam()
+                if path:
+                    self.api.send_photo(path, "Webcam Snapshot")
+                    os.remove(path)
+                else:
+                    self.api.send_message("Failed to capture webcam snapshot. Make sure dependencies are installed.")
 
-        elif command.startswith("/video"):
-            parts = command.split()
-            duration = 10
-            if len(parts) > 1 and parts[1].isdigit():
-                duration = int(parts[1])
+            elif command == "/getlog":
+                self._send_logs()
 
-            self.api.send_message(f"Recording {duration}s video...")
-            path = record_video(duration)
+            elif command.startswith("/video"):
+                parts = command.split()
+                duration = 10
+                if len(parts) > 1 and parts[1].isdigit():
+                    duration = int(parts[1])
 
-            if path:
-                self.api.send_video(path, f"Webcam Clip ({duration}s)")
-                os.remove(path)
+                if not is_installed("opencv-python"):
+                    self.api.send_message("First-time setup: Installing camera dependencies... This may take a minute.")
+
+                self.api.send_message(f"Recording {duration}s video...")
+                path = record_video(duration)
+
+                if path:
+                    self.api.send_video(path, f"Webcam Clip ({duration}s)")
+                    os.remove(path)
+                else:
+                    self.api.send_message("Failed to record video. Make sure dependencies are installed.")
+        except Exception as e:
+            from src.utils.logger import setup_logger
+            logger = setup_logger()
+            logger.exception(f"Error handling command {command}: {e}")
+            self.api.send_message(f"⚠️ Internal error processing command: {str(e)}")
 
     def _send_logs(self):
         app_name = "Stasis"

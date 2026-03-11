@@ -9,6 +9,7 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'README.md'
+      - 'index.html'
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -47,6 +48,11 @@ jobs:
 
       - name: Build documentation site
         run: mkdocs build --strict --site-dir site
+
+      - name: Copy landing page to site root
+        run: |
+          cp index.html site/index.html
+          cp -r assets site/assets 2>/dev/null || true
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

@@ -665,7 +665,7 @@ function TelegramSection({ push }) {
 // GENERAL SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 function GeneralSection({ push }) {
-  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: false, file_logging_enabled: true, file_logging_essential_only: true, show_yesterday_comparison: true, hardware_acceleration: true };
+  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true };
   const [s, setS] = useState({ ...DEFAULTS });
   const [saved, setSaved] = useState({ ...DEFAULTS });
   const [confirmReset, setConfirmReset] = useState(false);

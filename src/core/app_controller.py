@@ -1,6 +1,6 @@
 # src/core/app_controller.py
 
-from src.config.settings_manager import SettingsManager
+from src.config.settings_manager import SettingsManager, TelegramSettingsManager
 from src.config.crypto import decrypt, encrypt
 
 class AppController:
@@ -14,8 +14,9 @@ class AppController:
 
     def initialize(self):
         SettingsManager.initialize_defaults()
+        TelegramSettingsManager.initialize_defaults()
 
-        if SettingsManager.get_bool("telegram_enabled"):
+        if TelegramSettingsManager.get_bool("telegram_enabled"):
             self._start_telegram_from_settings()
 
     # -------------------------
@@ -23,8 +24,8 @@ class AppController:
     # -------------------------
 
     def _start_telegram_from_settings(self):
-        token_enc = SettingsManager.get("telegram_token")
-        chat_enc = SettingsManager.get("telegram_chat_id")
+        token_enc = TelegramSettingsManager.get("telegram_token")
+        chat_enc = TelegramSettingsManager.get("telegram_chat_id")
 
 
         if not token_enc or not chat_enc:
@@ -52,25 +53,25 @@ class AppController:
         encrypted_token = encrypt(token)
         encrypted_chat = encrypt(chat_id)
 
-        SettingsManager.set("telegram_token", encrypted_token)
-        SettingsManager.set("telegram_chat_id", encrypted_chat)
-        SettingsManager.set("telegram_enabled", "true")
+        TelegramSettingsManager.set("telegram_token", encrypted_token)
+        TelegramSettingsManager.set("telegram_chat_id", encrypted_chat)
+        TelegramSettingsManager.set("telegram_enabled", "true")
 
         self._start_service(token, chat_id)
 
     def disable_telegram(self):
-        SettingsManager.set("telegram_enabled", "false")
+        TelegramSettingsManager.set("telegram_enabled", "false")
 
         if self.telegram_service:
             self.telegram_service.stop()
             self.telegram_service = None
 
     def restart_telegram(self):
-        if not SettingsManager.get_bool("telegram_enabled"):
+        if not TelegramSettingsManager.get_bool("telegram_enabled"):
             return False
 
-        token_enc = SettingsManager.get("telegram_token")
-        chat_enc = SettingsManager.get("telegram_chat_id")
+        token_enc = TelegramSettingsManager.get("telegram_token")
+        chat_enc = TelegramSettingsManager.get("telegram_chat_id")
 
         if not token_enc or not chat_enc:
             return False
@@ -89,4 +90,4 @@ class AppController:
         if not self.telegram_service:
             return False
 
-        return self.telegram_service.is_running()
+        return self.telegram_service.is_running()

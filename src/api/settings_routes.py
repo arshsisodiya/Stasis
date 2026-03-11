@@ -9,10 +9,12 @@ from src.config.storage import get_base_dir
 @wellbeing_bp.route("/api/settings", methods=["GET"])
 def get_settings():
     return jsonify({
-        "file_logging_enabled": SettingsManager.get_bool("file_logging_enabled", True),
-        "file_logging_essential_only": SettingsManager.get_bool("file_logging_essential_only", True),
+        "file_logging_enabled": SettingsManager.get_bool("file_logging_enabled", False),
+        "file_logging_essential_only": SettingsManager.get_bool("file_logging_essential_only", False),
         "show_yesterday_comparison": SettingsManager.get_bool("show_yesterday_comparison", True),
-        "hardware_acceleration": SettingsManager.get_bool("hardware_acceleration", True)
+        "hardware_acceleration": SettingsManager.get_bool("hardware_acceleration", True),
+        "idle_detection": SettingsManager.get_bool("idle_detection", True),
+        "browser_tracking": SettingsManager.get_bool("browser_tracking", True)
     })
 
 

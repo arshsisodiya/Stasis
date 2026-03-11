@@ -77,10 +77,56 @@ def init_db():
     )
     """)
 
-    # ── Migration: old schema had PK (date, app_name) without main_category.
-    # Detect that by checking if the old unique index still exists and,
-    # if so, rebuild the table with the new composite key so that browser
-    # sessions are tracked PER-CATEGORY instead of collapsing into one row.
+    # ===============================
+    # TELEGRAM SETTINGS
+    # ===============================
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS telegram_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )
+    """)
+
+    # ===============================
+    # MIGRATION: app_settings -> settings & telegram_settings
+    # ===============================
+    try:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='app_settings'")
+        if cursor.fetchone():
+            # Migrate Telegram settings
+            telegram_keys = [
+                'telegram_enabled', 'telegram_token', 'telegram_chat_id',
+                'telegram_bot_username', 'telegram_recent_commands'
+            ]
+            for key in telegram_keys:
+                cursor.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+                row = cursor.fetchone()
+                if row:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO telegram_settings (key, value) VALUES (?, ?)",
+                        (key, row[0])
+                    )
+
+            # Migrate other settings to general settings table
+            general_keys = [
+                'file_logging_enabled', 'file_logging_essential_only',
+                'show_yesterday_comparison', 'hardware_acceleration'
+            ]
+            for key in general_keys:
+                cursor.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+                row = cursor.fetchone()
+                if row:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+                        (key, row[0])
+                    )
+
+            # Drop the old table
+            cursor.execute("DROP TABLE app_settings")
+    except Exception as e:
+        print(f"Migration error: {e}")
+
+    # ── Migration: old daily_stats schema...
     try:
         cursor.execute("PRAGMA table_info(daily_stats)")
         cols = [r[1] for r in cursor.fetchall()]
@@ -385,7 +431,8 @@ def factory_reset():
         cursor.execute("DELETE FROM file_logs")
 
         # Clear configuration tables
-        cursor.execute("DELETE FROM app_settings")
+        cursor.execute("DELETE FROM settings")
+        cursor.execute("DELETE FROM telegram_settings")
         cursor.execute("DELETE FROM app_limits")
         cursor.execute("DELETE FROM blocked_apps")
 

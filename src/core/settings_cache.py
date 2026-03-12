@@ -21,6 +21,10 @@ class SettingsCache:
         self.cache = {k: v for k, v in rows}
         self.last_refresh = time.monotonic()
 
+    def warm(self):
+        """Load all settings into cache immediately; avoids DB hit on first get()."""
+        self.refresh()
+
     def get(self, key, default=None):
         now = time.monotonic()
 

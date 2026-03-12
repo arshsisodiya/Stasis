@@ -82,6 +82,10 @@ def main():
 
     init_db()
 
+    # Pre-warm settings cache so the first get() doesn't hit the DB
+    from src.core.settings_cache import settings_cache
+    settings_cache.warm()
+
     if getattr(sys, "frozen", False):
         add_to_startup(get_executable_path())
 

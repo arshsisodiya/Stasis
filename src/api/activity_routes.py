@@ -50,6 +50,7 @@ def heatmap():
                     ELSE 0
                 END
             FROM daily_stats
+            WHERE date >= date('now', '-60 days')
             ORDER BY date DESC
         """)
 
@@ -161,6 +162,7 @@ def weekly_trend():
                     ELSE 0
                 END
             FROM daily_stats
+            WHERE date >= date('now', '-14 days')
             ORDER BY date DESC
         """)
 

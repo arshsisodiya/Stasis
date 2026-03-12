@@ -45,6 +45,7 @@ def spark_series():
 
     try:
         # One query: aggregate everything we need per (date, category)
+        # Limited to the requested window to avoid scanning the full table
         cursor.execute("""
             SELECT
                 date,
@@ -56,9 +57,10 @@ def spark_series():
                 SUM(sessions)        AS sessions,
                 app_name
             FROM daily_stats
+            WHERE date >= date('now', ? || ' days')
             GROUP BY date, main_category, app_name
             ORDER BY date DESC
-        """)
+        """, (str(-days),))
 
         rows = cursor.fetchall()
 

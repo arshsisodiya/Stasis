@@ -1,4 +1,4 @@
-from flask import jsonify
+from flask import jsonify, request
 
 from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date
 from src.database.database import get_connection
@@ -274,3 +274,61 @@ def wellbeing():
 
     finally:
         conn.close()
+
+
+# =====================================
+# Dashboard Bundle (single round-trip)
+# =====================================
+
+@wellbeing_bp.route("/api/dashboard-bundle")
+def dashboard_bundle():
+    """
+    Returns wellbeing + daily-stats + hourly + focus + yesterday stats + limits
+    in a single JSON response, eliminating 7 parallel fetches from the frontend.
+    Each sub-key calls the existing view function internally via Flask's test
+    client so the logic stays DRY.
+    """
+    from flask import current_app
+    import datetime as _dt
+
+    selected_date = get_selected_date()
+    try:
+        d = _dt.datetime.strptime(selected_date, "%Y-%m-%d")
+        yd = (d - _dt.timedelta(days=1)).strftime("%Y-%m-%d")
+    except Exception:
+        yd = selected_date
+
+    results = {}
+    client = current_app.test_client()
+    endpoints = {
+        "wb":     f"/api/wellbeing?date={selected_date}",
+        "ds":     f"/api/daily-stats?date={selected_date}",
+        "hr":     f"/api/hourly?date={selected_date}",
+        "fc":     f"/api/focus?date={selected_date}",
+        "prev":   f"/api/daily-stats?date={yd}",
+        "prevWb": f"/api/wellbeing?date={yd}",
+    }
+    for key, path in endpoints.items():
+        try:
+            resp = client.get(path)
+            results[key] = resp.get_json()
+        except Exception:
+            results[key] = None
+
+    # Limits don't depend on date
+    try:
+        from src.database.database import get_all_limits
+        limits = get_all_limits()
+        results["lim"] = [
+            {
+                "id": row[0],
+                "app_name": row[1],
+                "daily_limit_seconds": row[2],
+                "is_enabled": bool(row[3])
+            }
+            for row in limits
+        ]
+    except Exception:
+        results["lim"] = []
+
+    return jsonify(results)

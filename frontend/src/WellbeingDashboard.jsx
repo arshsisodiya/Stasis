@@ -320,21 +320,19 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
   const fetchDate = useCallback(async (date) => {
     if (inflight.current[date]) return inflight.current[date];
-    const yd = yesterday(date);
-    const promise = Promise.all([
-      fetch(`${BASE}/api/wellbeing?date=${date}`).then(r => r.json()),
-      fetch(`${BASE}/api/daily-stats?date=${date}`).then(r => r.json()),
-      fetch(`${BASE}/api/hourly?date=${date}`).then(r => r.json()),
-      fetch(`${BASE}/api/focus?date=${date}`).then(r => r.json()),
-      fetch(`${BASE}/api/daily-stats?date=${yd}`).then(r => r.json()).catch(() => []),
-      fetch(`${BASE}/limits/all`).then(r => r.json()).catch(() => []),
-      fetch(`${BASE}/api/wellbeing?date=${yd}`).then(r => r.json()).catch(() => null),
-    ]).then(([wb, ds, hr, fc, prev, lim, prevWb]) => {
-      const entry = { wb, ds, hr, fc, prev, lim, prevWb, fetchedAt: Date.now() };
-      cache.current[date] = entry;
-      delete inflight.current[date];
-      return entry;
-    }).catch(err => { delete inflight.current[date]; throw err; });
+    const promise = fetch(`${BASE}/api/dashboard-bundle?date=${date}`)
+      .then(r => r.json())
+      .then(bundle => {
+        const entry = {
+          wb: bundle.wb, ds: bundle.ds, hr: bundle.hr, fc: bundle.fc,
+          prev: bundle.prev, lim: bundle.lim, prevWb: bundle.prevWb,
+          fetchedAt: Date.now(),
+        };
+        cache.current[date] = entry;
+        delete inflight.current[date];
+        return entry;
+      })
+      .catch(err => { delete inflight.current[date]; throw err; });
     inflight.current[date] = promise;
     return promise;
   }, [BASE]);

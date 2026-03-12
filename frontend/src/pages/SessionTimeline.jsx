@@ -4,11 +4,6 @@ import { fmtTime } from "../shared/utils";
 import { SectionCard } from "../shared/components";
 
 // ─── SESSION TIMELINE ─────────────────────────────────────────────────────────
-// Self-contained session timeline for one day.
-//
-// Props:
-//   BASE – API base URL
-//   date – ISO date string, e.g. "2024-01-15"
 function Timeline({ BASE, date }) {
   const [catBlocks, setCatBlocks]     = useState({});
   const [allCats, setAllCats]         = useState([]);
@@ -133,28 +128,48 @@ function Timeline({ BASE, date }) {
     return `${displayH}${m > 0 ? ":" + String(m).padStart(2, "0") : ""}${suffix}`;
   };
 
-  const jumps = [];
+  // Gap detection — pairs of [prevHour, nextHour] where time jumps
+  const gaps = [];
   for (let i = 1; i < activeHours.length; i++) {
-    if (activeHours[i] !== activeHours[i - 1] + 1) jumps.push(activeHours[i]);
+    if (activeHours[i] !== activeHours[i - 1] + 1) {
+      gaps.push({
+        xPct: toX(activeHours[i] * 60),   // x position of the gap start
+        fromHour: activeHours[i - 1],
+        toHour: activeHours[i],
+        gapHours: activeHours[i] - activeHours[i - 1],
+      });
+    }
   }
 
   const LABEL_W = 120;
 
+  // Category totals for the label column
+  const catTotals = {};
+  for (const cat of allCats) {
+    catTotals[cat] = (catBlocks[cat] || []).reduce((s, b) => s + b.active, 0);
+  }
+
   return (
     <div ref={containerRef} style={{ position: "relative" }}>
-      {/* Tooltip */}
+      {/* ── Tooltip (clamped to container bounds) ── */}
       {hovBlock && (() => {
         const { cat, block, tipX, tipY } = hovBlock;
         const col = CATEGORY_COLORS[cat] || CATEGORY_COLORS.other;
         const topApps = Object.entries(block.apps).sort(([, a], [, b]) => b - a).slice(0, 5);
+        const containerW = containerRef.current?.offsetWidth || 600;
+        const tooltipW = topApps.length > 0 ? 300 : 220;
+        // Clamp so tooltip never escapes the card
+        const clampedX = Math.min(Math.max(tipX, tooltipW / 2 + 4), containerW - tooltipW / 2 - 4);
         return (
           <div style={{
-            position: "absolute", left: tipX, top: tipY,
+            position: "absolute",
+            left: clampedX,
+            top: tipY,
             transform: "translate(-50%, calc(-100% - 12px))",
             pointerEvents: "none", zIndex: 50,
             background: "rgba(8,11,20,0.97)", border: `1px solid ${col.primary}45`,
             borderRadius: 14, boxShadow: `0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px ${col.primary}18`,
-            minWidth: 220, maxWidth: 300, animation: "center-fade-in 0.13s ease both",
+            minWidth: tooltipW, maxWidth: tooltipW, animation: "center-fade-in 0.13s ease both",
           }}>
             <div style={{
               position: "absolute", bottom: -6, left: "50%",
@@ -196,7 +211,7 @@ function Timeline({ BASE, date }) {
         );
       })()}
 
-      {/* Header ruler */}
+      {/* ── Header ruler ── */}
       <div style={{ display: "flex" }}>
         <div style={{ width: LABEL_W, flexShrink: 0 }} />
         <div style={{ flex: 1, position: "relative", height: 20, marginBottom: 6 }}>
@@ -214,19 +229,43 @@ function Timeline({ BASE, date }) {
               </span>
             </div>
           )}
-          {/* Jump markers */}
-          {jumps.map(h => (
-            <div key={h} style={{
-              position: "absolute", left: `${toX(h * 60)}%`, top: 0,
-              bottom: -((allCats.length * 36) + 10),
-              width: 1, borderLeft: "1px dashed rgba(255,255,255,0.08)",
-              zIndex: 0, pointerEvents: "none",
-            }} />
+
+          {/* ── Gap break markers on ruler ── */}
+          {gaps.map((gap, gi) => (
+            <div key={gi} style={{
+              position: "absolute",
+              left: `${gap.xPct}%`,
+              top: -2,
+              transform: "translateX(-50%)",
+              display: "flex", flexDirection: "column", alignItems: "center", pointerEvents: "none",
+            }}>
+              {/* Dashed break line spanning all rows — height set to cover rows below */}
+              <div style={{
+                width: 1,
+                height: allCats.length * 36 + 28,
+                borderLeft: "1.5px dashed rgba(255,255,255,0.1)",
+                position: "absolute", top: 22, zIndex: 0,
+              }} />
+              {/* Gap pill label */}
+              <div style={{
+                marginTop: 2,
+                background: "rgba(15,18,34,0.9)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 6, padding: "2px 6px",
+                display: "flex", alignItems: "center", gap: 3,
+                zIndex: 2,
+              }}>
+                <span style={{ fontSize: 8 }}>💤</span>
+                <span style={{ fontSize: 8, color: "#475569", fontWeight: 600, whiteSpace: "nowrap" }}>
+                  {gap.gapHours}h break
+                </span>
+              </div>
+            </div>
           ))}
         </div>
       </div>
 
-      {/* Category rows */}
+      {/* ── Category rows ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {allCats.map(cat => {
           const col = CATEGORY_COLORS[cat] || CATEGORY_COLORS.other;
@@ -237,12 +276,20 @@ function Timeline({ BASE, date }) {
           }[cat] || "•";
           return (
             <div key={cat} style={{ display: "flex", alignItems: "center" }}>
+              {/* Label column — now shows category total time too */}
               <div style={{ width: LABEL_W, flexShrink: 0, display: "flex", alignItems: "center", gap: 6, paddingRight: 10 }}>
                 <div style={{ width: 8, height: 8, borderRadius: 2, background: col.grad || col.primary, flexShrink: 0 }} />
-                <span style={{ fontSize: 10, color: col.primary, fontWeight: 600, textTransform: "capitalize", whiteSpace: "nowrap" }}>
-                  {emoji} {cat}
-                </span>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ fontSize: 10, color: col.primary, fontWeight: 600, textTransform: "capitalize", whiteSpace: "nowrap", display: "block" }}>
+                    {emoji} {cat}
+                  </span>
+                  <span style={{ fontSize: 9, color: "#334155", whiteSpace: "nowrap" }}>
+                    {fmtTime(catTotals[cat] || 0)}
+                  </span>
+                </div>
               </div>
+
+              {/* Timeline track */}
               <div style={{ flex: 1, position: "relative", height: 28, background: "rgba(255, 255, 255, 0.03)", borderRadius: 8, boxShadow: "inset 0 1px 2px rgba(0,0,0,0.2)" }}>
                 {blocks.map(block => {
                   const left = toX(block.startMin);

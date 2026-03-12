@@ -186,12 +186,25 @@ function BrowserRow({ browsers, maxActive, index, BASE, selectedDate, prevActive
 // ─── APPS PAGE ────────────────────────────────────────────────────────────────
 export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignoredApps }) {
   const [appFilter, setAppFilter] = useState("all");
+  const [prevFilter, setPrevFilter] = useState("all");
+
+  const handleFilterChange = (cat) => {
+    setPrevFilter(appFilter);
+    setAppFilter(cat);
+  };
 
   const prevMap = prevStats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
   const sorted = [...stats].sort((a, b) => b.active - a.active);
 
   return (
     <SectionCard>
+      <style>{`
+        @keyframes badge-pop {
+          0%   { transform: scale(0.6); opacity: 0.4; }
+          60%  { transform: scale(1.35); opacity: 1; }
+          100% { transform: scale(1); opacity: 0.7; }
+        }
+      `}</style>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
         <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: "0.15em" }}>Time by App</div>
         <div style={{ fontSize: 11, color: "#e2e8f0" }}>vs yesterday</div>
@@ -205,7 +218,7 @@ export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignored
           const cnt = cat === "all" ? sorted.length : sorted.filter(s => s.main === cat).length;
           if (cat !== "all" && cnt === 0) return null;
           return (
-            <button key={cat} onClick={() => setAppFilter(cat)}
+            <button key={cat} onClick={() => handleFilterChange(cat)}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 20,
                 border: `1px solid ${isActive ? col.primary + "55" : "rgba(255,255,255,0.07)"}`,
@@ -214,7 +227,14 @@ export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignored
                 cursor: "pointer", transition: "all 0.18s", fontFamily: "'DM Sans',sans-serif"
               }}>
               {cat === "all" ? "All" : cat.charAt(0).toUpperCase() + cat.slice(1)}
-              <span style={{ fontSize: 10, opacity: 0.7 }}>{cnt}</span>
+              <span
+                key={`${cat}-${cnt}`}
+                style={{
+                  fontSize: 10, opacity: 0.7,
+                  display: "inline-block",
+                  animation: appFilter === cat ? "badge-pop 0.3s cubic-bezier(0.34,1.56,0.64,1)" : "none",
+                }}
+              >{cnt}</span>
             </button>
           );
         })}

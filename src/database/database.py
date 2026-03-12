@@ -499,16 +499,27 @@ def get_auto_delete_days():
 
 def delete_activity_older_than(days: int):
     """
-    Delete activity records older than N days
+    Delete activity records older than N days across all log tables.
     """
 
     conn = get_connection()
     cursor = conn.cursor()
 
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
     cursor.execute("""
         DELETE FROM activity_logs
+        WHERE timestamp < ?
+    """, (cutoff,))
+
+    cursor.execute("""
+        DELETE FROM daily_stats
+        WHERE date < ?
+    """, (cutoff_date,))
+
+    cursor.execute("""
+        DELETE FROM file_logs
         WHERE timestamp < ?
     """, (cutoff,))
 

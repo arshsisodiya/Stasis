@@ -19,6 +19,7 @@ const DIALOG_CSS = `
   @keyframes ud-overlay-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes ud-modal-in { from { opacity: 0; transform: scale(0.9) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
   @keyframes ud-slide-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes ud-snooze-in { from { opacity: 0; transform: translateY(6px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
   
   .ud-btn {
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -29,21 +30,30 @@ const DIALOG_CSS = `
   }
   .ud-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
   .ud-btn:active { transform: translateY(0) scale(0.98); }
+  .ud-btn:disabled { opacity: 0.45; cursor: default; filter: none; transform: none; }
+  
+  .ud-snooze-opt {
+    transition: all 0.15s ease;
+    cursor: pointer;
+    border-radius: 8px;
+  }
+  .ud-snooze-opt:hover { background: rgba(255,255,255,0.05) !important; }
   
   .ud-scroll::-webkit-scrollbar { width: 4px; }
   .ud-scroll::-webkit-scrollbar-track { background: transparent; }
   .ud-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
-  
-  .ud-tag {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
-    text-transform: uppercase; border-radius: 6px;
-    padding: 2px 8px; border: 1px solid;
-  }
 `;
 
-// ─── HELPERS (Synchronized with UpdatePage) ───────────────────────────────────
+const SNOOZE_OPTIONS = [
+  { label: "1 hour",   hours: 1,   icon: "⏰" },
+  { label: "4 hours",  hours: 4,   icon: "🕓" },
+  { label: "Tomorrow", hours: 24,  icon: "📅" },
+  { label: "1 week",   hours: 168, icon: "📆" },
+];
 
+const REMIND_KEY = "stasis_remind_after";
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 function inferSectionIcon(title) {
     const t = title.toLowerCase();
     if (t.includes("fix") || t.includes("bug")) return "🐛";
@@ -58,7 +68,6 @@ function inferSectionIcon(title) {
     return "✦";
 }
 
-// Parse GitHub markdown release notes into structured sections
 function parseReleaseBody(body) {
     if (!body) return [];
     const lines = body.split("\n");
@@ -66,55 +75,102 @@ function parseReleaseBody(body) {
     let current = null;
 
     const ensureSection = (title = "Changes") => {
-        if (!current) {
-            current = { title, icon: inferSectionIcon(title), items: [] };
-        }
+        if (!current) current = { title, icon: inferSectionIcon(title), items: [] };
         return current;
     };
-
     const pushCurrent = () => {
-        if (current) {
-            if (current.items.length > 0 || (current.note && current.note.trim())) {
-                sections.push(current);
-            }
-            current = null;
+        if (current && (current.items.length > 0 || (current.note && current.note.trim()))) {
+            sections.push(current);
         }
+        current = null;
     };
 
     for (const raw of lines) {
         const line = raw.trim();
         if (!line) continue;
-
         if (line.startsWith("#")) {
             pushCurrent();
             const title = line.replace(/^#+\s*/, "").trim();
             current = { title, icon: inferSectionIcon(title), items: [] };
             continue;
         }
-
         if (line.startsWith("- ") || line.startsWith("* ")) {
-            const text = line.replace(/^[-*]\s*/, "").trim();
-            ensureSection("Changes").items.push(text);
+            ensureSection("Changes").items.push(line.replace(/^[-*]\s*/, "").trim());
             continue;
         }
-
-        if (line && !line.startsWith("#")) {
-            const s = ensureSection("General");
-            s.note = (s.note || "") + line + " ";
-        }
+        const s = ensureSection("General");
+        s.note = (s.note || "") + line + " ";
     }
-
     pushCurrent();
     return sections;
 }
 
+// ─── SNOOZE PICKER ────────────────────────────────────────────────────────────
+function SnoozePicker({ onSnooze, onCancel }) {
+    return (
+        <div style={{
+            padding: "16px 24px 20px",
+            borderTop: `1px solid ${C.border}`,
+            animation: "ud-snooze-in 0.25s cubic-bezier(0.34,1.56,0.64,1)",
+        }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.textMuted, marginBottom: 10 }}>
+                Remind me in…
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {SNOOZE_OPTIONS.map(opt => (
+                    <button
+                        key={opt.hours}
+                        className="ud-snooze-opt"
+                        onClick={() => onSnooze(opt.hours)}
+                        style={{
+                            display: "flex", alignItems: "center", gap: 8,
+                            padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+                            background: "rgba(255,255,255,0.03)",
+                            border: `1px solid ${C.border}`,
+                            fontFamily: "'DM Sans', sans-serif",
+                        }}
+                    >
+                        <span style={{ fontSize: 16 }}>{opt.icon}</span>
+                        <span style={{ fontSize: 13, color: C.textSub, fontWeight: 500 }}>{opt.label}</span>
+                    </button>
+                ))}
+            </div>
+            <button
+                className="ud-btn"
+                onClick={onCancel}
+                style={{
+                    marginTop: 10, width: "100%", padding: "9px",
+                    borderRadius: 8, background: "none",
+                    border: `1px solid transparent`,
+                    color: C.textMuted, fontSize: 12,
+                }}
+            >
+                ← Back
+            </button>
+        </div>
+    );
+}
+
+// ─── UPDATE DIALOG ────────────────────────────────────────────────────────────
 export default function UpdateDialog({ updateState, releases, onDownload, onLater }) {
     const latestVersion = updateState?.latest_version;
     const currentVersion = updateState?.current_version;
+    const [showSnooze, setShowSnooze] = useState(false);
+    const [snoozed, setSnoozed] = useState(false);
+    const [snoozedLabel, setSnoozedLabel] = useState("");
 
-    // Find the latest release info for the changelog
     const latestRelease = releases?.find(r => r.tag_name.replace(/^v/, "") === latestVersion?.replace(/^v/, ""));
     const changelog = latestRelease ? parseReleaseBody(latestRelease.body) : [];
+
+    const handleSnooze = (hours) => {
+        const remindAt = Date.now() + hours * 60 * 60 * 1000;
+        localStorage.setItem(REMIND_KEY, remindAt.toString());
+        const opt = SNOOZE_OPTIONS.find(o => o.hours === hours);
+        setSnoozedLabel(opt?.label || `${hours}h`);
+        setSnoozed(true);
+        // Close after brief confirmation
+        setTimeout(() => onLater(), 1400);
+    };
 
     return (
         <div style={{
@@ -137,7 +193,7 @@ export default function UpdateDialog({ updateState, releases, onDownload, onLate
                 flexDirection: "column",
                 maxHeight: "85vh",
             }}>
-                {/* Header Section */}
+                {/* Header */}
                 <div style={{
                     padding: "32px 32px 24px",
                     background: "linear-gradient(180deg, rgba(74,222,128,0.05) 0%, transparent 100%)",
@@ -151,16 +207,12 @@ export default function UpdateDialog({ updateState, releases, onDownload, onLate
                         display: "flex", alignItems: "center", justifyContent: "center",
                         fontSize: 32, margin: "0 auto 20px",
                         boxShadow: "0 0 30px rgba(74,222,128,0.15)"
-                    }}>
-                        🚀
-                    </div>
+                    }}>🚀</div>
                     <h2 style={{
                         fontFamily: "'DM Serif Display', serif",
                         fontSize: 28, fontWeight: 400, color: C.text,
                         marginBottom: 8, letterSpacing: "-0.01em"
-                    }}>
-                        Update Available
-                    </h2>
+                    }}>Update Available</h2>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                         <span style={{ fontSize: 13, color: C.textSub }}>v{currentVersion}</span>
                         <span style={{ color: C.textMuted }}>→</span>
@@ -168,13 +220,11 @@ export default function UpdateDialog({ updateState, releases, onDownload, onLate
                             fontSize: 13, fontWeight: 700, color: C.green,
                             background: "rgba(74,222,128,0.1)", padding: "2px 10px", borderRadius: 20,
                             border: "1px solid rgba(74,222,128,0.2)"
-                        }}>
-                            v{latestVersion}
-                        </span>
+                        }}>v{latestVersion}</span>
                     </div>
                 </div>
 
-                {/* Changelog Content */}
+                {/* Changelog */}
                 <div className="ud-scroll" style={{
                     flex: 1, overflowY: "auto", padding: "24px 32px",
                     display: "flex", flexDirection: "column", gap: 20
@@ -182,7 +232,6 @@ export default function UpdateDialog({ updateState, releases, onDownload, onLate
                     <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.textMuted }}>
                         What's New
                     </div>
-
                     {changelog.length > 0 ? (
                         changelog.map((section, idx) => (
                             <div key={idx} style={{ animation: `ud-slide-up 0.4s ease ${idx * 0.05}s both` }}>
@@ -212,28 +261,44 @@ export default function UpdateDialog({ updateState, releases, onDownload, onLate
                     )}
                 </div>
 
-                {/* Footer Actions */}
-                <div style={{
-                    padding: "24px 32px 32px",
-                    borderTop: `1px solid ${C.border}`,
-                    display: "flex", gap: 12
-                }}>
-                    <button className="ud-btn" onClick={onLater} style={{
-                        flex: 1, padding: "14px", borderRadius: 12,
-                        background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`,
-                        color: C.textSub, fontSize: 14
+                {/* Snooze confirmation state */}
+                {snoozed ? (
+                    <div style={{
+                        padding: "20px 32px 28px", borderTop: `1px solid ${C.border}`,
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                        animation: "ud-slide-up 0.25s ease",
                     }}>
-                        Remind Later
-                    </button>
-                    <button className="ud-btn" onClick={onDownload} style={{
-                        flex: 1.5, padding: "14px", borderRadius: 12,
-                        background: "linear-gradient(135deg, #4ade80, #22d3ee)", border: "none",
-                        color: "#060a12", fontSize: 14, fontWeight: 700,
-                        boxShadow: "0 10px 25px rgba(74,222,128,0.3)"
+                        <span style={{ fontSize: 18 }}>✅</span>
+                        <span style={{ fontSize: 13, color: C.textSub }}>
+                            Got it — reminding you in <strong style={{ color: C.text }}>{snoozedLabel}</strong>
+                        </span>
+                    </div>
+                ) : showSnooze ? (
+                    <SnoozePicker onSnooze={handleSnooze} onCancel={() => setShowSnooze(false)} />
+                ) : (
+                    /* Footer Actions */
+                    <div style={{
+                        padding: "24px 32px 32px",
+                        borderTop: `1px solid ${C.border}`,
+                        display: "flex", gap: 12,
                     }}>
-                        Download Now
-                    </button>
-                </div>
+                        <button className="ud-btn" onClick={() => setShowSnooze(true)} style={{
+                            flex: 1, padding: "14px", borderRadius: 12,
+                            background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`,
+                            color: C.textSub, fontSize: 14,
+                        }}>
+                            Remind Later
+                        </button>
+                        <button className="ud-btn" onClick={onDownload} style={{
+                            flex: 1.5, padding: "14px", borderRadius: 12,
+                            background: "linear-gradient(135deg, #4ade80, #22d3ee)", border: "none",
+                            color: "#060a12", fontSize: 14, fontWeight: 700,
+                            boxShadow: "0 10px 25px rgba(74,222,128,0.3)",
+                        }}>
+                            Download Now
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

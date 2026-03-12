@@ -171,6 +171,9 @@ def wellbeing():
 
         category_data = {}
 
+        top_app = "N/A"
+        app_totals = {}  # track per-app total for top_app without extra query
+
         for main_cat, active_secs, app_name in category_rows:
 
             if is_ignored(app_name):
@@ -179,6 +182,11 @@ def wellbeing():
             category_data[main_cat] = (
                 category_data.get(main_cat, 0) + active_secs
             )
+            app_totals[app_name] = app_totals.get(app_name, 0) + safe(active_secs)
+
+        # Determine top app from the data we already have
+        if app_totals:
+            top_app = max(app_totals, key=app_totals.get)
 
         productive = safe(category_data.get("productive", 0))
 
@@ -220,23 +228,6 @@ def wellbeing():
             total_keys += safe(keys)
             total_clicks += safe(clicks)
             total_sessions += safe(sessions)
-
-        cursor.execute("""
-            SELECT app_name, SUM(active_seconds)
-            FROM daily_stats
-            WHERE date = ?
-            GROUP BY app_name
-            ORDER BY SUM(active_seconds) DESC
-        """, (selected_date,))
-
-        top_app = "N/A"
-
-        for app_name, total in cursor.fetchall():
-
-            if not is_ignored(app_name):
-
-                top_app = app_name
-                break
 
         if total_active == 0:
 

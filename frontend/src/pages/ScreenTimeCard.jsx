@@ -70,6 +70,39 @@ export default function ScreenTimeCard({ data, prevWellbeing, showComparison, co
         </div>
       </div>
 
+      {/* ── Active / Idle ratio bar ── */}
+      {data.totalScreenTime > 0 && (() => {
+        const activeTime = data.totalScreenTime - data.totalIdleTime;
+        const activePct = Math.round((activeTime / data.totalScreenTime) * 100);
+        const idlePct = 100 - activePct;
+        return (
+          <div style={{ marginTop: 12 }}>
+            <div style={{
+              height: 6, borderRadius: 6, overflow: "hidden",
+              background: "rgba(255,255,255,0.04)",
+              display: "flex",
+            }}>
+              <div style={{
+                width: `${activePct}%`, height: "100%",
+                background: "linear-gradient(90deg, #4ade80, #22d3ee)",
+                borderRadius: "6px 0 0 6px",
+                transition: "width 1.4s cubic-bezier(0.34,1.56,0.64,1)",
+                boxShadow: "0 0 8px rgba(74,222,128,0.4)",
+              }} />
+              <div style={{
+                flex: 1, height: "100%",
+                background: "rgba(100,116,139,0.25)",
+                borderRadius: "0 6px 6px 0",
+              }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+              <span style={{ fontSize: 9, color: "#4ade8077", fontWeight: 600 }}>{activePct}% active</span>
+              <span style={{ fontSize: 9, color: "#47556966" }}>{idlePct}% idle</span>
+            </div>
+          </div>
+        );
+      })()}
+
       {sparkValues?.length >= 2 && (
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",

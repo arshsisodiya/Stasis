@@ -355,6 +355,21 @@ export function HourlyBar({ data, peakHour, BASE, selectedDate }) {
   const nowHour = new Date().getHours();
   const lbl = i => i === 0 ? "12 am" : i === 12 ? "12 pm" : i < 12 ? `${i} am` : `${i - 12} pm`;
 
+  // Live clock — fractional hour position for "now" needle
+  const isToday = selectedDate === localYMD();
+  const [nowFrac, setNowFrac] = useState(() => {
+    const n = new Date(); return n.getHours() + n.getMinutes() / 60 + n.getSeconds() / 3600;
+  });
+  useEffect(() => {
+    if (!isToday) return;
+    const tick = () => {
+      const n = new Date();
+      setNowFrac(n.getHours() + n.getMinutes() / 60 + n.getSeconds() / 3600);
+    };
+    const iv = setInterval(tick, 15000); // update every 15s — no flicker
+    return () => clearInterval(iv);
+  }, [isToday]);
+
   // Per-hour app breakdown from session data
   const [hourlyApps, setHourlyApps] = useState({});
   const fetchedRef = useRef(null);
@@ -455,6 +470,25 @@ export function HourlyBar({ data, peakHour, BASE, selectedDate }) {
           <span style={{ fontSize: 9, color: "#2d3f55", fontWeight: 500, whiteSpace: "nowrap", paddingRight: 4 }}>{max}m</span>
           <div style={{ flex: 1, height: 1, borderTop: "1px dashed rgba(255,255,255,0.07)" }} />
         </div>
+        {/* ── Live "now" needle ── */}
+        {isToday && (
+          <div style={{
+            position: "absolute", top: 0, bottom: 0,
+            left: `${(nowFrac / 24) * 100}%`,
+            width: 1,
+            background: "linear-gradient(180deg, rgba(74,222,128,0) 0%, #4ade80 35%, #4ade80 100%)",
+            pointerEvents: "none", zIndex: 4,
+          }}>
+            <div style={{
+              position: "absolute", top: 0, left: "50%",
+              transform: "translate(-50%, -4px)",
+              width: 7, height: 7, borderRadius: "50%",
+              background: "#4ade80",
+              boxShadow: "0 0 0 3px rgba(74,222,128,0.25)",
+              animation: "now-pulse 2s ease-in-out infinite",
+            }} />
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 72, padding: "0 2px" }}>
           {data.map((v, i) => {
             const h = max > 0 ? (v / max) * 68 : 2;
@@ -505,6 +539,10 @@ export function HourlyBar({ data, peakHour, BASE, selectedDate }) {
 
 // ─── DONUT CSS ────────────────────────────────────────────────────────────────
 export const DONUT_CSS = `
+      @keyframes now-pulse {
+        0%, 100% { box-shadow: 0 0 0 3px rgba(74,222,128,0.25); transform: translate(-50%, -4px) scale(1); }
+        50%       { box-shadow: 0 0 0 6px rgba(74,222,128,0.08); transform: translate(-50%, -4px) scale(1.2); }
+      }
       @keyframes center-fade-in {
         from {opacity: 0; transform: scale(0.88) translateY(4px); }
       to   {opacity: 1; transform: scale(1) translateY(0); }

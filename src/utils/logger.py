@@ -22,16 +22,28 @@ def cleanup_old_logs(log_dir):
                 pass
 
 
+# Guard: only configure once per process even if called from multiple modules
+_logger_initialized = False
+
+
 def setup_logger():
+    global _logger_initialized
+
+    logger = logging.getLogger("stasis")
+
+    # If already set up in this process, just return the existing logger
+    if _logger_initialized and logger.hasHandlers():
+        return logger
+
     log_dir = get_logs_dir()
 
     today = datetime.now().strftime("%Y-%m-%d")
     log_file = os.path.join(log_dir, f"stasis_{today}.log")
 
-    logger = logging.getLogger("stasis")
     logger.setLevel(logging.INFO)
     logger.propagate = False
 
+    # Only clear + re-add on first init (avoids handler churn)
     if logger.hasHandlers():
         logger.handlers.clear()
 
@@ -44,6 +56,8 @@ def setup_logger():
 
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
+
+    _logger_initialized = True
 
     cleanup_old_logs(log_dir)
 

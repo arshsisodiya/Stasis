@@ -69,10 +69,11 @@ class _ActivityHandler(FileSystemEventHandler):
 
     _FLUSH_INTERVAL = 2  # seconds between batch flushes
     _MAX_QUEUE = 500     # drop oldest if queue exceeds this
+    _MAX_THROTTLE_CACHE = 10_000  # max unique paths in throttle dict
 
     def __init__(self, essential_only: bool):
         self._essential_only = essential_only
-        self._last_logged: dict[str, float] = {}
+        self._last_logged: collections.OrderedDict = collections.OrderedDict()
         self._queue: collections.deque = collections.deque(maxlen=self._MAX_QUEUE)
         self._queue_lock = threading.Lock()
         self._flush_thread = threading.Thread(
@@ -101,6 +102,9 @@ class _ActivityHandler(FileSystemEventHandler):
         # Throttle: same path within 1 s → skip
         if path in self._last_logged and now - self._last_logged[path] < 1:
             return
+        # Evict oldest entries when cache is full to prevent unbounded growth
+        while len(self._last_logged) >= self._MAX_THROTTLE_CACHE:
+            self._last_logged.popitem(last=False)
         self._last_logged[path] = now
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

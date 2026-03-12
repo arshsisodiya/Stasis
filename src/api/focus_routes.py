@@ -58,9 +58,9 @@ def focus():
         cursor.execute("""
             SELECT timestamp, app_name
             FROM activity_logs
-            WHERE date(timestamp) = ?
+            WHERE timestamp >= ? AND timestamp < date(?, '+1 day')
             ORDER BY timestamp ASC
-        """, (selected_date,))
+        """, (selected_date, selected_date))
 
         logs = [
             (ts, app)

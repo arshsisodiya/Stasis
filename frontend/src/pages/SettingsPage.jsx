@@ -780,7 +780,7 @@ function TelegramSection({ push }) {
 // GENERAL SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 function GeneralSection({ push }) {
-  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true };
+  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false };
   const [s, setS] = useState({ ...DEFAULTS });
   const [saved, setSaved] = useState({ ...DEFAULTS });
   const [confirmReset, setConfirmReset] = useState(false);
@@ -815,7 +815,8 @@ function GeneralSection({ push }) {
           file_logging_enabled: s.file_logging_enabled,
           file_logging_essential_only: s.file_logging_essential_only,
           show_yesterday_comparison: s.show_yesterday_comparison,
-          hardware_acceleration: s.hardware_acceleration
+          hardware_acceleration: s.hardware_acceleration,
+          weekly_report_telegram: s.weekly_report_telegram
         })
       });
       setSaved({ ...s });
@@ -958,6 +959,11 @@ function GeneralSection({ push }) {
         <SettingRow label="File system logging" desc="Monitor local files created, modified or deleted" control={<Toggle on={s.file_logging_enabled} onChange={v => set("file_logging_enabled", v)} />} />
         {s.file_logging_enabled && <SettingRow label="Essential files only" desc="Only track common documents, code and media types" control={<Toggle on={s.file_logging_essential_only} onChange={v => set("file_logging_essential_only", v)} />} />}
         <SettingRow borderless label="Browser tab tracking" desc="Track active website titles in supported browsers" control={<Toggle on={s.browser_tracking} onChange={handleBrowserToggle} loading={togglingBrowser} />} />
+      </Card>
+
+      <Card>
+        <SectionLabel>Weekly Reports</SectionLabel>
+        <SettingRow borderless label="Send weekly report via Telegram" desc="Receive a detailed weekly usage summary every Sunday via your Telegram bot" control={<Toggle on={s.weekly_report_telegram} onChange={v => set("weekly_report_telegram", v)} />} />
       </Card>
 
       {/* Cleanup Confirmation Modal */}

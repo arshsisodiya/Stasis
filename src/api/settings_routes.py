@@ -14,7 +14,8 @@ def get_settings():
         "show_yesterday_comparison": SettingsManager.get_bool("show_yesterday_comparison", True),
         "hardware_acceleration": SettingsManager.get_bool("hardware_acceleration", True),
         "idle_detection": SettingsManager.get_bool("idle_detection", True),
-        "browser_tracking": SettingsManager.get_bool("browser_tracking", True)
+        "browser_tracking": SettingsManager.get_bool("browser_tracking", True),
+        "weekly_report_telegram": SettingsManager.get_bool("weekly_report_telegram", False)
     })
 
 
@@ -61,5 +62,9 @@ def update_settings():
         else:
             with open(flag_file, "w") as f:
                 f.write("disabled")
+
+    if "weekly_report_telegram" in data:
+        val = "true" if data["weekly_report_telegram"] else "false"
+        SettingsManager.set("weekly_report_telegram", val)
 
     return jsonify({"status": "updated"})

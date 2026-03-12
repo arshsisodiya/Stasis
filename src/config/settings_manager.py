@@ -103,7 +103,8 @@ class SettingsManager(BaseSettingsManager):
             "show_yesterday_comparison": "true",
             "hardware_acceleration": "true",
             "idle_detection": "true",
-            "browser_tracking": "true"
+            "browser_tracking": "true",
+            "weekly_report_telegram": "false"
         }
 
         for key, value in defaults.items():

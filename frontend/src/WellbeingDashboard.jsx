@@ -4,6 +4,8 @@ import OverviewPage from "./pages/OverviewPage";
 import AppsPage from "./pages/AppsPage";
 import ActivityPage from "./pages/ActivityPage";
 import LimitsPage from "./pages/LimitsPage";
+import GoalsPage from "./pages/GoalsPage";
+import WeeklyReportPage from "./pages/WeeklyReportPage";
 import DaySummary from "./pages/DaySummary";
 import { Skeleton, SkeletonCard, TabPanel, AppIcon } from "./shared/components";
 import { localYMD, yesterday, fmtTime, fmtTimeFull } from "./shared/utils";
@@ -288,7 +290,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
   // Keyboard shortcuts
   useEffect(() => {
-    const TABS = ["overview", "apps", "activity", "limits"];
+    const TABS = ["overview", "apps", "activity", "limits", "goals", "reports"];
     const handler = e => {
       const n = parseInt(e.key);
       if (n >= 1 && n <= TABS.length && !e.ctrlKey && !e.metaKey && !e.altKey
@@ -408,6 +410,8 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
     { id: "apps", label: "Apps" },
     { id: "activity", label: "Activity" },
     { id: "limits", label: "🛡️ Limits", accent: true },
+    { id: "goals", label: "🎯 Goals" },
+    { id: "reports", label: "📊 Reports" },
   ];
 
   if (loading) return null;
@@ -566,9 +570,11 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 12, color: "#475569" }}>
                 {activeTab === "limits" ? "App time limits & blocking"
+                  : activeTab === "goals" ? "Personal goals & daily targets"
+                  : activeTab === "reports" ? "Weekly usage summary & insights"
                   : new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
               </span>
-              {isToday && activeTab !== "limits" && (
+              {isToday && !["limits", "goals", "reports"].includes(activeTab) && (
                 <span style={{
                   display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11,
                   color: "#4ade80", background: "rgba(74,222,128,0.07)", border: "1px solid rgba(74,222,128,0.18)",
@@ -590,7 +596,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
             </div>
 
             {/* Date navigator + DaySummary */}
-            {activeTab !== "limits" && (
+            {activeTab !== "limits" && activeTab !== "goals" && activeTab !== "reports" && (
               <div className="date-bar-row" style={{ display: "flex", gap: 12, alignItems: "stretch", width: "100%" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <DateNavigator selectedDate={selectedDate} onChange={setSelectedDate} availableDates={availableDates} heatmap={heatmapData} />
@@ -642,6 +648,14 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
           <AnimatedTabPanel active={activeTab === "limits"}>
             <LimitsPage BASE={BASE} stats={stats} />
+          </AnimatedTabPanel>
+
+          <AnimatedTabPanel active={activeTab === "goals"}>
+            <GoalsPage selectedDate={selectedDate} />
+          </AnimatedTabPanel>
+
+          <AnimatedTabPanel active={activeTab === "reports"}>
+            <WeeklyReportPage />
           </AnimatedTabPanel>
 
           {/* Footer */}

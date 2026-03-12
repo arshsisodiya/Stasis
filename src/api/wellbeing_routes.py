@@ -60,3 +60,5 @@ import src.api.focus_routes
 import src.api.limits_routes
 import src.api.danger_routes
 import src.api.spark_routes
+import src.api.goals_routes
+import src.api.report_routes

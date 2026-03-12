@@ -135,11 +135,19 @@ class BlockingService:
                         usage = cursor.fetchone()[0] or 0
 
                         if usage >= daily_limit:
+                            # Log limit hit event if newly blocked
+                            was_blocked = app_name in self.blocked_apps
                             cursor.execute(
                                 "INSERT OR REPLACE INTO blocked_apps (app_name) VALUES (?)",
                                 (app_name,)
                             )
                             new_blocked.add(app_name)
+                            if not was_blocked:
+                                try:
+                                    from src.database.database import log_limit_event
+                                    log_limit_event(app_name, "hit", old_value=daily_limit, new_value=usage)
+                                except Exception:
+                                    pass
                         else:
                             cursor.execute(
                                 "DELETE FROM blocked_apps WHERE app_name = ?",

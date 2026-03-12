@@ -26,6 +26,7 @@ class BlockingService:
 
         self.running = False
         self.blocked_apps = set()
+        self._blocked_apps_lock = threading.Lock()
 
         self.limit_thread = None
         self.guard_thread = None
@@ -147,7 +148,8 @@ class BlockingService:
 
                     # Single commit for the entire cycle
                     conn.commit()
-                    self.blocked_apps = new_blocked
+                    with self._blocked_apps_lock:
+                        self.blocked_apps = new_blocked
 
                 finally:
                     conn.close()
@@ -173,7 +175,8 @@ class BlockingService:
         while self.running:
             try:
                 # Snapshot — avoids racing with _limit_monitor updates
-                blocked_snapshot = self.blocked_apps.copy()
+                with self._blocked_apps_lock:
+                    blocked_snapshot = self.blocked_apps.copy()
 
                 if not blocked_snapshot:
                     time.sleep(PROCESS_CHECK_INTERVAL)

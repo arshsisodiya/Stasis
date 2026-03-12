@@ -3,7 +3,7 @@ import time
 import psutil
 from datetime import datetime
 
-from src.database.database import get_blocked_apps
+from src.database.database import get_blocked_app_names
 
 LIMIT_CHECK_INTERVAL = 15
 PROCESS_CHECK_INTERVAL = 2
@@ -41,7 +41,7 @@ class BlockingService:
 
         # Load initial blocked apps into memory cache
         try:
-            self.blocked_apps = set(get_blocked_apps())
+            self.blocked_apps = set(get_blocked_app_names())
         except Exception:
             self.blocked_apps = set()
 
@@ -63,6 +63,14 @@ class BlockingService:
 
     def stop(self):
         self.running = False
+
+    def force_reblock(self, app_name: str):
+        with self._blocked_apps_lock:
+            self.blocked_apps.add(app_name)
+
+    def force_unblock(self, app_name: str):
+        with self._blocked_apps_lock:
+            self.blocked_apps.discard(app_name)
 
     # ─── LIMIT MONITOR ────────────────────────────────────────────────────────
     def _limit_monitor(self):
@@ -109,9 +117,15 @@ class BlockingService:
                         # Paused limit → never blocked
                         if not is_enabled:
                             cursor.execute(
-                                "DELETE FROM blocked_apps WHERE app_name = ?",
+                                """
+                                UPDATE app_limits
+                                SET is_blocked = 0,
+                                    blocked_at = NULL
+                                WHERE app_name = ?
+                                """,
                                 (app_name,)
                             )
+                            cursor.execute("DELETE FROM blocked_apps WHERE app_name = ?", (app_name,))
                             continue
 
                         # Still within a temporary unblock window
@@ -119,9 +133,15 @@ class BlockingService:
                             try:
                                 if now < datetime.fromisoformat(unblock_until):
                                     cursor.execute(
-                                        "DELETE FROM blocked_apps WHERE app_name = ?",
+                                        """
+                                        UPDATE app_limits
+                                        SET is_blocked = 0,
+                                            blocked_at = NULL
+                                        WHERE app_name = ?
+                                        """,
                                         (app_name,)
                                     )
+                                    cursor.execute("DELETE FROM blocked_apps WHERE app_name = ?", (app_name,))
                                     continue
                             except Exception:
                                 pass
@@ -137,9 +157,19 @@ class BlockingService:
                         if usage >= daily_limit:
                             # Log limit hit event if newly blocked
                             was_blocked = app_name in self.blocked_apps
+                            now_str = now.isoformat()
                             cursor.execute(
-                                "INSERT OR REPLACE INTO blocked_apps (app_name) VALUES (?)",
-                                (app_name,)
+                                """
+                                UPDATE app_limits
+                                SET is_blocked = 1,
+                                    blocked_at = ?
+                                WHERE app_name = ?
+                                """,
+                                (now_str, app_name)
+                            )
+                            cursor.execute(
+                                "INSERT OR REPLACE INTO blocked_apps (app_name, blocked_at) VALUES (?, ?)",
+                                (app_name, now_str)
                             )
                             new_blocked.add(app_name)
                             if not was_blocked:
@@ -150,9 +180,15 @@ class BlockingService:
                                     pass
                         else:
                             cursor.execute(
-                                "DELETE FROM blocked_apps WHERE app_name = ?",
+                                """
+                                UPDATE app_limits
+                                SET is_blocked = 0,
+                                    blocked_at = NULL
+                                WHERE app_name = ?
+                                """,
                                 (app_name,)
                             )
+                            cursor.execute("DELETE FROM blocked_apps WHERE app_name = ?", (app_name,))
 
                     # Single commit for the entire cycle
                     conn.commit()

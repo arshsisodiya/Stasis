@@ -8,7 +8,8 @@ from src.database.database import (
     delete_app_limit,
     set_temporary_unblock,
     get_limit_for_app,
-    log_limit_event
+    log_limit_event,
+    force_reblock_app
 )
 
 
@@ -42,7 +43,10 @@ def api_get_limits():
             "id": row[0],
             "app_name": row[1],
             "daily_limit_seconds": row[2],
-            "is_enabled": bool(row[3])
+            "is_enabled": bool(row[3]),
+            "unblock_until": row[4],
+            "is_blocked": bool(row[5]),
+            "blocked_at": row[6]
         }
         for row in limits
     ])
@@ -65,7 +69,23 @@ def api_unblock():
         int(data["minutes"])
     )
 
+    from src.services.blocking_service import BlockingService
+    BlockingService().force_unblock(data["app_name"])
+
     return jsonify({"status": "temporarily_unblocked"})
+
+
+@wellbeing_bp.route("/limits/reblock", methods=["POST"])
+def api_reblock_now():
+    data = request.json
+    app_name = data["app_name"]
+
+    force_reblock_app(app_name)
+
+    from src.services.blocking_service import BlockingService
+    BlockingService().force_reblock(app_name)
+
+    return jsonify({"status": "reblocked"})
 
 
 @wellbeing_bp.route("/limits/delete", methods=["POST"])

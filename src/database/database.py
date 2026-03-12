@@ -179,6 +179,8 @@ def init_db():
         app_name TEXT UNIQUE NOT NULL,
         daily_limit_seconds INTEGER NOT NULL,
         is_enabled INTEGER DEFAULT 1,
+        is_blocked INTEGER DEFAULT 0,
+        blocked_at TEXT,
         created_at TEXT,
         unblock_until TEXT
     )
@@ -187,6 +189,16 @@ def init_db():
     # Add unblock_until column if not exists (for backwards compatibility)
     try:
         cursor.execute("ALTER TABLE app_limits ADD COLUMN unblock_until TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+    # Add blocked-state columns if not present (migration-safe)
+    try:
+        cursor.execute("ALTER TABLE app_limits ADD COLUMN is_blocked INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE app_limits ADD COLUMN blocked_at TEXT")
     except sqlite3.OperationalError:
         pass
 
@@ -206,6 +218,22 @@ def init_db():
     )
     """)
 
+    # Backfill legacy blocked_apps state into app_limits.is_blocked once per startup.
+    # This keeps existing user data intact while moving to app_limits as the source of truth.
+    try:
+        cursor.execute("""
+            UPDATE app_limits
+            SET is_blocked = 1,
+                blocked_at = COALESCE(blocked_at, (
+                    SELECT blocked_at
+                    FROM blocked_apps b
+                    WHERE b.app_name = app_limits.app_name
+                ))
+            WHERE app_name IN (SELECT app_name FROM blocked_apps)
+        """)
+    except Exception:
+        pass
+
     # ===============================
     # INDEXES (Performance)
     # ===============================
@@ -216,6 +244,7 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_date ON daily_stats(date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_active ON daily_stats(active_seconds)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_limit_app ON app_limits(app_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_limit_blocked ON app_limits(is_blocked)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blocked_app ON blocked_apps(app_name)")
 
     # ===============================
@@ -296,7 +325,7 @@ def get_all_limits():
     cursor = conn.cursor()
 
     cursor.execute("""
-                   SELECT id, app_name, daily_limit_seconds, is_enabled, unblock_until
+                   SELECT id, app_name, daily_limit_seconds, is_enabled, unblock_until, is_blocked, blocked_at
                    FROM app_limits
                    """)
 
@@ -324,11 +353,22 @@ def toggle_limit(app_name: str, enabled: bool):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        UPDATE app_limits
-        SET is_enabled = ?
-        WHERE app_name = ?
-    """, (1 if enabled else 0, app_name))
+    if enabled:
+        cursor.execute("""
+            UPDATE app_limits
+            SET is_enabled = 1
+            WHERE app_name = ?
+        """, (app_name,))
+    else:
+        cursor.execute("""
+            UPDATE app_limits
+            SET is_enabled = 0,
+                is_blocked = 0,
+                blocked_at = NULL,
+                unblock_until = NULL
+            WHERE app_name = ?
+        """, (app_name,))
+        cursor.execute("DELETE FROM blocked_apps WHERE app_name = ?", (app_name,))
 
     conn.commit()
     conn.close()
@@ -342,10 +382,20 @@ def add_blocked_app(app_name: str):
     conn = get_connection()
     cursor = conn.cursor()
 
+    now = datetime.now().isoformat()
+
     cursor.execute("""
-        INSERT OR REPLACE INTO blocked_apps (app_name)
-        VALUES (?)
-    """, (app_name,))
+        UPDATE app_limits
+        SET is_blocked = 1,
+            blocked_at = ?
+        WHERE app_name = ?
+    """, (now, app_name))
+
+    # Keep legacy table in sync for backwards compatibility.
+    cursor.execute("""
+        INSERT OR REPLACE INTO blocked_apps (app_name, blocked_at)
+        VALUES (?, ?)
+    """, (app_name, now))
 
     conn.commit()
     conn.close()
@@ -355,6 +405,12 @@ def remove_blocked_app(app_name: str):
     conn = get_connection()
     cursor = conn.cursor()
 
+    cursor.execute("""
+        UPDATE app_limits
+        SET is_blocked = 0,
+            blocked_at = NULL
+        WHERE app_name = ?
+    """, (app_name,))
     cursor.execute("DELETE FROM blocked_apps WHERE app_name = ?", (app_name,))
     conn.commit()
     conn.close()
@@ -364,7 +420,27 @@ def get_blocked_apps():
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT app_name FROM blocked_apps")
+    cursor.execute("""
+        SELECT app_name, blocked_at
+        FROM app_limits
+        WHERE is_blocked = 1 AND is_enabled = 1
+        ORDER BY COALESCE(blocked_at, created_at) DESC, app_name ASC
+    """)
+    rows = cursor.fetchall()
+
+    conn.close()
+    return [{"app_name": r[0], "blocked_at": r[1]} for r in rows]
+
+
+def get_blocked_app_names():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT app_name
+        FROM app_limits
+        WHERE is_blocked = 1 AND is_enabled = 1
+    """)
     rows = cursor.fetchall()
 
     conn.close()
@@ -414,7 +490,9 @@ def set_temporary_unblock(app_name: str, minutes: int):
 
     cursor.execute("""
         UPDATE app_limits
-        SET unblock_until = ?
+        SET unblock_until = ?,
+            is_blocked = 0,
+            blocked_at = NULL
         WHERE app_name = ?
     """, (unblock_until.isoformat(), app_name))
 
@@ -422,6 +500,29 @@ def set_temporary_unblock(app_name: str, minutes: int):
         "DELETE FROM blocked_apps WHERE app_name = ?",
         (app_name,)
     )
+
+    conn.commit()
+    conn.close()
+
+
+def force_reblock_app(app_name: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    now_iso = datetime.now().isoformat()
+
+    cursor.execute("""
+        UPDATE app_limits
+        SET unblock_until = NULL,
+            is_blocked = 1,
+            blocked_at = ?
+        WHERE app_name = ?
+    """, (now_iso, app_name))
+
+    cursor.execute("""
+        INSERT OR REPLACE INTO blocked_apps (app_name, blocked_at)
+        VALUES (?, ?)
+    """, (app_name, now_iso))
 
     conn.commit()
     conn.close()

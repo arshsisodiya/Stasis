@@ -363,18 +363,50 @@ function LimitCard({ limit, onToggle, onEdit, onDelete, onUnblock, todayUsage, i
           <span style={{ fontSize: 11, color: "#334155", fontFamily: "'DM Mono',monospace" }}>{fmtTime(limit.daily_limit_seconds)}</span>
         </div>
 
-        <div style={{ height: 5, borderRadius: 5, background: "rgba(255,255,255,0.05)", overflow: "hidden", marginBottom: 10 }}>
+        <div style={{ height: 8, borderRadius: 5, background: "rgba(255,255,255,0.05)", overflow: "visible", marginBottom: 10, position: "relative" }}>
           <div style={{
             height: "100%", borderRadius: 5, width: `${pct * 100}%`,
             background: isOver ? "linear-gradient(90deg,#f87171,#ef4444)" : isWarn ? "linear-gradient(90deg,#fbbf24,#f59e0b)" : "linear-gradient(90deg,#4ade80,#22d3ee)",
-            boxShadow: `0 0 8px ${sc}60`, transition: "width 1.1s cubic-bezier(0.34,1.56,0.64,1)", position: "relative"
+            boxShadow: `0 0 8px ${sc}60`, transition: "width 1.1s cubic-bezier(0.34,1.56,0.64,1)", position: "relative", overflow: "hidden"
           }}>
             {pct > 0.12 && <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 4, borderRadius: "0 5px 5px 0", background: "rgba(255,255,255,0.45)", filter: "blur(1px)" }} />}
           </div>
+          {/* 80% warning threshold marker */}
+          <div style={{
+            position: "absolute", top: -2, bottom: -2,
+            left: "80%", width: 1.5,
+            background: pct >= 0.8 ? "rgba(251,191,36,0.6)" : "rgba(255,255,255,0.12)",
+            borderRadius: 1, pointerEvents: "none",
+            transition: "background 0.4s ease",
+          }} />
         </div>
 
         {isOver && <div style={{ fontSize: 11, color: "#f87171", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}><span>⛔</span>Daily limit reached — app is blocked</div>}
         {isWarn && !isOver && <div style={{ fontSize: 11, color: "#fbbf24", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}><span>⚠️</span>Approaching daily limit</div>}
+
+        {/* Burn rate insight — only show when active and under limit */}
+        {!isOver && isEnabled && used > 0 && (() => {
+          const nowHour = new Date().getHours() + new Date().getMinutes() / 60;
+          const hoursElapsed = Math.max(nowHour, 0.5);
+          const burnPerHour = used / hoursElapsed;
+          const hoursLeft = 24 - nowHour;
+          const projectedTotal = used + burnPerHour * hoursLeft;
+          const willExceed = projectedTotal >= limit.daily_limit_seconds;
+          const hitsInSeconds = remaining / (burnPerHour / 3600);
+          const hitsInHours = hitsInSeconds / 3600;
+          if (burnPerHour < 60) return null; // less than 1 min/hr — not useful
+          return (
+            <div style={{ fontSize: 10, color: willExceed ? "#fbbf24" : "#334155", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+              <span>{willExceed ? "📈" : "📊"}</span>
+              <span>~{Math.round(burnPerHour / 60)}m/hr avg
+                {willExceed && hitsInHours < 12
+                  ? <span style={{ color: "#fbbf24", fontWeight: 600 }}> · hits limit in ~{hitsInHours < 1 ? `${Math.round(hitsInHours * 60)}m` : `${hitsInHours.toFixed(1)}h`}</span>
+                  : <span style={{ color: "#2d3d55" }}> · on track</span>
+                }
+              </span>
+            </div>
+          );
+        })()}
 
         <div style={{ fontSize: 10, color: "#2d3d55", marginBottom: 12, display: "flex", alignItems: "center", gap: 5 }}>
           <span>🕛</span>{resetLabel}
@@ -392,12 +424,8 @@ function LimitCard({ limit, onToggle, onEdit, onDelete, onUnblock, todayUsage, i
           })} style={{ background: isEnabled ? "rgba(74,222,128,0.09)" : "rgba(255,255,255,0.04)", color: isEnabled ? "#4ade80" : "#64748b", fontFamily: "'DM Sans',sans-serif" }}>
             {isEnabled ? "⏸ Pause" : "▶ Enable"}
           </button>
-          <button className="action-btn" onClick={() => setConfirm({
-            title: "Edit this limit?",
-            message: `You're about to change the daily limit for "${appName}".`,
-            confirmLabel: "Edit Limit", confirmColor: "#60a5fa", confirmBg: "rgba(96,165,250,0.12)", icon: "✏️",
-            action: () => onEdit(limit)
-          })} style={{ background: "rgba(96,165,250,0.09)", color: "#60a5fa", fontFamily: "'DM Sans',sans-serif" }}>
+          <button className="action-btn" onClick={() => onEdit(limit)}
+            style={{ background: "rgba(96,165,250,0.09)", color: "#60a5fa", fontFamily: "'DM Sans',sans-serif" }}>
             ✏️ Edit
           </button>
           {isOver && (
@@ -423,7 +451,7 @@ function LimitCard({ limit, onToggle, onEdit, onDelete, onUnblock, todayUsage, i
 }
 
 // ─── TEMP UNBLOCK CARD ────────────────────────────────────────────────────────
-function TempUnblockCard({ appName, expiresAt, totalSeconds, onExpired }) {
+function TempUnblockCard({ appName, expiresAt, totalSeconds, onExpired, onReblock }) {
   const [remaining, setRemaining] = useState(Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)));
 
   useEffect(() => {
@@ -452,7 +480,7 @@ function TempUnblockCard({ appName, expiresAt, totalSeconds, onExpired }) {
             <div style={{ fontSize: 11, color: "#22d3ee", marginTop: 2 }}>Temporarily unblocked</div>
           </div>
         </div>
-        <div style={{ textAlign: "right" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
           <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 16, fontWeight: 700, color: "#22d3ee", letterSpacing: "0.5px" }}>
             {h > 0 ? `${h}:` : ""}{String(m).padStart(2, "0")}:{String(sec).padStart(2, "0")}
           </div>
@@ -462,6 +490,20 @@ function TempUnblockCard({ appName, expiresAt, totalSeconds, onExpired }) {
       <div className="temp-unblock-bar">
         <div className="temp-unblock-bar-fill" style={{ width: `${pct}%` }} />
       </div>
+      {/* Re-block early button */}
+      <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+        <button onClick={() => onReblock(appName)}
+          style={{
+            padding: "4px 12px", borderRadius: 8, border: "1px solid rgba(248,113,113,0.25)",
+            background: "rgba(248,113,113,0.07)", color: "#f87171",
+            fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+            transition: "all 0.15s",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = "rgba(248,113,113,0.15)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "rgba(248,113,113,0.07)"; e.currentTarget.style.transform = "none"; }}>
+          ⛔ Re-block now
+        </button>
+      </div>
     </div>
   );
 }
@@ -469,14 +511,28 @@ function TempUnblockCard({ appName, expiresAt, totalSeconds, onExpired }) {
 // ─── BREACH LOG PANEL ─────────────────────────────────────────────────────────
 function BreachLogPanel({ onClose }) {
   const [log, setLog] = useState([]);
-  const [filter, setFilter] = useState("all");  // all | today | app
+  const [filter, setFilter] = useState("all");
   const [appFilter, setAppFilter] = useState("");
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [showAppDrop, setShowAppDrop] = useState(false);
 
   useEffect(() => { setLog(loadBreachLog()); }, []);
 
   const clearLog = () => {
     try { localStorage.removeItem(BREACH_LOG_KEY); } catch { }
     setLog([]);
+    setConfirmClear(false);
+  };
+
+  const exportCSV = () => {
+    const header = "timestamp,app,type,note";
+    const rows = log.map(e => `"${new Date(e.ts).toISOString()}","${e.app}","${e.type}","${(e.note || "").replace(/"/g, '""')}"`);
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url;
+    a.download = `breach-log-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
   };
 
   const allApps = [...new Set(log.map(e => e.app))].sort();
@@ -495,7 +551,7 @@ function BreachLogPanel({ onClose }) {
   const typeLabel = t => t === "blocked" ? "Blocked" : t === "unblocked" ? "Unblocked" : t === "warning" ? "Warning" : t;
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "flex-end", animation: "overlay-in 0.2s ease", paddingTop: 20, paddingRight: 20 }}
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "flex-end", animation: "overlay-in 0.2s ease", paddingTop: 20, paddingRight: 20, backdropFilter: "blur(8px)", background: "rgba(0,0,0,0.4)" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{
         background: "linear-gradient(145deg,rgba(10,13,26,0.99),rgba(7,9,20,0.99))",
@@ -514,9 +570,14 @@ function BreachLogPanel({ onClose }) {
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {log.length > 0 && (
-                <button onClick={clearLog} style={{ padding: "5px 11px", borderRadius: 8, border: "1px solid rgba(248,113,113,0.25)", background: "rgba(248,113,113,0.08)", color: "#f87171", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif", transition: "all 0.15s" }}
-                  onMouseEnter={e => e.target.style.background = "rgba(248,113,113,0.16)"}
-                  onMouseLeave={e => e.target.style.background = "rgba(248,113,113,0.08)"}>Clear</button>
+                <>
+                  <button onClick={exportCSV} style={{ padding: "5px 11px", borderRadius: 8, border: "1px solid rgba(96,165,250,0.25)", background: "rgba(96,165,250,0.08)", color: "#60a5fa", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif", transition: "all 0.15s" }}
+                    onMouseEnter={e => e.target.style.background = "rgba(96,165,250,0.16)"}
+                    onMouseLeave={e => e.target.style.background = "rgba(96,165,250,0.08)"}>↓ CSV</button>
+                  <button onClick={() => setConfirmClear(true)} style={{ padding: "5px 11px", borderRadius: 8, border: "1px solid rgba(248,113,113,0.25)", background: "rgba(248,113,113,0.08)", color: "#f87171", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif", transition: "all 0.15s" }}
+                    onMouseEnter={e => e.target.style.background = "rgba(248,113,113,0.16)"}
+                    onMouseLeave={e => e.target.style.background = "rgba(248,113,113,0.08)"}>Clear</button>
+                </>
               )}
               <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 9, border: "none", background: "rgba(255,255,255,0.06)", color: "#64748b", cursor: "pointer", fontSize: 15, transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "center" }}
                 onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "#94a3b8"; }}
@@ -529,12 +590,27 @@ function BreachLogPanel({ onClose }) {
             {[["all", "All"], ["today", "Today"], ["app", "By App"]].map(([v, lbl]) => (
               <button key={v} className={`log-filter-btn${filter === v ? " active" : ""}`} onClick={() => setFilter(v)}>{lbl}</button>
             ))}
+            {/* Custom app picker — consistent with rest of UI */}
             {filter === "app" && (
-              <select value={appFilter} onChange={e => setAppFilter(e.target.value)}
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: appFilter ? "#f1f5f9" : "#475569", fontSize: 11, padding: "5px 10px", outline: "none", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>
-                <option value="">Pick app…</option>
-                {allApps.map(a => <option key={a} value={a}>{a.replace(".exe", "")}</option>)}
-              </select>
+              <div style={{ position: "relative" }}>
+                <button onClick={() => setShowAppDrop(v => !v)}
+                  style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${appFilter ? "rgba(248,113,113,0.3)" : "rgba(255,255,255,0.1)"}`, background: appFilter ? "rgba(248,113,113,0.08)" : "rgba(255,255,255,0.05)", color: appFilter ? "#f1f5f9" : "#475569", fontSize: 11, cursor: "pointer", fontFamily: "'DM Sans',sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+                  {appFilter ? appFilter.replace(".exe", "") : "Pick app…"}
+                  <span style={{ fontSize: 9, opacity: 0.5 }}>▾</span>
+                </button>
+                {showAppDrop && allApps.length > 0 && (
+                  <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 300, background: "rgba(10,14,28,0.99)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 10, overflow: "hidden", minWidth: 160, boxShadow: "0 12px 36px rgba(0,0,0,0.7)" }}>
+                    {allApps.map(a => (
+                      <div key={a} onClick={() => { setAppFilter(a); setShowAppDrop(false); }}
+                        style={{ padding: "8px 14px", fontSize: 12, color: a === appFilter ? "#f1f5f9" : "#64748b", background: a === appFilter ? "rgba(248,113,113,0.1)" : "transparent", cursor: "pointer", transition: "all 0.12s", fontFamily: "'DM Sans',sans-serif" }}
+                        onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+                        onMouseLeave={e => e.currentTarget.style.background = a === appFilter ? "rgba(248,113,113,0.1)" : "transparent"}>
+                        {a.replace(".exe", "")}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -580,12 +656,23 @@ function BreachLogPanel({ onClose }) {
           )}
         </div>
       </div>
+
+      {/* Confirm clear modal */}
+      {confirmClear && (
+        <ConfirmModal
+          title="Clear breach log?"
+          message={`This will permanently delete all ${log.length} recorded events. This cannot be undone.`}
+          confirmLabel="Clear All" confirmColor="#f87171" confirmBg="rgba(248,113,113,0.12)" icon="🗑️"
+          onConfirm={clearLog}
+          onCancel={() => setConfirmClear(false)}
+        />
+      )}
     </div>
   );
 }
 
 // ─── LIMIT MODAL ─────────────────────────────────────────────────────────────
-function LimitModal({ onClose, onSave, knownApps, editTarget, BASE }) {
+function LimitModal({ onClose, onSave, knownApps, editTarget, BASE, stats = [] }) {
   const [app, setApp] = useState(editTarget?.app_name || "");
   const [h, setH] = useState(editTarget ? Math.floor(editTarget.daily_limit_seconds / 3600) : "");
   const [m, setM] = useState(editTarget ? Math.floor((editTarget.daily_limit_seconds % 3600) / 60) : "");
@@ -726,6 +813,25 @@ function LimitModal({ onClose, onSave, knownApps, editTarget, BASE }) {
             </div>
           </div>
 
+          {/* Warn if limit is below today's already-used time */}
+          {(() => {
+            const todayUsed = stats?.reduce((a, s) => s.app === targetApp ? a + s.active : a, 0) || 0;
+            if (todayUsed > 0 && secs > 0 && todayUsed >= secs) {
+              return (
+                <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 10, background: "rgba(248,113,113,0.07)", border: "1px solid rgba(248,113,113,0.22)", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <span style={{ fontSize: 13, flexShrink: 0 }}>⚠️</span>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#f87171", fontWeight: 600 }}>Will block immediately on save</div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                      You've already used <strong style={{ color: "#f1f5f9" }}>{fmtTime(todayUsed)}</strong> today — this limit will trigger the moment it's saved.
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
+
           <button className="save-btn"
             onClick={() => { if (!ok || saving) return; editTarget ? setConfirm(true) : doSave(); }}
             disabled={!ok || saving}
@@ -814,16 +920,22 @@ export default function LimitsPage({ BASE, stats }) {
   const toastTimer = useRef(null);
   const resetLabel = useResetCountdown();
 
+  // ── Track which apps were ALREADY blocked when the page first loaded.
+  //    We never log a breach event for apps that were blocked on mount —
+  //    only genuine NEW transitions (was unblocked → now blocked) get logged.
+  const initialBlockedRef = useRef(null);   // Set<string> populated on first fetch
+  const knownBlockedRef = useRef(new Set()); // tracks current known-blocked set across polls
+
   // Keep localStorage in sync whenever tempUnblocks changes
   useEffect(() => { saveTempUnblocks(tempUnblocks); }, [tempUnblocks]);
 
   const usage = stats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
 
-  const showT = (msg, type = "success") => {
+  const showT = useCallback((msg, type = "success") => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ msg, type });
     toastTimer.current = setTimeout(() => setToast(null), 3200);
-  };
+  }, []);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -832,26 +944,44 @@ export default function LimitsPage({ BASE, stats }) {
         fetch(`${BASE}/limits/blocked`).then(r => r.json()),
       ]);
       const newLimits = Array.isArray(lr) ? lr : [];
-      const newBlocked = Array.isArray(br) ? br : [];
+      const newBlockedFromLimits = newLimits.filter(l => l.is_blocked && l.is_enabled).map(l => l.app_name);
+      const legacyBlocked = Array.isArray(br) ? br.map(b => b.app_name || b) : [];
+      const newBlockedNames = Array.from(new Set([...newBlockedFromLimits, ...legacyBlocked]));
 
-      // ── Auto-log new breaches ──
-      const prevBlockedNames = blocked.map(b => b.app_name || b);
-      const newBlockedNames = newBlocked.map(b => b.app_name || b);
-      newBlockedNames.forEach(name => {
-        if (!prevBlockedNames.includes(name)) {
-          // newly blocked this poll cycle
-          const limitObj = newLimits.find(l => l.app_name === name);
-          appendBreachLog({
-            ts: Date.now(),
-            app: name,
-            type: "blocked",
-            note: limitObj ? `Daily limit of ${fmtTime(limitObj.daily_limit_seconds)} reached` : "Daily limit reached"
-          });
-        }
-      });
+      // ── BREACH LOG ONLY: track transitions for logging purposes.
+      //    initialBlockedRef guards against logging apps that were ALREADY blocked
+      //    when the page first opened (they'd spam the log on every poll otherwise).
+      //    This does NOT affect which apps appear as blocked in the UI.
+      if (initialBlockedRef.current === null) {
+        // First fetch — snapshot the initial blocked set, don't log any of them
+        initialBlockedRef.current = new Set(newBlockedNames);
+        knownBlockedRef.current = new Set(newBlockedNames);
+      } else {
+        // Subsequent polls — log only NEWLY blocked apps (not in last poll AND not in initial snapshot)
+        newBlockedNames.forEach(name => {
+          if (!knownBlockedRef.current.has(name) && !initialBlockedRef.current.has(name)) {
+            const limitObj = newLimits.find(l => l.app_name === name);
+            appendBreachLog({
+              ts: Date.now(),
+              app: name,
+              type: "blocked",
+              note: limitObj ? `Daily limit of ${fmtTime(limitObj.daily_limit_seconds)} reached` : "Daily limit reached"
+            });
+          }
+        });
+        knownBlockedRef.current = new Set(newBlockedNames);
+      }
 
+      // ── ALWAYS update blocked state from the API response.
+      //    But also preserve any apps that were optimistically re-blocked locally
+      //    (they may not be in the API response yet if the backend hasn't caught up).
       setLimits(newLimits);
-      setBlocked(newBlocked);
+      setBlocked(prev => {
+        const apiSet = new Set(newBlockedNames);
+        // Keep any locally-added entries that aren't in the API yet
+        const localOnly = prev.filter(n => !apiSet.has(n) && knownBlockedRef.current.has(n));
+        return [...newBlockedNames, ...localOnly];
+      });
       setOffline(false);
       setLastSync(new Date());
     } catch {
@@ -859,7 +989,7 @@ export default function LimitsPage({ BASE, stats }) {
     }
     setLoadingL(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [BASE]);  // intentionally omit `blocked` to avoid stale-closure loop
+  }, [BASE]);
 
   useEffect(() => {
     fetchAll();
@@ -905,7 +1035,12 @@ export default function LimitsPage({ BASE, stats }) {
 
     // Persist immediately — survives tab switches
     setTempUnblocks(prev => ({ ...prev, [name]: { expiresAt, totalSeconds } }));
-    setBlocked(prev => prev.filter(b => (b.app_name || b) !== name));
+    setBlocked(prev => prev.filter(b => b !== name));
+    // Remove from knownBlockedRef so that when the app re-hits its limit after the
+    // temp unblock expires, that transition IS logged as a new breach.
+    // Keep it in initialBlockedRef — we don't want to re-log on the next poll
+    // if the backend still reports it as blocked before the unblock takes effect.
+    knownBlockedRef.current.delete(name);
 
     // Log the unblock event
     appendBreachLog({
@@ -926,6 +1061,28 @@ export default function LimitsPage({ BASE, stats }) {
     setTempUnblocks(prev => { const n = { ...prev }; delete n[name]; return n; });
     fetchAll();
   }, [fetchAll]);
+
+  // Called when user clicks "Re-block now" on a temp-unblock card
+  const handleReblock = useCallback((name) => {
+    // Remove from temp-unblocks so the temp card disappears
+    setTempUnblocks(prev => { const n = { ...prev }; delete n[name]; return n; });
+    // Optimistically add back to blocked state immediately — do NOT call fetchAll()
+    // here because the async API response would overwrite this before the backend
+    // has a chance to re-enforce the block.
+    setBlocked(prev => prev.includes(name) ? prev : [...prev, name]);
+    // Sync breach-log refs so the next scheduled poll doesn't log a spurious entry
+    knownBlockedRef.current.add(name);
+    if (initialBlockedRef.current) initialBlockedRef.current.add(name);
+    showT(`${name.replace(".exe", "")} re-blocked`, "warn");
+    // Persist to backend so block is immediately re-applied regardless of temp timer.
+    fetch(`${BASE}/limits/reblock`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ app_name: name })
+    })
+      .then(() => fetchAll())
+      .catch(() => showT("Failed to re-block app", "warn"));
+  }, [BASE, showT, fetchAll]);
 
   const knownApps = Array.from(new Set(stats.map(s => s.app))).filter(a => !limits.find(l => l.app_name === a));
   const blockedNow = limits.filter(l => blocked.includes(l.app_name) && l.is_enabled && !tempUnblocks[l.app_name]);
@@ -1052,7 +1209,7 @@ export default function LimitsPage({ BASE, stats }) {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 10 }}>
             {tempUnblockEntries.map(([name, { expiresAt, totalSeconds }]) => (
-              <TempUnblockCard key={name} appName={name} expiresAt={expiresAt} totalSeconds={totalSeconds} onExpired={handleTempExpired} />
+              <TempUnblockCard key={name} appName={name} expiresAt={expiresAt} totalSeconds={totalSeconds} onExpired={handleTempExpired} onReblock={handleReblock} />
             ))}
           </div>
         </div>
@@ -1076,23 +1233,48 @@ export default function LimitsPage({ BASE, stats }) {
           {search && <button onClick={() => setSearch("")} style={{ padding: "8px 20px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "#64748b", cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans',sans-serif" }}>Clear search</button>}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(310px,1fr))", gap: 14 }}>
-          {displayList.map((l, i) => (
-            <LimitCard key={l.app_name} limit={l} index={i} onToggle={toggle}
-              onEdit={t => { setEditTarget(t); setShowModal(true); }}
-              onDelete={del} onUnblock={n => setUnblockTarget(n)}
-              todayUsage={usage} isBlocked={blocked.includes(l.app_name) && !tempUnblocks[l.app_name]}
-              resetLabel={resetLabel} />
-          ))}
-        </div>
+        (() => {
+          const blockedCards = displayList.filter(l => blocked.includes(l.app_name) && l.is_enabled && !tempUnblocks[l.app_name]);
+          const warnCards = displayList.filter(l => { const u = usage[l.app_name] || 0; return !blocked.includes(l.app_name) && u >= l.daily_limit_seconds * 0.8 && l.is_enabled; });
+          const healthyCards = displayList.filter(l => !blockedCards.includes(l) && !warnCards.includes(l));
+
+          const renderGroup = (label, color, cards, startIdx) => {
+            if (cards.length === 0) return null;
+            return (
+              <div key={label}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: "0.12em" }}>{label}</div>
+                  <div style={{ flex: 1, height: 1, background: `${color}25` }} />
+                  <div style={{ fontSize: 10, color: "#334155" }}>{cards.length}</div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(310px,1fr))", gap: 14 }}>
+                  {cards.map((l, i) => (
+                    <LimitCard key={l.app_name} limit={l} index={startIdx + i} onToggle={toggle}
+                      onEdit={t => { setEditTarget(t); setShowModal(true); }}
+                      onDelete={del} onUnblock={n => setUnblockTarget(n)}
+                      todayUsage={usage} isBlocked={blocked.includes(l.app_name) && !tempUnblocks[l.app_name]}
+                      resetLabel={resetLabel} />
+                  ))}
+                </div>
+              </div>
+            );
+          };
+
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              {renderGroup("⛔ Blocked", "#f87171", blockedCards, 0)}
+              {renderGroup("⚠️ Near Limit", "#fbbf24", warnCards, blockedCards.length)}
+              {renderGroup("✅ Within Limit", "#4ade80", healthyCards, blockedCards.length + warnCards.length)}
+            </div>
+          );
+        })()
       )}
 
       {/* System block list (only apps not temp-unblocked) */}
-      {view === "blocked" && blocked.filter(b => !tempUnblocks[b.app_name || b]).length > 0 && (
+      {view === "blocked" && blocked.filter(b => !tempUnblocks[b]).length > 0 && (
         <SectionCard title="System Block List">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {blocked.filter(b => !tempUnblocks[b.app_name || b]).map((b, i) => {
-              const name = b.app_name || b;
+            {blocked.filter(b => !tempUnblocks[b]).map((name, i) => {
               return (
                 <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "rgba(248,113,113,0.05)", border: "1px solid rgba(248,113,113,0.12)", borderRadius: 12, transition: "all 0.2s" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1110,7 +1292,7 @@ export default function LimitsPage({ BASE, stats }) {
         </SectionCard>
       )}
 
-      {showModal && <LimitModal onClose={() => { setShowModal(false); setEditTarget(null); }} onSave={save} knownApps={knownApps} editTarget={editTarget} BASE={BASE} />}
+      {showModal && <LimitModal onClose={() => { setShowModal(false); setEditTarget(null); }} onSave={save} knownApps={knownApps} editTarget={editTarget} BASE={BASE} stats={stats} />}
       {unblockTarget && <UnblockModal appName={unblockTarget} onClose={() => setUnblockTarget(null)} onUnblock={unblock} />}
       {showLog && <BreachLogPanel onClose={() => setShowLog(false)} />}
     </div>

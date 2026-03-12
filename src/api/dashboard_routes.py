@@ -189,7 +189,8 @@ def wellbeing():
 
         unproductive = safe(category_data.get("unproductive", 0))
 
-        total_active = productive + neutral + unproductive
+        # Screen time = ALL non-ignored usage (entertainment, communication, system, etc.)
+        total_active = sum(category_data.values())
 
         cursor.execute("""
             SELECT

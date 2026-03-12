@@ -6,7 +6,7 @@ from datetime import datetime
 from src.database.database import get_blocked_apps
 
 LIMIT_CHECK_INTERVAL = 15
-PROCESS_CHECK_INTERVAL = 0.5
+PROCESS_CHECK_INTERVAL = 2
 
 
 class BlockingService:
@@ -165,16 +165,23 @@ class BlockingService:
         Scans running processes every PROCESS_CHECK_INTERVAL seconds and kills
         any that match the in-memory blocked_apps set. No DB access here —
         reads from the set updated by _limit_monitor.
+
+        Optimisation: takes a snapshot of the blocked set each cycle to avoid
+        racing with _limit_monitor, and skips the full process_iter entirely
+        when nothing is blocked.
         """
         while self.running:
             try:
-                if not self.blocked_apps:
+                # Snapshot — avoids racing with _limit_monitor updates
+                blocked_snapshot = self.blocked_apps.copy()
+
+                if not blocked_snapshot:
                     time.sleep(PROCESS_CHECK_INTERVAL)
                     continue
 
                 for proc in psutil.process_iter(['name']):
                     try:
-                        if proc.info['name'] in self.blocked_apps:
+                        if proc.info['name'] in blocked_snapshot:
                             proc.kill()
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue

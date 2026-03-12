@@ -392,7 +392,7 @@ def get_active_window_info() -> dict | None:
         if not app_name:
             return None
 
-        browser_tracking = settings_cache.get("browser_tracking", "1") == "1"
+        browser_tracking = settings_cache.get("browser_tracking", "true") in ("true", "1")
 
         url = "N/A"
 
@@ -637,7 +637,7 @@ def start_logging():
             info = get_active_window_info()
 
             # ---- determine idle state ----
-            idle_detection_enabled = settings_cache.get("idle_detection", "1") == "1"
+            idle_detection_enabled = settings_cache.get("idle_detection", "true") in ("true", "1")
             idle_secs = input_tracker.get_idle_seconds() if idle_detection_enabled else 0
             media_playing = is_media_active(info)
             

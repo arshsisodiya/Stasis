@@ -86,8 +86,8 @@ class SettingsManager(BaseSettingsManager):
             "file_logging_essential_only": "false",
             "show_yesterday_comparison": "true",
             "hardware_acceleration": "true",
-            "idle_detection": "1",
-            "browser_tracking": "1"
+            "idle_detection": "true",
+            "browser_tracking": "true"
         }
 
         for key, value in defaults.items():

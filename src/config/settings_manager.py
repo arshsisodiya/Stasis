@@ -1,12 +1,20 @@
+import threading
 from src.database.database import get_connection
 
 
 class BaseSettingsManager:
     """Base class for key-value settings management in different tables."""
     TABLE_NAME = "settings"
+    _cache: dict = {}
+    _cache_lock = threading.Lock()
 
     @classmethod
     def get(cls, key: str):
+        cache_key = f"{cls.TABLE_NAME}:{key}"
+        with cls._cache_lock:
+            if cache_key in cls._cache:
+                return cls._cache[cache_key]
+
         conn = get_connection()
         cursor = conn.cursor()
 
@@ -18,10 +26,10 @@ class BaseSettingsManager:
         row = cursor.fetchone()
         conn.close()
 
-        if row:
-            return row[0]
-
-        return None
+        value = row[0] if row else None
+        with cls._cache_lock:
+            cls._cache[cache_key] = value
+        return value
 
     @classmethod
     def set(cls, key: str, value):
@@ -36,6 +44,10 @@ class BaseSettingsManager:
         conn.commit()
         conn.close()
 
+        cache_key = f"{cls.TABLE_NAME}:{key}"
+        with cls._cache_lock:
+            cls._cache[cache_key] = str(value)
+
     @classmethod
     def delete(cls, key: str):
         conn = get_connection()
@@ -48,6 +60,10 @@ class BaseSettingsManager:
 
         conn.commit()
         conn.close()
+
+        cache_key = f"{cls.TABLE_NAME}:{key}"
+        with cls._cache_lock:
+            cls._cache.pop(cache_key, None)
 
     @classmethod
     def get_bool(cls, key: str, default: bool = False) -> bool:

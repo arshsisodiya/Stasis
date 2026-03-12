@@ -300,10 +300,15 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
   // Version + settings
   useEffect(() => {
-    fetch(`${BASE}/api/update/status`).then(r => r.json())
-      .then(d => { if (d?.current_version) setAppVersion(d.current_version); }).catch(() => { });
-    fetch(`${BASE}/api/settings`).then(r => r.json())
-      .then(d => { if (d?.show_yesterday_comparison !== undefined) setShowYesterdayComparison(d.show_yesterday_comparison); }).catch(() => { });
+    fetch(`${BASE}/api/init-bundle`).then(r => r.json())
+      .then(d => {
+        if (d?.updateStatus?.current_version) setAppVersion(d.updateStatus.current_version);
+        if (d?.settings?.show_yesterday_comparison !== undefined) setShowYesterdayComparison(d.settings.show_yesterday_comparison);
+        if (d?.availableDates) setAvailableDates(d.availableDates);
+        if (d?.heatmap) setHeatmapData(d.heatmap);
+        if (d?.sparkSeries) setSparkData(d.sparkSeries);
+        if (d?.ignoredApps) setIgnoredApps(new Set((Array.isArray(d.ignoredApps) ? d.ignoredApps : []).map(a => a.toLowerCase())));
+      }).catch(() => { });
   }, [BASE, showSettings]);
 
   const cache = useRef(initialData ? { [localYMD()]: { ...initialData, fetchedAt: Date.now() } } : {});
@@ -344,15 +349,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
     });
   }, [fetchDate]);
 
-  useEffect(() => {
-    fetch(`${BASE}/api/available-dates`).then(r => r.json()).then(d => setAvailableDates(d)).catch(() => setAvailableDates([localYMD()]));
-    fetch(`${BASE}/api/heatmap`).then(r => r.json()).then(d => setHeatmapData(d)).catch(() => { });
-    // Dedicated sparkline endpoint — fetches 7-day focus, keystrokes, clicks etc.
-    fetch(`${BASE}/api/spark-series?days=7`).then(r => r.json()).then(d => setSparkData(d)).catch(() => { });
-    fetch(`${BASE}/api/ignored-apps`).then(r => r.json()).then(d => {
-      setIgnoredApps(new Set((Array.isArray(d) ? d : []).map(a => a.toLowerCase())));
-    }).catch(() => { });
-  }, []);
+  // init-bundle above handles available-dates, heatmap, spark-series, and ignored-apps
 
   useEffect(() => {
     const today = localYMD();

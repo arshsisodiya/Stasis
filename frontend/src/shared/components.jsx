@@ -211,7 +211,7 @@ export function TrendChip({ current, previous, mode = "time", isPositiveGood = t
       display: "inline-flex", alignItems: "center", gap: 5, padding: "3.5px 10px", borderRadius: 20,
       background: bg, border: `1px solid ${border}`,
       fontSize: 10, fontWeight: 700, color, letterSpacing: "-0.01em",
-      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+      transition: "background 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
       animation: "legend-slide-in 0.4s ease forwards",
       cursor: "default", userSelect: "none"
     }}>
@@ -226,8 +226,8 @@ export function TrendChip({ current, previous, mode = "time", isPositiveGood = t
 export function SectionCard({ title, children, style = {}, className = "" }) {
   return (
     <div className={className} style={{
-      background: "rgba(15,18,34,0.7)", border: "1px solid rgba(255,255,255,0.07)",
-      borderRadius: 24, padding: "24px", backdropFilter: "blur(20px)", ...style
+      background: "rgba(15,18,34,0.95)", border: "1px solid rgba(255,255,255,0.07)",
+      borderRadius: 24, padding: "24px", ...style
     }}>
       {title && <div style={{
         fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase",
@@ -243,7 +243,7 @@ export function StatPill({ icon, label, value, color = "#4ade80", trend }) {
   return (
     <div style={{
       background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255,255,255,0.07)",
-      borderRadius: 16, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12, backdropFilter: "blur(10px)"
+      borderRadius: 16, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12
     }}>
       <div style={{
         width: 40, height: 40, borderRadius: 12, background: `${color}18`, border: `1px solid ${color}33`,

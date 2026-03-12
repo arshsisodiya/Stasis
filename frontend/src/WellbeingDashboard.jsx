@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useReducer } from "react";
+import { useState, useEffect, useRef, useCallback, useReducer, memo, useMemo } from "react";
 import SettingsPage from "./pages/SettingsPage";
 import OverviewPage from "./pages/OverviewPage";
 import AppsPage from "./pages/AppsPage";
@@ -52,11 +52,12 @@ function NoiseOverlay() {
   return (
     <div aria-hidden="true" style={{
       position: "fixed", inset: 0, zIndex: 3, pointerEvents: "none", opacity: 0.03,
-      backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
+      backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
       backgroundRepeat: "repeat", backgroundSize: "180px 180px",
     }} />
   );
 }
+const MemoNoiseOverlay = memo(NoiseOverlay);
 
 // ─── ANIMATED TAB PANEL ───────────────────────────────────────────────────────
 function AnimatedTabPanel({ active, children }) {
@@ -124,7 +125,7 @@ export function Sparkline({ values = [], color = "#4ade80", width = 72, height =
 }
 
 // ─── DATE NAVIGATOR ───────────────────────────────────────────────────────────
-function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
+const DateNavigator = memo(function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
   const today = localYMD();
   const dateSet = new Set(availableDates);
   const sorted = [...availableDates].sort();
@@ -155,15 +156,15 @@ function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 5,
-      background: "rgba(15,18,30,0.6)", border: "1px solid rgba(255,255,255,0.07)",
-      borderRadius: 16, padding: "8px 8px", backdropFilter: "blur(20px)", width: "100%",
+      background: "rgba(15,18,30,0.95)", border: "1px solid rgba(255,255,255,0.07)",
+      borderRadius: 16, padding: "8px 8px", width: "100%",
     }}>
       <button onClick={prev} disabled={!canP} style={{
         width: 26, height: 26, borderRadius: 7, border: "none", fontSize: 15, flexShrink: 0,
         background: canP ? "rgba(255,255,255,0.06)" : "transparent",
         color: canP ? "#64748b" : "rgba(255,255,255,0.1)",
         cursor: canP ? "pointer" : "not-allowed",
-        display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s",
+        display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s, color 0.15s",
       }}>‹</button>
 
       <div style={{ display: "flex", gap: 2, overflowX: "auto", flex: 1, scrollbarWidth: "none", justifyContent: "space-evenly" }}>
@@ -180,7 +181,7 @@ function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
                 border: isSel ? "1px solid rgba(74,222,128,0.4)" : isT ? "1px solid rgba(255,255,255,0.1)" : "1px solid transparent",
                 background: isSel ? "rgba(74,222,128,0.12)" : "transparent",
                 cursor: has ? "pointer" : "default",
-                opacity: has ? 1 : 0.3, transition: "all 0.2s",
+                opacity: has ? 1 : 0.3, transition: "background 0.2s, border-color 0.2s, opacity 0.2s",
               }}>
               <span style={{ fontSize: 8, color: isSel ? "#4ade80" : "#475569", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.04em" }}>
                 {p.toLocaleDateString("en-US", { weekday: "short" })}
@@ -205,7 +206,7 @@ function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
         background: canN ? "rgba(255,255,255,0.06)" : "transparent",
         color: canN ? "#64748b" : "rgba(255,255,255,0.1)",
         cursor: canN ? "pointer" : "not-allowed",
-        display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s",
+        display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s, color 0.15s",
       }}>›</button>
 
       {/* "Today ↩" jump — only shown when browsing history */}
@@ -215,7 +216,7 @@ function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
           border: "1px solid rgba(74,222,128,0.28)", background: "rgba(74,222,128,0.07)",
           color: "#4ade80", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
           textTransform: "uppercase", cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
-          whiteSpace: "nowrap", transition: "all 0.2s",
+          whiteSpace: "nowrap", transition: "background 0.2s, border-color 0.2s",
         }}
           onMouseEnter={e => { e.currentTarget.style.background = "rgba(74,222,128,0.14)"; e.currentTarget.style.borderColor = "rgba(74,222,128,0.45)"; }}
           onMouseLeave={e => { e.currentTarget.style.background = "rgba(74,222,128,0.07)"; e.currentTarget.style.borderColor = "rgba(74,222,128,0.28)"; }}>
@@ -224,13 +225,13 @@ function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
       )}
     </div>
   );
-}
+});
 
 // ─── EMPTY STATE ──────────────────────────────────────────────────────────────
 function EmptyState() {
   return (
     <div style={{ minHeight: "100vh", background: "#080b14", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans',sans-serif" }}>
-      <NoiseOverlay />
+      <MemoNoiseOverlay />
       <div style={{ textAlign: "center", maxWidth: 420, padding: 24 }}>
         <div style={{ fontSize: 64, marginBottom: 24, animation: "float 3s ease-in-out infinite" }}>🌱</div>
         <h2 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 28, color: "#f8fafc", marginBottom: 12, fontWeight: 400 }}>No data yet</h2>
@@ -419,7 +420,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
       position: "relative", overflow: "hidden",
       animation: "db-enter 0.5s cubic-bezier(0.16,1,0.3,1) both",
     }}>
-      <NoiseOverlay />
+      <MemoNoiseOverlay />
 
       <style>{`
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}

@@ -22,7 +22,7 @@ const DIALOG_CSS = `
   @keyframes ud-snooze-in { from { opacity: 0; transform: translateY(6px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
   
   .ud-btn {
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: filter 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
     border: none;
     font-family: 'DM Sans', sans-serif;
@@ -33,7 +33,7 @@ const DIALOG_CSS = `
   .ud-btn:disabled { opacity: 0.45; cursor: default; filter: none; transform: none; }
   
   .ud-snooze-opt {
-    transition: all 0.15s ease;
+    transition: background 0.15s ease;
     cursor: pointer;
     border-radius: 8px;
   }

@@ -1,15 +1,11 @@
+import { memo } from "react";
 import { interpolateColor } from "../shared/utils";
 import { useCountUp } from "../shared/hooks";
 import { SectionCard, RadialProgress, TrendChip } from "../shared/components";
 import { Sparkline } from "../WellbeingDashboard";
 
 // ─── PRODUCTIVITY CARD ────────────────────────────────────────────────────────
-// Props:
-//   data           – wellbeing data { productivityPercent, … }
-//   prevWellbeing  – previous period data (for comparison chip)
-//   showComparison – boolean
-//   countKey       – key to re-trigger count-up animation
-export default function ProductivityCard({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#4ade80" }) {
+function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#4ade80" }) {
   const pC = useCountUp(data?.productivityPercent || 0, 2000, countKey);
 
   const prodColor = interpolateColor(data.productivityPercent, [
@@ -29,8 +25,7 @@ export default function ProductivityCard({ data, prevWellbeing, showComparison, 
         border: "1px solid rgba(255,255,255,0.04)",
         borderLeft: `5px solid ${prodColor}`,
         background: `linear-gradient(135deg,${prodColor}08 0%,rgba(15,18,34,0.7) 60%)`,
-        animationDelay: "60ms", transition: "all 0.6s ease",
-        paddingBottom: sparkValues?.length >= 2 ? 0 : undefined,
+        animationDelay: "60ms", transition: "border-color 0.6s ease, background 0.6s ease",
       }}
     >
       {/* ── Center-aligned content block ── */}
@@ -61,8 +56,8 @@ export default function ProductivityCard({ data, prevWellbeing, showComparison, 
       {sparkValues?.length >= 2 && (
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          width: "calc(100% + 48px)", marginLeft: -24, marginTop: "auto",
-          padding: "6px 16px 10px",
+          marginTop: "auto",
+          padding: "6px 0 10px",
           borderTop: "1px solid rgba(255,255,255,0.04)",
         }}>
           <span style={{ fontSize: 9, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.08em" }}>7d trend</span>
@@ -72,3 +67,5 @@ export default function ProductivityCard({ data, prevWellbeing, showComparison, 
     </SectionCard>
   );
 }
+
+export default memo(ProductivityCardInner);

@@ -1,15 +1,11 @@
+import { memo } from "react";
 import { fmtTime } from "../shared/utils";
 import { useCountUp } from "../shared/hooks";
 import { SectionCard, TrendChip } from "../shared/components";
 import { Sparkline } from "../WellbeingDashboard";
 
 // ─── SCREEN TIME CARD ─────────────────────────────────────────────────────────
-// Props:
-//   data           – wellbeing data object { totalScreenTime, totalIdleTime, … }
-//   prevWellbeing  – previous period wellbeing data (for comparison chip)
-//   showComparison – boolean
-//   countKey       – key to re-trigger count-up animation on date change
-export default function ScreenTimeCard({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#60a5fa" }) {
+function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#60a5fa" }) {
   const sH = useCountUp(Math.floor((data?.totalScreenTime || 0) / 3600), 1400, countKey);
   const sM = useCountUp(Math.floor(((data?.totalScreenTime || 0) % 3600) / 60), 1200, countKey);
 
@@ -23,7 +19,6 @@ export default function ScreenTimeCard({ data, prevWellbeing, showComparison, co
         borderLeft: "3px solid #4ade80",
         background: "linear-gradient(135deg,rgba(74,222,128,0.04) 0%,rgba(15,18,34,0.7) 60%)",
         animationDelay: "0ms",
-        paddingBottom: sparkValues?.length >= 2 ? 0 : undefined,
       }}
     >
       <div style={{
@@ -106,8 +101,8 @@ export default function ScreenTimeCard({ data, prevWellbeing, showComparison, co
       {sparkValues?.length >= 2 && (
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          width: "calc(100% + 48px)", marginLeft: -24, marginTop: "auto",
-          padding: "6px 16px 10px",
+          marginTop: "auto",
+          padding: "6px 0 10px",
           borderTop: "1px solid rgba(255,255,255,0.04)",
         }}>
           <span style={{ fontSize: 9, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.08em" }}>7d trend</span>
@@ -117,3 +112,5 @@ export default function ScreenTimeCard({ data, prevWellbeing, showComparison, co
     </SectionCard>
   );
 }
+
+export default memo(ScreenTimeCardInner);

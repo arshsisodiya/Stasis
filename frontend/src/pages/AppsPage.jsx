@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { CATEGORY_COLORS, BROWSER_EXES } from "../shared/constants";
 import { fmtTime, trendPct } from "../shared/utils";
 import { AppIcon, CategoryChip, TrendBadge, SectionCard } from "../shared/components";
 
 // ─── APP ROW ─────────────────────────────────────────────────────────────────
-function AppRow({ app, active, maxActive, main, sub, index, prevActive }) {
+const AppRow = memo(function AppRow({ app, active, maxActive, main, sub, index, prevActive }) {
   const pct = maxActive > 0 ? (active / maxActive) * 100 : 0;
   const col = CATEGORY_COLORS[main] || CATEGORY_COLORS.other;
   const [vis, setVis] = useState(false);
@@ -47,10 +47,13 @@ function AppRow({ app, active, maxActive, main, sub, index, prevActive }) {
       </div>
     </div>
   );
-}
+});
 
-// ─── BROWSER ROW ─────────────────────────────────────────────────────────────
-function BrowserRow({ browsers, maxActive, index, BASE, selectedDate, prevActive }) {
+// ─── SITE STATS CACHE ─────────────────────────────────────────────────────────
+const _siteStatsCache = {};
+
+// ─── BROWSER ROW ───────────────────────────────────────────────────────────────
+const BrowserRow = memo(function BrowserRow({ browsers, maxActive, index, BASE, selectedDate, prevActive }) {
   const [expanded, setExpanded] = useState(false);
   const [sites, setSites] = useState(null);
   const [loadingSites, setLoadingSites] = useState(false);
@@ -67,26 +70,33 @@ function BrowserRow({ browsers, maxActive, index, BASE, selectedDate, prevActive
     return () => clearTimeout(t);
   }, [index]);
 
-  useEffect(() => {
-    if (expanded) {
-      setLoadingSites(true);
-      fetch(`${BASE}/api/site-stats?date=${selectedDate}&app=${browsers[0].app}`)
-        .then(r => r.json())
-        .then(data => { setSites(Array.isArray(data) ? data : []); setLoadingSites(false); })
-        .catch(() => { setSites([]); setLoadingSites(false); });
+  const fetchSites = () => {
+    const cacheKey = `${selectedDate}:${browsers[0].app}`;
+    if (_siteStatsCache[cacheKey]) {
+      setSites(_siteStatsCache[cacheKey]);
+      return;
     }
-  }, [selectedDate, BASE, browsers[0].app, expanded]);
+    setLoadingSites(true);
+    fetch(`${BASE}/api/site-stats?date=${selectedDate}&app=${browsers[0].app}`)
+      .then(r => r.json())
+      .then(data => {
+        const result = Array.isArray(data) ? data : [];
+        _siteStatsCache[cacheKey] = result;
+        setSites(result);
+        setLoadingSites(false);
+      })
+      .catch(() => { setSites([]); setLoadingSites(false); });
+  };
+
+  // Re-fetch when date changes while expanded
+  useEffect(() => {
+    if (expanded) fetchSites();
+  }, [selectedDate]);
 
   const handleExpand = () => {
     const next = !expanded;
     setExpanded(next);
-    if (next && sites === null) {
-      setLoadingSites(true);
-      fetch(`${BASE}/api/site-stats?date=${selectedDate}&app=${browsers[0].app}`)
-        .then(r => r.json())
-        .then(data => { setSites(Array.isArray(data) ? data : []); setLoadingSites(false); })
-        .catch(() => { setSites([]); setLoadingSites(false); });
-    }
+    if (next) fetchSites();
   };
 
   return (
@@ -181,7 +191,7 @@ function BrowserRow({ browsers, maxActive, index, BASE, selectedDate, prevActive
       )}
     </div>
   );
-}
+});
 
 // ─── APPS PAGE ────────────────────────────────────────────────────────────────
 export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignoredApps }) {
@@ -224,7 +234,7 @@ export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignored
                 border: `1px solid ${isActive ? col.primary + "55" : "rgba(255,255,255,0.07)"}`,
                 background: isActive ? col.bg : "rgba(255, 255, 255, 0.04)",
                 color: isActive ? col.primary : "#475569", fontSize: 12, fontWeight: 500,
-                cursor: "pointer", transition: "all 0.18s", fontFamily: "'DM Sans',sans-serif"
+                cursor: "pointer", transition: "background 0.18s, color 0.18s, border-color 0.18s", fontFamily: "'DM Sans',sans-serif"
               }}>
               {cat === "all" ? "All" : cat.charAt(0).toUpperCase() + cat.slice(1)}
               <span

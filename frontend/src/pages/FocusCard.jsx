@@ -1,15 +1,11 @@
+import { memo } from "react";
 import { fmtTimeLong, interpolateColor } from "../shared/utils";
 import { useCountUp } from "../shared/hooks";
 import { SectionCard, RadialProgress, TrendChip } from "../shared/components";
 import { Sparkline } from "../WellbeingDashboard";
 
-// ─── FOCUS CARD ───────────────────────────────────────────────────────────────
-// Props:
-//   data           – wellbeing data { focusScore, deepWorkSeconds, … }
-//   prevWellbeing  – previous period data (for comparison chip)
-//   showComparison – boolean
-//   countKey       – key to re-trigger count-up animation
-export default function FocusCard({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#a78bfa" }) {
+// ─── FOCUS CARD ─────────────────────────────────────────────────────────────
+function FocusCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#a78bfa" }) {
   const fC = useCountUp(data?.focusScore || 0, 2000, countKey);
 
   const focusColor = interpolateColor(data.focusScore ?? 0, [
@@ -29,8 +25,7 @@ export default function FocusCard({ data, prevWellbeing, showComparison, countKe
         border: "1px solid rgba(255,255,255,0.04)",
         borderLeft: `5px solid ${focusColor}`,
         background: `linear-gradient(135deg,${focusColor}08 0%,rgba(15,18,34,0.7) 60%)`,
-        animationDelay: "120ms", transition: "all 0.6s ease",
-        paddingBottom: sparkValues?.length >= 2 ? 0 : undefined,
+        animationDelay: "120ms", transition: "border-color 0.6s ease, background 0.6s ease",
       }}
     >
       {/* ── Center-aligned content block ── */}
@@ -69,8 +64,8 @@ export default function FocusCard({ data, prevWellbeing, showComparison, countKe
       {sparkValues?.length >= 2 && (
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          width: "calc(100% + 48px)", marginLeft: -24, marginTop: "auto",
-          padding: "6px 16px 10px",
+          marginTop: "auto",
+          padding: "6px 0 10px",
           borderTop: "1px solid rgba(255,255,255,0.04)",
         }}>
           <span style={{ fontSize: 9, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.08em" }}>7d trend</span>
@@ -80,3 +75,5 @@ export default function FocusCard({ data, prevWellbeing, showComparison, countKe
     </SectionCard>
   );
 }
+
+export default memo(FocusCardInner);

@@ -8,6 +8,7 @@ from src.config.ignored_apps_manager import is_ignored
 from src.config.settings_manager import SettingsManager
 from datetime import datetime, timedelta
 import math
+import time
 
 
 def _week_bounds(date_str=None):
@@ -28,6 +29,52 @@ def _fmt_time(sec):
     if h > 0:
         return f"{h}h {m}m"
     return f"{m}m"
+
+
+def _weekly_trend_series(conn, week_of, weeks=6):
+    """Build compact trend series for recent weeks ending at week_of."""
+    end_monday, _ = _week_bounds(week_of)
+    end_monday_date = datetime.strptime(end_monday, "%Y-%m-%d").date()
+    series = []
+
+    for i in range(weeks - 1, -1, -1):
+        mon = end_monday_date - timedelta(days=7 * i)
+        sun = mon + timedelta(days=6)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT date, app_name, main_category, SUM(active_seconds)
+            FROM daily_stats
+            WHERE date >= ? AND date <= ?
+            GROUP BY date, app_name, main_category
+            ORDER BY date
+        """, (mon.isoformat(), sun.isoformat()))
+        rows = cursor.fetchall()
+
+        total = 0
+        productive = 0
+        daily_totals = {}
+        for date, app_name, main_category, active in rows:
+            if is_ignored(app_name):
+                continue
+            total += active
+            daily_totals[date] = daily_totals.get(date, 0) + active
+            if main_category == "productive":
+                productive += active
+
+        active_days = len(daily_totals) if daily_totals else 1
+        avg_daily = round(total / active_days)
+        prod_pct = round((productive / total) * 100, 1) if total > 0 else 0
+        focus_score = round((max(daily_totals.values()) / total) * 100, 1) if total > 0 and daily_totals else 0
+
+        series.append({
+            "week_start": mon.isoformat(),
+            "screen_time": total,
+            "avg_daily": avg_daily,
+            "productivity_pct": prod_pct,
+            "focus_score": focus_score,
+        })
+
+    return series
 
 
 def _generate_report(week_of=None):
@@ -139,11 +186,12 @@ def _generate_report(week_of=None):
         """, (monday, sunday))
         avg_focus = cursor.fetchone()[0] or 0
 
-        # Build daily breakdown array
+        # Build daily breakdown array (always Mon-Sun, including empty days)
         daily_breakdown = []
-        all_dates = sorted(daily.keys())
-        for date in all_dates:
-            d = daily[date]
+        start_date = datetime.strptime(monday, "%Y-%m-%d").date()
+        for offset in range(7):
+            date = (start_date + timedelta(days=offset)).isoformat()
+            d = daily.get(date, {"screen_time": 0, "productive": 0})
             st = d["screen_time"]
             prod = d["productive"]
             ppct = round(prod / st * 100, 1) if st > 0 else 0
@@ -152,6 +200,8 @@ def _generate_report(week_of=None):
                 "total_seconds": st,
                 "productive_pct": ppct,
             })
+
+        trends = _weekly_trend_series(conn, week_of, weeks=6)
 
         return {
             "period": {"start": monday, "end": sunday},
@@ -164,6 +214,7 @@ def _generate_report(week_of=None):
                 "productivity_pct": prod_pct,
                 "avg_focus_score": round(avg_focus, 1),
             },
+            "trends": trends,
             "daily_breakdown": daily_breakdown,
             "category_breakdown": [
                 {"category": k, "total_seconds": v}
@@ -368,6 +419,51 @@ def api_send_weekly_report_telegram():
         return jsonify({"ok": True, "status": "sent"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def run_weekly_report_scheduler(stop_event=None, check_interval_sec=300):
+    """Background worker: auto-send weekly report once each Sunday when enabled."""
+    from src.config.settings_manager import TelegramSettingsManager
+    from src.config.crypto import decrypt
+    from src.core.telegram.api import TelegramAPI
+
+    while True:
+        if stop_event and stop_event.is_set():
+            return
+        try:
+            enabled = SettingsManager.get_bool("weekly_report_telegram", False)
+            tg_enabled = TelegramSettingsManager.get("telegram_enabled") == "true"
+
+            now = datetime.now()
+            is_sunday = now.weekday() == 6
+            monday, _ = _week_bounds(now.date().isoformat())
+            sent_week = SettingsManager.get("weekly_report_last_sent_week") or ""
+
+            if enabled and tg_enabled and is_sunday and sent_week != monday:
+                token_enc = TelegramSettingsManager.get("telegram_token")
+                chat_id_enc = TelegramSettingsManager.get("telegram_chat_id")
+                if token_enc and chat_id_enc:
+                    try:
+                        token = decrypt(token_enc)
+                        chat_id = decrypt(chat_id_enc)
+                    except Exception:
+                        token = token_enc
+                        chat_id = chat_id_enc
+
+                    report = _generate_report(now.date().isoformat())
+                    html = _report_to_telegram_html(report)
+                    api = TelegramAPI(token, chat_id)
+                    if api.send_message(html):
+                        SettingsManager.set("weekly_report_last_sent_week", monday)
+        except Exception:
+            pass
+
+        slept = 0
+        while slept < check_interval_sec:
+            if stop_event and stop_event.is_set():
+                return
+            time.sleep(1)
+            slept += 1
 
 
 @wellbeing_bp.route("/api/limit-events")

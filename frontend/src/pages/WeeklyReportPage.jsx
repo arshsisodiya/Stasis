@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef, memo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { SectionCard, AppIcon } from "../shared/components";
 import { fmtTime, localYMD } from "../shared/utils";
+import { jsPDF } from "jspdf";
 
 const BASE = "http://127.0.0.1:7432";
 
@@ -28,6 +29,138 @@ function fmtWeekRange(start, end) {
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+const CATEGORY_COLORS = {
+  productive: "#4ade80",
+  communication: "#60a5fa",
+  entertainment: "#f87171",
+  browser: "#a78bfa",
+  neutral: "#fbbf24",
+  unproductive: "#fb7185",
+  other: "#64748b",
+  system: "#22d3ee",
+};
+
+function reportToText(report) {
+  if (!report) return "";
+  const s = report.summary || {};
+  const lines = [
+    `Weekly Report (${report.period?.start} -> ${report.period?.end})`,
+    "",
+    `Screen Time: ${fmtTime(s.total_screen_time || 0)}`,
+    `Avg / Day: ${fmtTime(s.avg_daily || 0)}`,
+    `Productivity: ${Math.round(s.productivity_pct || 0)}%`,
+    `Focus Score: ${Math.round(s.avg_focus_score || 0)}`,
+    "",
+    "Top Apps:",
+    ...(report.top_apps || []).slice(0, 8).map((a, i) => `${i + 1}. ${(a.app_name || "").replace(".exe", "")} - ${fmtTime(a.total_seconds || 0)}`),
+    "",
+    "Category Breakdown:",
+    ...(report.category_breakdown || []).map((c) => `- ${c.category}: ${fmtTime(c.total_seconds || 0)}`),
+    "",
+    "Insights:",
+    ...(report.insights || []).map((i) => `- ${i}`),
+  ];
+  return lines.join("\n");
+}
+
+function TinySparkline({ values = [], color = "#4ade80", width = 68, height = 22 }) {
+  if (!values || values.length < 2) return null;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const pad = 2;
+  const pts = values.map((v, i) => {
+    const x = pad + (i / (values.length - 1)) * (width - pad * 2);
+    const y = pad + (1 - (v - min) / range) * (height - pad * 2);
+    return { x, y };
+  });
+  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  return (
+    <svg width={width} height={height} style={{ display: "block", flexShrink: 0 }}>
+      <path d={line} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
+      <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r="2.3" fill={color} />
+    </svg>
+  );
+}
+
+function CategoryDonut({ categories = [] }) {
+  const [hovered, setHovered] = useState(null);
+  const total = categories.reduce((sum, c) => sum + (c.total_seconds || 0), 0);
+  const r = 58;
+  const c = 2 * Math.PI * r;
+  let acc = 0;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(190px, 1fr) minmax(210px, 1fr)", gap: 14, alignItems: "center" }}>
+      <div style={{ display: "flex", justifyContent: "center", minHeight: 184 }}>
+        <svg width="184" height="184" viewBox="0 0 184 184">
+          <circle cx="92" cy="92" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="16" />
+          {categories.map((cat) => {
+            const secs = cat.total_seconds || 0;
+            const pct = total > 0 ? secs / total : 0;
+            const seg = pct * c;
+            const offset = c - acc;
+            acc += seg;
+            const key = (cat.category || "other").toLowerCase();
+            const color = CATEGORY_COLORS[key] || "#64748b";
+            const active = hovered === null || hovered === key;
+            return (
+              <circle
+                key={cat.category}
+                cx="92"
+                cy="92"
+                r={r}
+                fill="none"
+                stroke={color}
+                strokeWidth={active ? "18" : "14"}
+                strokeDasharray={`${seg} ${c - seg}`}
+                strokeDashoffset={offset}
+                strokeLinecap="butt"
+                transform="rotate(-90 92 92)"
+                style={{ opacity: active ? 1 : 0.35, transition: "opacity 0.2s ease, stroke-width 0.2s ease" }}
+                onMouseEnter={() => setHovered(key)}
+                onMouseLeave={() => setHovered(null)}
+              />
+            );
+          })}
+          <text x="92" y="84" textAnchor="middle" fill="#cbd5e1" style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.08em" }}>TOTAL</text>
+          <text x="92" y="104" textAnchor="middle" fill="#f1f5f9" style={{ fontSize: "14px", fontWeight: 800 }}>{fmtTime(total)}</text>
+        </svg>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {categories.map((cat) => {
+          const secs = cat.total_seconds || 0;
+          const pct = total > 0 ? Math.round((secs / total) * 100) : 0;
+          const key = (cat.category || "other").toLowerCase();
+          const color = CATEGORY_COLORS[key] || "#64748b";
+          const active = hovered === null || hovered === key;
+          return (
+            <div
+              key={cat.category}
+              onMouseEnter={() => setHovered(key)}
+              onMouseLeave={() => setHovered(null)}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                background: active ? "rgba(255,255,255,0.03)" : "transparent",
+                border: `1px solid ${active ? "rgba(255,255,255,0.08)" : "transparent"}`,
+                borderRadius: 9,
+                padding: "6px 8px",
+                opacity: active ? 1 : 0.45,
+                transition: "all 0.2s ease",
+              }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 8, height: 8, borderRadius: 2, background: color }} />
+                <span style={{ fontSize: 12, color: "#94a3b8", textTransform: "capitalize" }}>{cat.category || "other"}</span>
+              </div>
+              <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Mono',monospace" }}>{fmtTime(secs)} ({pct}%)</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ── Bar chart for daily breakdown ── */
 function DailyBars({ days, animKey }) {
   const [mounted, setMounted] = useState(false);
@@ -50,7 +183,7 @@ function DailyBars({ days, animKey }) {
   const lowestIdx = minSec > 0 ? seconds.indexOf(minSec) : -1;
 
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 150, padding: "0 4px" }}>
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 150, padding: "0 4px", position: "relative" }}>
       {days.map((d, i) => {
         const pct = (seconds[i] / maxVal) * 100;
         const productive = d.productive_pct || 0;
@@ -167,7 +300,7 @@ function DailyBars({ days, animKey }) {
 }
 
 /* ── Stat pill ── */
-function StatPill({ label, value, color = "#4ade80", icon }) {
+function StatPill({ label, value, color = "#4ade80", icon, trendValues = [] }) {
   return (
     <div style={{ flex: 1, minWidth: 130, background: `${color}06`, border: `1px solid ${color}18`, borderRadius: 14, padding: "14px 16px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
@@ -175,6 +308,9 @@ function StatPill({ label, value, color = "#4ade80", icon }) {
         <span style={{ fontSize: 10, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: "0.12em" }}>{label}</span>
       </div>
       <div style={{ fontSize: 24, fontWeight: 800, color: "#f1f5f9", fontFamily: "'DM Serif Display',serif", lineHeight: 1 }}>{value}</div>
+      <div style={{ marginTop: 7, opacity: 0.9 }}>
+        <TinySparkline values={trendValues} color={color} />
+      </div>
     </div>
   );
 }
@@ -334,8 +470,35 @@ export default function WeeklyReportPage() {
     setSending(false);
   };
 
+  const exportPdf = () => {
+    try {
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const text = reportToText(report);
+      const lines = doc.splitTextToSize(text, 520);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("Stasis Weekly Report", 40, 46);
+      doc.setFont("courier", "normal");
+      doc.setFontSize(10);
+      doc.text(lines, 40, 70);
+      doc.save(`stasis-weekly-report-${week.start}.pdf`);
+      showT("PDF downloaded");
+    } catch {
+      showT("Failed to export PDF", "warn");
+    }
+  };
+
   const s = report?.summary;
   const topMax = report?.top_apps?.[0]?.total_seconds || 1;
+  const trend = useMemo(() => {
+    const list = report?.trends || [];
+    return {
+      screen: list.map(x => x.screen_time || 0),
+      avg: list.map(x => x.avg_daily || 0),
+      prod: list.map(x => x.productivity_pct || 0),
+      focus: list.map(x => x.focus_score || 0),
+    };
+  }, [report]);
 
   const navBtn = (enabled) => ({
     width: 34, height: 34, borderRadius: 10,
@@ -423,6 +586,16 @@ export default function WeeklyReportPage() {
             style={navBtn(canGoForward)}
           >→</button>
 
+          <button onClick={exportPdf} disabled={!report} style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "8px 12px", borderRadius: 10,
+            border: "1px solid rgba(96,165,250,0.3)",
+            cursor: report ? "pointer" : "not-allowed",
+            background: "rgba(96,165,250,0.08)", color: "#60a5fa",
+            fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans',sans-serif",
+            opacity: report ? 1 : 0.45,
+          }}>⬇️ Export</button>
+
           {/* Telegram */}
           <button
             onClick={sendTelegram}
@@ -459,10 +632,10 @@ export default function WeeklyReportPage() {
         <AnimatedContent animKey={weekMonday}>
           {/* Summary stats */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <StatPill icon="🖥️" label="Screen Time" value={fmtTime(s?.total_screen_time || 0)} color="#60a5fa" />
-            <StatPill icon="📊" label="Avg / Day" value={fmtTime(s?.avg_daily || 0)} color="#a78bfa" />
-            <StatPill icon="💪" label="Productivity" value={`${Math.round(s?.productivity_pct || 0)}%`} color="#4ade80" />
-            <StatPill icon="🎯" label="Focus Score" value={`${Math.round(s?.avg_focus_score || 0)}`} color="#fbbf24" />
+            <StatPill icon="🖥️" label="Screen Time" value={fmtTime(s?.total_screen_time || 0)} color="#60a5fa" trendValues={trend.screen} />
+            <StatPill icon="📊" label="Avg / Day" value={fmtTime(s?.avg_daily || 0)} color="#a78bfa" trendValues={trend.avg} />
+            <StatPill icon="💪" label="Productivity" value={`${Math.round(s?.productivity_pct || 0)}%`} color="#4ade80" trendValues={trend.prod} />
+            <StatPill icon="🎯" label="Focus Score" value={`${Math.round(s?.avg_focus_score || 0)}`} color="#fbbf24" trendValues={trend.focus} />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
@@ -492,29 +665,9 @@ export default function WeeklyReportPage() {
               </div>
             </SectionCard>
 
-            {/* Category breakdown */}
+            {/* Category breakdown donut + plain text legend */}
             <SectionCard title="Categories">
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {(report.category_breakdown || []).map((c, i) => {
-                  const cats = [
-                    { name: "Productive", color: "#4ade80" },
-                    { name: "Communication", color: "#60a5fa" },
-                    { name: "entertainment", color: "#f87171" },
-                    { name: "browser", color: "#a78bfa" },
-                  ];
-                  const cat = cats.find(x => x.name.toLowerCase() === c.category?.toLowerCase());
-                  const color = cat?.color || "#64748b";
-                  return (
-                    <div key={c.category || i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: 3, background: color }} />
-                        <span style={{ fontSize: 12, color: "#94a3b8", textTransform: "capitalize" }}>{c.category || "other"}</span>
-                      </div>
-                      <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Mono',monospace" }}>{fmtTime(c.total_seconds || 0)}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <CategoryDonut categories={report.category_breakdown || []} />
             </SectionCard>
 
             {/* Limit discipline */}

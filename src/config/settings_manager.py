@@ -104,7 +104,8 @@ class SettingsManager(BaseSettingsManager):
             "hardware_acceleration": "true",
             "idle_detection": "true",
             "browser_tracking": "true",
-            "weekly_report_telegram": "false"
+            "weekly_report_telegram": "false",
+            "weekly_report_last_sent_week": ""
         }
 
         for key, value in defaults.items():

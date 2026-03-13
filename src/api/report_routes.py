@@ -11,6 +11,45 @@ import math
 import time
 
 
+def _normalize_verbosity(value):
+    v = (value or "").strip().lower()
+    if v in ("compact", "standard", "detailed"):
+        return v
+    return "standard"
+
+
+def _range_app_totals(conn, start_date, end_date):
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT app_name, SUM(active_seconds)
+        FROM daily_stats
+        WHERE date >= ? AND date <= ?
+        GROUP BY app_name
+    """, (start_date, end_date))
+    totals = {}
+    for app_name, secs in cursor.fetchall():
+        if is_ignored(app_name):
+            continue
+        totals[app_name] = (totals.get(app_name, 0) + (secs or 0))
+    return totals
+
+
+def _range_category_totals(conn, start_date, end_date):
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT main_category, app_name, SUM(active_seconds)
+        FROM daily_stats
+        WHERE date >= ? AND date <= ?
+        GROUP BY main_category, app_name
+    """, (start_date, end_date))
+    totals = {}
+    for cat, app_name, secs in cursor.fetchall():
+        if is_ignored(app_name):
+            continue
+        totals[cat] = totals.get(cat, 0) + (secs or 0)
+    return totals
+
+
 def _week_bounds(date_str=None):
     """Return (monday, sunday) ISO date strings for the week containing date_str."""
     if date_str:
@@ -77,9 +116,13 @@ def _weekly_trend_series(conn, week_of, weeks=6):
     return series
 
 
-def _generate_report(week_of=None):
+def _generate_report(week_of=None, verbosity=None, include_previous=True):
     """Generate the full weekly report data dict."""
+    verbosity = _normalize_verbosity(verbosity or SettingsManager.get("weekly_report_verbosity") or "standard")
     monday, sunday = _week_bounds(week_of)
+    monday_date = datetime.strptime(monday, "%Y-%m-%d").date()
+    prev_monday = (monday_date - timedelta(days=7)).isoformat()
+    prev_sunday = (monday_date - timedelta(days=1)).isoformat()
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -124,6 +167,8 @@ def _generate_report(week_of=None):
 
         # Top apps
         top_apps = sorted(app_totals.items(), key=lambda x: -x[1])[:8]
+
+        prev_app_totals = _range_app_totals(conn, prev_monday, prev_sunday)
 
         # Average daily screen time
         active_days = len(daily) if daily else 1
@@ -173,6 +218,9 @@ def _generate_report(week_of=None):
             lightest_day["date"] if lightest_day else None
         )
 
+        prev_cat_totals = _range_category_totals(conn, prev_monday, prev_sunday)
+        category_insights = _build_category_insights(cat_totals, prev_cat_totals)
+
         # 5. Focus score average (from daily_stats)
         cursor.execute("""
             SELECT AVG(focus_score) FROM (
@@ -203,6 +251,75 @@ def _generate_report(week_of=None):
 
         trends = _weekly_trend_series(conn, week_of, weeks=6)
 
+        # Goal drift alerts + goal impact correlation
+        date_goal_met = {}
+        for gl_id, gl_date, actual, target, met, g_type, g_label, g_unit, g_dir in goal_logs:
+            date_goal_met[gl_date] = date_goal_met.get(gl_date, False) or bool(met)
+
+        goal_drift_alerts = []
+        goals_array = []
+        for gid, g in goals_by_id.items():
+            tracked = g["days_tracked"]
+            rate = round(g["days_met"] / tracked * 100) if tracked > 0 else 0
+            label = g["label"] or g["type"].replace("_", " ").title()
+            goals_array.append({
+                "label": label,
+                "goal_type": g["type"],
+                "target": g["target"],
+                "unit": g["unit"],
+                "direction": g["direction"],
+                "days_met": g["days_met"],
+                "total_days": tracked,
+                "success_rate": rate,
+            })
+            if tracked >= 3 and rate < 50:
+                goal_drift_alerts.append({
+                    "goal": label,
+                    "severity": "high" if rate < 35 else "medium",
+                    "message": f"{label} is off-track at {rate}% this week ({g['days_met']}/{tracked} days met).",
+                })
+
+        daily_prod_by_date = {d["date"]: d["productive_pct"] for d in daily_breakdown}
+        met_days = [daily_prod_by_date[d] for d in daily_prod_by_date if date_goal_met.get(d)]
+        non_met_days = [daily_prod_by_date[d] for d in daily_prod_by_date if d in date_goal_met and not date_goal_met.get(d)]
+        avg_with = round(sum(met_days) / len(met_days), 1) if met_days else None
+        avg_without = round(sum(non_met_days) / len(non_met_days), 1) if non_met_days else None
+        corr_delta = round(avg_with - avg_without, 1) if avg_with is not None and avg_without is not None else None
+        goal_impact = {
+            "with_goal_met_productivity": avg_with,
+            "without_goal_met_productivity": avg_without,
+            "delta": corr_delta,
+            "summary": (
+                f"Productivity is {abs(corr_delta)}% {'higher' if corr_delta >= 0 else 'lower'} on days you meet at least one goal."
+                if corr_delta is not None else "Not enough mixed goal outcomes this week to estimate goal impact."
+            ),
+        }
+
+        # What changed this week
+        prev_report = _generate_report(prev_monday, verbosity="compact", include_previous=False) if (include_previous and total_screen > 0) else None
+        changed = []
+        if prev_report:
+            prev_summary = prev_report.get("summary", {})
+            prev_top = (prev_report.get("top_apps") or [{}])[0].get("app_name")
+            cur_top = (top_apps[0][0] if top_apps else None)
+            prev_screen = prev_summary.get("total_screen_time", 0) or 0
+            if prev_screen > 0:
+                pct = round(((total_screen - prev_screen) / prev_screen) * 100, 1)
+                changed.append(f"Screen time {'rose' if pct >= 0 else 'dropped'} {abs(pct)}% vs last week.")
+            if cur_top and prev_top and cur_top != prev_top:
+                changed.append(f"Top app changed from {prev_top.replace('.exe','')} to {cur_top.replace('.exe','')}.")
+            prod_prev = prev_summary.get("productivity_pct", 0)
+            prod_delta = round(prod_pct - prod_prev, 1)
+            changed.append(f"Productivity {'improved' if prod_delta >= 0 else 'declined'} by {abs(prod_delta)} points week-over-week.")
+
+        # Verbosity filtering
+        if verbosity == "compact":
+            insights = insights[:3]
+            category_insights = category_insights[:1]
+        elif verbosity == "standard":
+            insights = insights[:6]
+            category_insights = category_insights[:2]
+
         return {
             "period": {"start": monday, "end": sunday},
             "summary": {
@@ -215,13 +332,29 @@ def _generate_report(week_of=None):
                 "avg_focus_score": round(avg_focus, 1),
             },
             "trends": trends,
+            "verbosity": verbosity,
             "daily_breakdown": daily_breakdown,
             "category_breakdown": [
                 {"category": k, "total_seconds": v}
                 for k, v in sorted(cat_totals.items(), key=lambda x: -x[1]) if v > 0
             ],
+            "category_insights": category_insights,
             "top_apps": [
-                {"app_name": app, "total_seconds": secs, "pct": round(secs / total_screen * 100, 1) if total_screen > 0 else 0}
+                {
+                    "app_name": app,
+                    "total_seconds": secs,
+                    "pct": round(secs / total_screen * 100, 1) if total_screen > 0 else 0,
+                    "delta_pct": (
+                        round(((secs - prev_app_totals.get(app, 0)) / prev_app_totals.get(app, 1)) * 100, 1)
+                        if prev_app_totals.get(app, 0) > 0 else None
+                    ),
+                    "trend": (
+                        "up" if prev_app_totals.get(app, 0) and secs > prev_app_totals.get(app, 0)
+                        else "down" if prev_app_totals.get(app, 0) and secs < prev_app_totals.get(app, 0)
+                        else "new" if prev_app_totals.get(app, 0) == 0
+                        else "flat"
+                    )
+                }
                 for app, secs in top_apps
             ],
             "peak_day": peak_day,
@@ -242,19 +375,10 @@ def _generate_report(week_of=None):
                     for e in limit_events[-20:]
                 ]
             },
-            "goals": [
-                {
-                    "label": g["label"] or g["type"].replace("_", " ").title(),
-                    "goal_type": g["type"],
-                    "target": g["target"],
-                    "unit": g["unit"],
-                    "direction": g["direction"],
-                    "days_met": g["days_met"],
-                    "total_days": g["days_tracked"],
-                    "success_rate": round(g["days_met"] / g["days_tracked"] * 100) if g["days_tracked"] > 0 else 0
-                }
-                for gid, g in goals_by_id.items()
-            ],
+            "goals": goals_array,
+            "goal_drift_alerts": goal_drift_alerts,
+            "goal_impact_correlation": goal_impact,
+            "what_changed": changed,
             "insights": insights,
         }
     finally:
@@ -320,6 +444,24 @@ def _generate_insights(daily, total_screen, avg_daily, prod_pct, top_apps,
     return insights
 
 
+def _build_category_insights(current_totals, prev_totals):
+    insights = []
+    if not current_totals:
+        return insights
+    ordered = sorted(current_totals.items(), key=lambda x: -x[1])
+    top_cat, top_secs = ordered[0]
+    insights.append(f"{top_cat.title()} was your biggest category at {_fmt_time(top_secs)}.")
+
+    for cat, cur in ordered[:3]:
+        prev = prev_totals.get(cat, 0)
+        if prev <= 0:
+            continue
+        delta = round(((cur - prev) / prev) * 100, 1)
+        if abs(delta) >= 12:
+            insights.append(f"{cat.title()} {'rose' if delta > 0 else 'fell'} {abs(delta)}% vs last week.")
+    return insights[:3]
+
+
 def _report_to_telegram_html(report):
     """Convert report dict to a readable Telegram HTML message."""
     p = report["period"]
@@ -342,9 +484,11 @@ def _report_to_telegram_html(report):
 
     lines.append("")
 
+    verbosity = report.get("verbosity", "standard")
+
     # Limits
     lim = report["limits"]
-    if lim["total_hits"] > 0 or lim["total_edits"] > 0:
+    if verbosity != "compact" and (lim["total_hits"] > 0 or lim["total_edits"] > 0):
         lines.append("<b>App Limits</b>")
         lines.append(f"  Limit hits: {lim['total_hits']}  |  Limit edits: {lim['total_edits']}")
         for item in lim["per_app"][:5]:
@@ -357,7 +501,7 @@ def _report_to_telegram_html(report):
         lines.append("")
 
     # Goals
-    if report["goals"]:
+    if verbosity != "compact" and report["goals"]:
         lines.append("<b>Goals</b>")
         for g in report["goals"]:
             emoji = "✅" if g["days_met"] == g["total_days"] and g["total_days"] > 0 else "⚠️"
@@ -367,7 +511,7 @@ def _report_to_telegram_html(report):
     # Insights
     if report["insights"]:
         lines.append("<b>💡 Insights</b>")
-        for insight in report["insights"]:
+        for insight in report["insights"][:3 if verbosity == "compact" else len(report["insights"])]:
             lines.append(f"  • {insight}")
 
     return "\n".join(lines)
@@ -378,8 +522,58 @@ def _report_to_telegram_html(report):
 @wellbeing_bp.route("/api/weekly-report")
 def api_weekly_report():
     week_of = request.args.get("week_of")
-    report = _generate_report(week_of)
+    verbosity = request.args.get("verbosity")
+    report = _generate_report(week_of, verbosity=verbosity)
     return jsonify(report)
+
+
+@wellbeing_bp.route("/api/weekly-report/compare")
+def api_weekly_report_compare():
+    week_a = request.args.get("week_a")
+    week_b = request.args.get("week_b")
+    if not week_a or not week_b:
+        return jsonify({"error": "week_a and week_b are required"}), 400
+
+    a = _generate_report(week_a, verbosity="compact")
+    b = _generate_report(week_b, verbosity="compact")
+    sa = a.get("summary", {})
+    sb = b.get("summary", {})
+    diff = {
+        "screen_time_delta": (sa.get("total_screen_time", 0) - sb.get("total_screen_time", 0)),
+        "avg_daily_delta": (sa.get("avg_daily", 0) - sb.get("avg_daily", 0)),
+        "productivity_delta": round((sa.get("productivity_pct", 0) - sb.get("productivity_pct", 0)), 1),
+        "focus_delta": round((sa.get("avg_focus_score", 0) - sb.get("avg_focus_score", 0)), 1),
+    }
+    return jsonify({"week_a": a, "week_b": b, "diff": diff})
+
+
+@wellbeing_bp.route("/api/weekly-report/available-weeks")
+def api_weekly_report_available_weeks():
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT DISTINCT date FROM daily_stats ORDER BY date DESC")
+        rows = [r[0] for r in cursor.fetchall() if r and r[0]]
+        weeks = set()
+        for date_str in rows:
+            monday, sunday = _week_bounds(date_str)
+            weeks.add((monday, sunday))
+
+        current_monday, current_sunday = _week_bounds()
+        weeks.add((current_monday, current_sunday))
+
+        sorted_weeks = sorted(weeks, key=lambda x: x[0], reverse=True)
+        return jsonify([
+            {
+                "value": monday,
+                "start": monday,
+                "end": sunday,
+                "label": f"{datetime.strptime(monday, '%Y-%m-%d').strftime('%b %d')} - {datetime.strptime(sunday, '%Y-%m-%d').strftime('%b %d, %Y')}"
+            }
+            for monday, sunday in sorted_weeks
+        ])
+    finally:
+        conn.close()
 
 
 @wellbeing_bp.route("/api/weekly-report/send-telegram", methods=["POST"])
@@ -409,7 +603,8 @@ def api_send_weekly_report_telegram():
         chat_id = chat_id_enc
 
     week_of = request.json.get("week_of") if request.json else None
-    report = _generate_report(week_of)
+    verbosity = _normalize_verbosity(SettingsManager.get("weekly_report_verbosity") or "standard")
+    report = _generate_report(week_of, verbosity=verbosity)
     html = _report_to_telegram_html(report)
 
     try:
@@ -450,7 +645,8 @@ def run_weekly_report_scheduler(stop_event=None, check_interval_sec=300):
                         token = token_enc
                         chat_id = chat_id_enc
 
-                    report = _generate_report(now.date().isoformat())
+                    verbosity = _normalize_verbosity(SettingsManager.get("weekly_report_verbosity") or "standard")
+                    report = _generate_report(now.date().isoformat(), verbosity=verbosity)
                     html = _report_to_telegram_html(report)
                     api = TelegramAPI(token, chat_id)
                     if api.send_message(html):

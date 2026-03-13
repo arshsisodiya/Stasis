@@ -780,7 +780,7 @@ function TelegramSection({ push }) {
 // GENERAL SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 function GeneralSection({ push }) {
-  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false };
+  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false, weekly_report_verbosity: "standard" };
   const [s, setS] = useState({ ...DEFAULTS });
   const [saved, setSaved] = useState({ ...DEFAULTS });
   const [confirmReset, setConfirmReset] = useState(false);
@@ -816,7 +816,8 @@ function GeneralSection({ push }) {
           file_logging_essential_only: s.file_logging_essential_only,
           show_yesterday_comparison: s.show_yesterday_comparison,
           hardware_acceleration: s.hardware_acceleration,
-          weekly_report_telegram: s.weekly_report_telegram
+          weekly_report_telegram: s.weekly_report_telegram,
+          weekly_report_verbosity: s.weekly_report_verbosity
         })
       });
       setSaved({ ...s });
@@ -963,7 +964,22 @@ function GeneralSection({ push }) {
 
       <Card>
         <SectionLabel>Weekly Reports</SectionLabel>
-        <SettingRow borderless label="Send weekly report via Telegram" desc="Receive a detailed weekly usage summary every Sunday via your Telegram bot" control={<Toggle on={s.weekly_report_telegram} onChange={v => set("weekly_report_telegram", v)} />} />
+        <SettingRow label="Send weekly report via Telegram" desc="Receive a detailed weekly usage summary every Sunday via your Telegram bot" control={<Toggle on={s.weekly_report_telegram} onChange={v => set("weekly_report_telegram", v)} />} />
+        <SettingRow borderless label="Report verbosity" desc="Controls how compact or detailed weekly insights and Telegram summaries are" control={
+          <div style={{ position: "relative" }}>
+            <select className="sp-select" value={s.weekly_report_verbosity} onChange={e => set("weekly_report_verbosity", e.target.value)}
+              style={{
+                appearance: "none", background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`,
+                borderRadius: 10, color: C.text, padding: "7px 36px 7px 14px", fontSize: 12,
+                fontFamily: "'DM Sans',sans-serif", cursor: "pointer", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)", minWidth: 120
+              }}>
+              <option value="compact">Compact</option>
+              <option value="standard">Standard</option>
+              <option value="detailed">Detailed</option>
+            </select>
+            <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 10, color: C.textMuted }}>▾</span>
+          </div>
+        } />
       </Card>
 
       {/* Cleanup Confirmation Modal */}

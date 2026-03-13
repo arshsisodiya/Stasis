@@ -105,6 +105,7 @@ class SettingsManager(BaseSettingsManager):
             "idle_detection": "true",
             "browser_tracking": "true",
             "weekly_report_telegram": "false",
+            "weekly_report_verbosity": "standard",
             "weekly_report_last_sent_week": ""
         }
 

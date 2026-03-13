@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { SectionCard, AppIcon } from "../shared/components";
 import { fmtTime, localYMD } from "../shared/utils";
-import { jsPDF } from "jspdf";
 
 const BASE = "http://127.0.0.1:7432";
 
@@ -25,6 +24,39 @@ function fmtWeekRange(start, end) {
   const s = new Date(start + "T12:00:00"), e = new Date(end + "T12:00:00");
   const opts = { month: "short", day: "numeric" };
   return `${s.toLocaleDateString("en-US", opts)} – ${e.toLocaleDateString("en-US", opts)}, ${e.getFullYear()}`;
+}
+
+function WeekOptionMenu({ options, selected, disabledValue, onSelect }) {
+  return (
+    <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, background: "rgba(255,255,255,0.02)" }}>
+      {options.map((opt) => {
+        const disabled = opt.value === disabledValue;
+        const active = opt.value === selected;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => !disabled && onSelect(opt.value)}
+            disabled={disabled}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              padding: "9px 10px",
+              border: "none",
+              borderBottom: "1px solid rgba(255,255,255,0.04)",
+              background: active ? "rgba(34,211,238,0.1)" : "transparent",
+              color: disabled ? "#475569" : active ? "#22d3ee" : "#cbd5e1",
+              cursor: disabled ? "not-allowed" : "pointer",
+              fontSize: 12,
+              fontFamily: "'DM Sans',sans-serif",
+              opacity: disabled ? 0.45 : 1,
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -61,6 +93,25 @@ function reportToText(report) {
     ...(report.insights || []).map((i) => `- ${i}`),
   ];
   return lines.join("\n");
+}
+
+function reportToCsv(report) {
+  if (!report) return "";
+  const rows = [["date", "total_seconds", "productive_pct"]];
+  (report.daily_breakdown || []).forEach((d) => rows.push([d.date, d.total_seconds || 0, d.productive_pct || 0]));
+  return rows.map((r) => r.join(",")).join("\n");
+}
+
+function downloadBlob(filename, mime, content) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function TinySparkline({ values = [], color = "#4ade80", width = 68, height = 22 }) {
@@ -330,8 +381,10 @@ function InsightCard({ text, index }) {
 }
 
 /* ── Top app row ── */
-function TopApp({ app, seconds, pct, maxPct, rank }) {
+function TopApp({ app, seconds, pct, maxPct, rank, trend, deltaPct }) {
   const color = rank <= 1 ? "#fbbf24" : rank <= 3 ? "#a78bfa" : "#475569";
+  const trendColor = trend === "up" ? "#f87171" : trend === "down" ? "#4ade80" : trend === "new" ? "#22d3ee" : "#64748b";
+  const trendText = trend === "up" ? `↑ ${Math.abs(deltaPct || 0)}%` : trend === "down" ? `↓ ${Math.abs(deltaPct || 0)}%` : trend === "new" ? "new" : "flat";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <span style={{ width: 18, textAlign: "center", fontSize: 11, fontWeight: 800, color, fontFamily: "'DM Mono',monospace" }}>{rank}</span>
@@ -339,7 +392,10 @@ function TopApp({ app, seconds, pct, maxPct, rank }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
           <span style={{ fontSize: 12, color: "#e2e8f0", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.replace(".exe", "")}</span>
-          <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Mono',monospace", flexShrink: 0, marginLeft: 8 }}>{fmtTime(seconds)}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 8 }}>
+            <span style={{ fontSize: 10, color: trendColor, fontFamily: "'DM Mono',monospace", textTransform: "lowercase" }}>{trendText}</span>
+            <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Mono',monospace", flexShrink: 0 }}>{fmtTime(seconds)}</span>
+          </div>
         </div>
         <div style={{ height: 3, borderRadius: 3, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
           <div style={{ height: "100%", borderRadius: 3, width: `${Math.min((seconds / maxPct) * 100, 100)}%`, background: `linear-gradient(90deg,${color},${color}88)`, boxShadow: `0 0 6px ${color}40`, transition: "width 0.8s cubic-bezier(0.34,1.56,0.64,1)" }} />
@@ -410,6 +466,19 @@ export default function WeeklyReportPage() {
   // Always store the Monday of the current week to avoid drift
   const [weekMonday, setWeekMonday] = useState(() => weekBounds(localYMD()).start);
   const [sending, setSending] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [weekMenuOpen, setWeekMenuOpen] = useState(null);
+  const [availableWeeks, setAvailableWeeks] = useState([]);
+  const [compareWeekA, setCompareWeekA] = useState(() => weekBounds(localYMD()).start);
+  const [compareWeekB, setCompareWeekB] = useState(() => {
+    const d = new Date(weekBounds(localYMD()).start + "T12:00:00");
+    d.setDate(d.getDate() - 7);
+    return localYMD(d);
+  });
+  const [compareData, setCompareData] = useState(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [verbosity, setVerbosity] = useState("standard");
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
 
@@ -428,15 +497,34 @@ export default function WeeklyReportPage() {
   const canGoBack = weekMonday > earliestMonday;
   const canGoForward = weekMonday < currentWeekMonday;
 
+  useEffect(() => {
+    fetch(`${BASE}/api/settings`)
+      .then((r) => r.json())
+      .then((d) => setVerbosity((d.weekly_report_verbosity || "standard").toLowerCase()))
+      .catch(() => {});
+
+    fetch(`${BASE}/api/weekly-report/available-weeks`)
+      .then((r) => r.json())
+      .then((d) => {
+        const options = Array.isArray(d) ? d : [];
+        setAvailableWeeks(options);
+        if (options.length > 0) {
+          setCompareWeekA((prev) => options.some((x) => x.value === prev) ? prev : options[0].value);
+          setCompareWeekB((prev) => options.some((x) => x.value === prev && x.value !== (options[0]?.value)) ? prev : (options[1]?.value || options[0].value));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const fetchReport = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${BASE}/api/weekly-report?week_of=${weekMonday}`);
+      const r = await fetch(`${BASE}/api/weekly-report?week_of=${weekMonday}&verbosity=${verbosity}`);
       const j = await r.json();
       setReport(j.error ? null : j);
     } catch { setReport(null); }
     setLoading(false);
-  }, [weekMonday]);
+  }, [weekMonday, verbosity]);
 
   useEffect(() => { fetchReport(); }, [fetchReport]);
 
@@ -470,8 +558,27 @@ export default function WeeklyReportPage() {
     setSending(false);
   };
 
-  const exportPdf = () => {
+  const downloadJson = () => {
     try {
+      downloadBlob(`stasis-weekly-report-${week.start}.json`, "application/json", JSON.stringify(report, null, 2));
+      showT("JSON downloaded");
+    } catch {
+      showT("Failed to download JSON", "warn");
+    }
+  };
+
+  const downloadCsv = () => {
+    try {
+      downloadBlob(`stasis-weekly-report-${week.start}.csv`, "text/csv;charset=utf-8", reportToCsv(report));
+      showT("CSV downloaded");
+    } catch {
+      showT("Failed to download CSV", "warn");
+    }
+  };
+
+  const exportPdf = async () => {
+    try {
+      const { jsPDF } = await import("jspdf");
       const doc = new jsPDF({ unit: "pt", format: "a4" });
       const text = reportToText(report);
       const lines = doc.splitTextToSize(text, 520);
@@ -486,6 +593,19 @@ export default function WeeklyReportPage() {
     } catch {
       showT("Failed to export PDF", "warn");
     }
+  };
+
+  const compareWeeks = async () => {
+    setCompareLoading(true);
+    try {
+      const r = await fetch(`${BASE}/api/weekly-report/compare?week_a=${compareWeekA}&week_b=${compareWeekB}`);
+      const j = await r.json();
+      setCompareData(j.error ? null : j);
+      if (j.error) showT(j.error, "warn");
+    } catch {
+      showT("Failed to compare weeks", "warn");
+    }
+    setCompareLoading(false);
   };
 
   const s = report?.summary;
@@ -586,33 +706,95 @@ export default function WeeklyReportPage() {
             style={navBtn(canGoForward)}
           >→</button>
 
-          <button onClick={exportPdf} disabled={!report} style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "8px 12px", borderRadius: 10,
-            border: "1px solid rgba(96,165,250,0.3)",
-            cursor: report ? "pointer" : "not-allowed",
-            background: "rgba(96,165,250,0.08)", color: "#60a5fa",
-            fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans',sans-serif",
-            opacity: report ? 1 : 0.45,
-          }}>⬇️ Export</button>
-
-          {/* Telegram */}
-          <button
-            onClick={sendTelegram}
-            disabled={sending || !report}
-            style={{
+          <div style={{ position: "relative" }}>
+            <button onClick={() => setCompareOpen(v => !v)} style={{
               display: "flex", alignItems: "center", gap: 6,
-              padding: "8px 16px", borderRadius: 10,
-              border: "1px solid rgba(34,211,238,0.3)",
-              cursor: report && !sending ? "pointer" : "not-allowed",
-              background: "rgba(34,211,238,0.08)", color: "#22d3ee",
+              padding: "8px 12px", borderRadius: 999,
+              border: "1px solid rgba(167,139,250,0.3)",
+              background: "rgba(167,139,250,0.08)", color: "#a78bfa",
               fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans',sans-serif",
-              opacity: sending || !report ? 0.45 : 1,
-              transition: "all 0.22s",
-            }}
-          >
-            ✈️ {sending ? "Sending…" : "Telegram"}
-          </button>
+              cursor: "pointer"
+            }}>⇄ Compare</button>
+
+            {compareOpen && (
+              <div style={{
+                position: "absolute", right: 0, top: "calc(100% + 8px)", zIndex: 35,
+                width: 320, background: "rgba(9,13,24,0.98)", border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 14, boxShadow: "0 20px 40px rgba(0,0,0,0.55)", padding: 12
+              }}>
+                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Compare Two Weeks</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 5 }}>Week 1</div>
+                    <button onClick={() => setWeekMenuOpen(weekMenuOpen === "a" ? null : "a")}
+                      style={{ width: "100%", textAlign: "left", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "8px 10px", fontSize: 12, fontFamily: "'DM Sans',sans-serif", cursor: "pointer" }}>
+                      {availableWeeks.find((x) => x.value === compareWeekA)?.label || "Select week"}
+                    </button>
+                    {weekMenuOpen === "a" && (
+                      <div style={{ marginTop: 6 }}>
+                        <WeekOptionMenu options={availableWeeks} selected={compareWeekA} disabledValue={compareWeekB} onSelect={(value) => { setCompareWeekA(value); setWeekMenuOpen(null); }} />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 5 }}>Week 2</div>
+                    <button onClick={() => setWeekMenuOpen(weekMenuOpen === "b" ? null : "b")}
+                      style={{ width: "100%", textAlign: "left", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "8px 10px", fontSize: 12, fontFamily: "'DM Sans',sans-serif", cursor: "pointer" }}>
+                      {availableWeeks.find((x) => x.value === compareWeekB)?.label || "Select week"}
+                    </button>
+                    {weekMenuOpen === "b" && (
+                      <div style={{ marginTop: 6 }}>
+                        <WeekOptionMenu options={availableWeeks} selected={compareWeekB} disabledValue={compareWeekA} onSelect={(value) => { setCompareWeekB(value); setWeekMenuOpen(null); }} />
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={async () => { await compareWeeks(); setCompareOpen(false); }} disabled={compareLoading || compareWeekA === compareWeekB}
+                    style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid rgba(34,211,238,0.3)", background: "rgba(34,211,238,0.08)", color: compareWeekA === compareWeekB ? "#475569" : "#22d3ee", cursor: compareWeekA === compareWeekB ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 600 }}>
+                    {compareLoading ? "Comparing..." : "Compare Weeks"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ position: "relative" }}>
+            <button onClick={() => setExportOpen(v => !v)} disabled={!report} style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 12px", borderRadius: 10,
+              border: "1px solid rgba(96,165,250,0.3)",
+              cursor: report ? "pointer" : "not-allowed",
+              background: "rgba(96,165,250,0.08)", color: "#60a5fa",
+              fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans',sans-serif",
+              opacity: report ? 1 : 0.45,
+            }}>⬇️ Export ▾</button>
+
+            {exportOpen && report && (
+              <div style={{
+                position: "absolute", right: 0, top: "calc(100% + 8px)", zIndex: 30,
+                minWidth: 180, background: "rgba(9,13,24,0.98)", border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.55)", overflow: "hidden"
+              }}>
+                {[
+                  { label: "Download PDF", action: async () => { await exportPdf(); setExportOpen(false); } },
+                  { label: "Download CSV", action: () => { downloadCsv(); setExportOpen(false); } },
+                  { label: "Download JSON", action: () => { downloadJson(); setExportOpen(false); } },
+                  { label: sending ? "Send Telegram (sending...)" : "Send to Telegram", action: async () => { await sendTelegram(); setExportOpen(false); } },
+                ].map((item) => (
+                  <button key={item.label} onClick={item.action}
+                    style={{
+                      width: "100%", textAlign: "left", padding: "10px 12px", border: "none",
+                      background: "transparent", color: "#cbd5e1", cursor: "pointer",
+                      fontSize: 12, fontFamily: "'DM Sans',sans-serif"
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -630,6 +812,27 @@ export default function WeeklyReportPage() {
         </div>
       ) : (
         <AnimatedContent animKey={weekMonday}>
+          {compareData?.diff && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+              <div style={{ background: "rgba(96,165,250,0.06)", border: "1px solid rgba(96,165,250,0.16)", borderRadius: 10, padding: "9px 10px" }}>
+                <div style={{ fontSize: 10, color: "#60a5fa", textTransform: "uppercase" }}>Screen Δ</div>
+                <div style={{ fontSize: 14, color: "#cbd5e1", fontWeight: 700 }}>{fmtTime(Math.abs(compareData.diff.screen_time_delta || 0))} {compareData.diff.screen_time_delta >= 0 ? "↑" : "↓"}</div>
+              </div>
+              <div style={{ background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.16)", borderRadius: 10, padding: "9px 10px" }}>
+                <div style={{ fontSize: 10, color: "#a78bfa", textTransform: "uppercase" }}>Avg/Day Δ</div>
+                <div style={{ fontSize: 14, color: "#cbd5e1", fontWeight: 700 }}>{fmtTime(Math.abs(compareData.diff.avg_daily_delta || 0))} {compareData.diff.avg_daily_delta >= 0 ? "↑" : "↓"}</div>
+              </div>
+              <div style={{ background: "rgba(74,222,128,0.06)", border: "1px solid rgba(74,222,128,0.16)", borderRadius: 10, padding: "9px 10px" }}>
+                <div style={{ fontSize: 10, color: "#4ade80", textTransform: "uppercase" }}>Productivity Δ</div>
+                <div style={{ fontSize: 14, color: "#cbd5e1", fontWeight: 700 }}>{Math.abs(compareData.diff.productivity_delta || 0)}pt {compareData.diff.productivity_delta >= 0 ? "↑" : "↓"}</div>
+              </div>
+              <div style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.16)", borderRadius: 10, padding: "9px 10px" }}>
+                <div style={{ fontSize: 10, color: "#fbbf24", textTransform: "uppercase" }}>Focus Δ</div>
+                <div style={{ fontSize: 14, color: "#cbd5e1", fontWeight: 700 }}>{Math.abs(compareData.diff.focus_delta || 0)} {compareData.diff.focus_delta >= 0 ? "↑" : "↓"}</div>
+              </div>
+            </div>
+          )}
+
           {/* Summary stats */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <StatPill icon="🖥️" label="Screen Time" value={fmtTime(s?.total_screen_time || 0)} color="#60a5fa" trendValues={trend.screen} />
@@ -637,6 +840,18 @@ export default function WeeklyReportPage() {
             <StatPill icon="💪" label="Productivity" value={`${Math.round(s?.productivity_pct || 0)}%`} color="#4ade80" trendValues={trend.prod} />
             <StatPill icon="🎯" label="Focus Score" value={`${Math.round(s?.avg_focus_score || 0)}`} color="#fbbf24" trendValues={trend.focus} />
           </div>
+
+          {report.what_changed && report.what_changed.length > 0 && (
+            <SectionCard title="What Changed This Week">
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {report.what_changed.map((x, i) => (
+                  <div key={i} style={{ fontSize: 12, color: "#cbd5e1", padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.02)" }}>
+                    {x}
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {/* Daily breakdown — now a real bar chart */}
@@ -660,7 +875,7 @@ export default function WeeklyReportPage() {
             <SectionCard title="Top Apps">
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {(report.top_apps || []).map((a, i) => (
-                  <TopApp key={a.app_name} app={a.app_name} seconds={a.total_seconds} pct={a.pct} maxPct={topMax} rank={i + 1} />
+                  <TopApp key={a.app_name} app={a.app_name} seconds={a.total_seconds} pct={a.pct} maxPct={topMax} rank={i + 1} trend={a.trend} deltaPct={a.delta_pct} />
                 ))}
               </div>
             </SectionCard>
@@ -668,6 +883,13 @@ export default function WeeklyReportPage() {
             {/* Category breakdown donut + plain text legend */}
             <SectionCard title="Categories">
               <CategoryDonut categories={report.category_breakdown || []} />
+              {report.category_insights?.length > 0 && (
+                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 7 }}>
+                  {report.category_insights.map((txt, i) => (
+                    <div key={i} style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.6, padding: "7px 9px", borderRadius: 9, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>🧠 {txt}</div>
+                  ))}
+                </div>
+              )}
             </SectionCard>
 
             {/* Limit discipline */}
@@ -697,6 +919,35 @@ export default function WeeklyReportPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10 }}>
                   {report.goals.map((g, i) => <GoalBadge key={i} goal={g} />)}
                 </div>
+                {report.goal_drift_alerts?.length > 0 && (
+                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                    {report.goal_drift_alerts.map((a, i) => (
+                      <div key={i} style={{ fontSize: 12, color: a.severity === "high" ? "#f87171" : "#fbbf24", background: a.severity === "high" ? "rgba(248,113,113,0.08)" : "rgba(251,191,36,0.08)", border: `1px solid ${a.severity === "high" ? "rgba(248,113,113,0.25)" : "rgba(251,191,36,0.22)"}`, borderRadius: 10, padding: "8px 10px" }}>
+                        ⚠️ {a.message}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </SectionCard>
+            )}
+
+            {report.goal_impact_correlation && (
+              <SectionCard title="Goal Impact Correlation" style={{ gridColumn: "1 / -1" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                  <div style={{ border: "1px solid rgba(74,222,128,0.2)", background: "rgba(74,222,128,0.06)", borderRadius: 10, padding: "10px 12px" }}>
+                    <div style={{ fontSize: 10, color: "#4ade80", textTransform: "uppercase" }}>With Goals Met</div>
+                    <div style={{ fontSize: 20, color: "#e2e8f0", fontWeight: 700 }}>{report.goal_impact_correlation.with_goal_met_productivity ?? "—"}%</div>
+                  </div>
+                  <div style={{ border: "1px solid rgba(148,163,184,0.2)", background: "rgba(148,163,184,0.06)", borderRadius: 10, padding: "10px 12px" }}>
+                    <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase" }}>Without Goal Met</div>
+                    <div style={{ fontSize: 20, color: "#e2e8f0", fontWeight: 700 }}>{report.goal_impact_correlation.without_goal_met_productivity ?? "—"}%</div>
+                  </div>
+                  <div style={{ border: "1px solid rgba(34,211,238,0.2)", background: "rgba(34,211,238,0.06)", borderRadius: 10, padding: "10px 12px" }}>
+                    <div style={{ fontSize: 10, color: "#22d3ee", textTransform: "uppercase" }}>Delta</div>
+                    <div style={{ fontSize: 20, color: "#e2e8f0", fontWeight: 700 }}>{report.goal_impact_correlation.delta ?? "—"}pt</div>
+                  </div>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 12, color: "#94a3b8" }}>{report.goal_impact_correlation.summary}</div>
               </SectionCard>
             )}
           </div>

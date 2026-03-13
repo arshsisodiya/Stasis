@@ -15,7 +15,8 @@ def get_settings():
         "hardware_acceleration": SettingsManager.get_bool("hardware_acceleration", True),
         "idle_detection": SettingsManager.get_bool("idle_detection", True),
         "browser_tracking": SettingsManager.get_bool("browser_tracking", True),
-        "weekly_report_telegram": SettingsManager.get_bool("weekly_report_telegram", False)
+        "weekly_report_telegram": SettingsManager.get_bool("weekly_report_telegram", False),
+        "weekly_report_verbosity": SettingsManager.get("weekly_report_verbosity") or "standard"
     })
 
 
@@ -66,5 +67,11 @@ def update_settings():
     if "weekly_report_telegram" in data:
         val = "true" if data["weekly_report_telegram"] else "false"
         SettingsManager.set("weekly_report_telegram", val)
+
+    if "weekly_report_verbosity" in data:
+        val = str(data["weekly_report_verbosity"]).strip().lower()
+        if val not in ("compact", "standard", "detailed"):
+            val = "standard"
+        SettingsManager.set("weekly_report_verbosity", val)
 
     return jsonify({"status": "updated"})

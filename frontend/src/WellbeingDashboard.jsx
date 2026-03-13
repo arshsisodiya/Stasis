@@ -271,6 +271,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
   const { data, stats, prevStats, prevWellbeing, hourly, focusData, limits, trackedSeconds, loading, noData, mounted } = dashState;
 
   const [activeTab, setActiveTab] = useState("overview");
+  const [activeInsightTab, setActiveInsightTab] = useState("goals");
   const [showSettings, setShowSettings] = useState(false);
   const [selectedDate, setSelectedDate] = useState(localYMD());
   const [availableDates, setAvailableDates] = useState([]);
@@ -290,7 +291,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
   // Keyboard shortcuts
   useEffect(() => {
-    const TABS = ["overview", "apps", "activity", "limits", "goals", "reports"];
+    const TABS = ["overview", "apps", "activity", "insights"];
     const handler = e => {
       const n = parseInt(e.key);
       if (n >= 1 && n <= TABS.length && !e.ctrlKey && !e.metaKey && !e.altKey
@@ -409,10 +410,14 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
     { id: "overview", label: "Overview" },
     { id: "apps", label: "Apps" },
     { id: "activity", label: "Activity" },
-    { id: "limits", label: "🛡️ Limits", accent: true },
-    { id: "goals", label: "🎯 Goals" },
-    { id: "reports", label: "📊 Reports" },
+    { id: "insights", label: "✨ Insights", accent: true },
   ];
+
+  const INSIGHT_TABS = useMemo(() => ([
+    { id: "goals", label: "Goals" },
+    { id: "limits", label: "Limits" },
+    { id: "reports", label: "Reports" },
+  ]), []);
 
   if (loading) return null;
   if (noData) return <EmptyState />;
@@ -472,7 +477,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
         borderRadius: "50%", pointerEvents: "none", zIndex: 0, transition: "background 1.4s ease",
         background: !isToday
           ? "radial-gradient(circle,rgba(99,102,241,0.1) 0%,transparent 70%)"
-          : activeTab === "limits"
+          : (activeTab === "insights" && activeInsightTab === "limits")
             ? "radial-gradient(circle,rgba(251,191,36,0.1) 0%,transparent 70%)"
             : activeTab === "apps"
               ? "radial-gradient(circle,rgba(96,165,250,0.12) 0%,transparent 70%)"
@@ -485,7 +490,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
           ? "radial-gradient(circle,rgba(79,70,229,0.08) 0%,transparent 70%)"
           : activeTab === "activity"
             ? "radial-gradient(circle,rgba(167,139,250,0.1) 0%,transparent 70%)"
-            : activeTab === "limits"
+            : (activeTab === "insights" && activeInsightTab === "limits")
               ? "radial-gradient(circle,rgba(248,113,113,0.09) 0%,transparent 70%)"
               : "radial-gradient(circle,rgba(96,165,250,0.1) 0%,transparent 70%)",
       }} />
@@ -569,12 +574,12 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
             {/* Context line */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 12, color: "#475569" }}>
-                {activeTab === "limits" ? "App time limits & blocking"
-                  : activeTab === "goals" ? "Personal goals & daily targets"
-                  : activeTab === "reports" ? "Weekly usage summary & insights"
+                {activeTab === "insights" && activeInsightTab === "limits" ? "App time limits & blocking"
+                  : activeTab === "insights" && activeInsightTab === "goals" ? "Personal goals & daily targets"
+                  : activeTab === "insights" && activeInsightTab === "reports" ? "Weekly usage summary & insights"
                   : new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
               </span>
-              {isToday && !["limits", "goals", "reports"].includes(activeTab) && (
+              {isToday && activeTab !== "insights" && (
                 <span style={{
                   display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11,
                   color: "#4ade80", background: "rgba(74,222,128,0.07)", border: "1px solid rgba(74,222,128,0.18)",
@@ -595,8 +600,36 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               )}
             </div>
 
+            {activeTab === "insights" && (
+              <div style={{ display: "inline-flex", gap: 4, alignItems: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 4, width: "fit-content" }}>
+                {INSIGHT_TABS.map(t => {
+                  const isActive = activeInsightTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setActiveInsightTab(t.id)}
+                      style={{
+                        border: "1px solid transparent",
+                        background: isActive ? "rgba(96,165,250,0.14)" : "transparent",
+                        color: isActive ? "#93c5fd" : "#64748b",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        borderColor: isActive ? "rgba(96,165,250,0.35)" : "transparent",
+                        borderRadius: 8,
+                        padding: "6px 12px",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Date navigator + DaySummary */}
-            {activeTab !== "limits" && activeTab !== "goals" && activeTab !== "reports" && (
+            {activeTab !== "insights" && (
               <div className="date-bar-row" style={{ display: "flex", gap: 12, alignItems: "stretch", width: "100%" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <DateNavigator selectedDate={selectedDate} onChange={setSelectedDate} availableDates={availableDates} heatmap={heatmapData} />
@@ -626,7 +659,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               peakHour={peakHour}
               countKey={countKey}
               selectedDate={selectedDate}
-              onGoToLimits={() => setActiveTab("limits")}
+              onGoToLimits={() => { setActiveTab("insights"); setActiveInsightTab("limits"); }}
               onGoToday={() => setSelectedDate(localYMD())}
               sparkSeries={sparkSeries}
               BASE={BASE}
@@ -646,16 +679,16 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
             />
           </AnimatedTabPanel>
 
-          <AnimatedTabPanel active={activeTab === "limits"}>
-            <LimitsPage BASE={BASE} stats={stats} />
-          </AnimatedTabPanel>
-
-          <AnimatedTabPanel active={activeTab === "goals"}>
-            <GoalsPage selectedDate={selectedDate} />
-          </AnimatedTabPanel>
-
-          <AnimatedTabPanel active={activeTab === "reports"}>
-            <WeeklyReportPage />
+          <AnimatedTabPanel active={activeTab === "insights"}>
+            {activeInsightTab === "goals" && (
+              <GoalsPage selectedDate={selectedDate} />
+            )}
+            {activeInsightTab === "limits" && (
+              <LimitsPage BASE={BASE} stats={stats} />
+            )}
+            {activeInsightTab === "reports" && (
+              <WeeklyReportPage />
+            )}
           </AnimatedTabPanel>
 
           {/* Footer */}

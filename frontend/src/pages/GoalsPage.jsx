@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { SectionCard, AppIcon } from "../shared/components";
-import { fmtTime } from "../shared/utils";
+import { fmtTime, localYMD } from "../shared/utils";
 
 const BASE = "http://127.0.0.1:7432";
 
@@ -25,6 +25,51 @@ function fmtActual(value, unit) {
   return String(Math.round(value));
 }
 
+function shiftDate(dateStr, days) {
+  const d = new Date(dateStr + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return localYMD(d);
+}
+
+function buildLastNDates(endDate, count) {
+  const list = [];
+  for (let i = count - 1; i >= 0; i--) {
+    list.push(shiftDate(endDate, -i));
+  }
+  return list;
+}
+
+function bestStreakFromLogs(logs = []) {
+  if (!logs.length) return 0;
+  let best = 0;
+  let current = 0;
+  let prevDate = null;
+
+  for (const log of logs) {
+    const met = Boolean(log.met);
+    const date = log.date;
+    const isConsecutive = prevDate ? shiftDate(prevDate, 1) === date : true;
+
+    if (met) {
+      current = isConsecutive ? current + 1 : 1;
+      best = Math.max(best, current);
+    } else {
+      current = 0;
+    }
+    prevDate = date;
+  }
+  return best;
+}
+
+function streakWindowFromLogs(logs = [], endDate) {
+  const dates = buildLastNDates(endDate, 7);
+  const byDate = new Map(logs.map((l) => [l.date, Boolean(l.met)]));
+  return dates.map((d) => {
+    if (!byDate.has(d)) return null;
+    return byDate.get(d);
+  });
+}
+
 function GoalRing({ progress, met, size = 56, stroke = 4 }) {
   const r = (size - stroke) / 2, circ = 2 * Math.PI * r;
   const pct = Math.min(Math.max(progress / 100, 0), 1);
@@ -44,7 +89,7 @@ function GoalRing({ progress, met, size = 56, stroke = 4 }) {
   );
 }
 
-function GoalCard({ goal, index, onEdit, onDelete }) {
+function GoalCard({ goal, index, onEdit, onDelete, streak7 = [], bestStreak = 0 }) {
   const [hov, setHov] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const meta = GOAL_TYPES.find(t => t.value === goal.goal_type) || {};
@@ -75,6 +120,21 @@ function GoalCard({ goal, index, onEdit, onDelete }) {
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5 }}>
                 <div style={{ width: 6, height: 6, borderRadius: "50%", background: color, boxShadow: `0 0 6px ${color}` }} />
                 <span style={{ fontSize: 11, color, fontWeight: 600 }}>{statusLabel}</span>
+                {bestStreak > 0 && (
+                  <span style={{
+                    fontSize: 10,
+                    color: "#fbbf24",
+                    fontWeight: 700,
+                    background: "rgba(251,191,36,0.08)",
+                    border: "1px solid rgba(251,191,36,0.24)",
+                    borderRadius: 999,
+                    padding: "2px 8px",
+                    marginLeft: 4,
+                    fontFamily: "'DM Mono',monospace",
+                  }}>
+                    Best {bestStreak}d
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -96,6 +156,36 @@ function GoalCard({ goal, index, onEdit, onDelete }) {
             background: goal.met ? "linear-gradient(90deg,#4ade80,#22d3ee)" : goal.progress_pct >= 70 ? "linear-gradient(90deg,#fbbf24,#f59e0b)" : "linear-gradient(90deg,#f87171,#ef4444)",
             boxShadow: `0 0 8px ${color}60`, transition: "width 1.1s cubic-bezier(0.34,1.56,0.64,1)"
           }} />
+        </div>
+
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 14,
+          padding: "8px 10px",
+          borderRadius: 10,
+          background: "rgba(255,255,255,0.02)",
+          border: "1px solid rgba(255,255,255,0.05)",
+        }}>
+          <span style={{ fontSize: 10, color: "#64748b", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            7-Day Streak
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {streak7.map((s, idx) => {
+              const dot = s === true ? "#4ade80" : s === false ? "#f87171" : "#334155";
+              return (
+                <div key={idx} style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: dot,
+                  boxShadow: s === true ? "0 0 8px rgba(74,222,128,0.8)" : "none",
+                  opacity: s === null ? 0.65 : 1,
+                }} />
+              );
+            })}
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 7 }}>
@@ -295,6 +385,7 @@ export default function GoalsPage({ selectedDate }) {
   const [showModal, setShowModal] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [toast, setToast] = useState(null);
+  const [goalHistory, setGoalHistory] = useState({});
   const toastTimer = useRef(null);
 
   const showT = (msg, type = "success") => {
@@ -305,12 +396,14 @@ export default function GoalsPage({ selectedDate }) {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [g, p] = await Promise.all([
+      const [g, p, h] = await Promise.all([
         fetch(`${BASE}/api/goals`).then(r => r.json()),
         fetch(`${BASE}/api/goals/progress?date=${selectedDate}`).then(r => r.json()),
+        fetch(`${BASE}/api/goals/history?days=120`).then(r => r.json()),
       ]);
       setGoals(Array.isArray(g) ? g : []);
       setProgress(Array.isArray(p) ? p : []);
+      setGoalHistory(h && typeof h === "object" ? h : {});
     } catch { }
     setLoading(false);
   }, [selectedDate]);
@@ -415,15 +508,22 @@ export default function GoalsPage({ selectedDate }) {
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(310px,1fr))", gap: 14 }}>
-          {progress.map((g, i) => (
-            <GoalCard key={g.id} goal={g} index={i}
-              onEdit={g => {
-                const full = goals.find(x => x.id === g.id);
-                setEditTarget(full || g);
-                setShowModal(true);
-              }}
-              onDelete={handleDelete} />
-          ))}
+          {progress.map((g, i) => {
+            const history = Array.isArray(goalHistory[g.id]) ? goalHistory[g.id] : [];
+            const streak7 = streakWindowFromLogs(history, selectedDate || localYMD());
+            const bestStreak = bestStreakFromLogs(history);
+            return (
+              <GoalCard key={g.id} goal={g} index={i}
+                streak7={streak7}
+                bestStreak={bestStreak}
+                onEdit={g => {
+                  const full = goals.find(x => x.id === g.id);
+                  setEditTarget(full || g);
+                  setShowModal(true);
+                }}
+                onDelete={handleDelete} />
+            );
+          })}
         </div>
       )}
 

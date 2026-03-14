@@ -1,16 +1,20 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { fmtTime } from "../shared/utils";
 import { useCountUp } from "../shared/hooks";
 import { SectionCard, TrendChip } from "../shared/components";
 import { Sparkline } from "../WellbeingDashboard";
 
 // ─── SCREEN TIME CARD ─────────────────────────────────────────────────────────
-function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#60a5fa" }) {
+function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#60a5fa", goalInfo, onSetGoal }) {
+  const [isHovered, setIsHovered] = useState(false);
+  const hasGoal = Boolean(goalInfo?.goal);
   const sH = useCountUp(Math.floor((data?.totalScreenTime || 0) / 3600), 1400, countKey);
   const sM = useCountUp(Math.floor(((data?.totalScreenTime || 0) % 3600) / 60), 1200, countKey);
 
   return (
     <SectionCard
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       className="metric-card"
       style={{
         display: "flex", flexDirection: "column",
@@ -21,11 +25,35 @@ function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sp
         animationDelay: "0ms",
       }}
     >
-      <div style={{
-        fontSize: 11, color: "#4ade80", textTransform: "uppercase",
-        letterSpacing: "0.15em", marginBottom: 16, fontWeight: 600,
-      }}>
-        Screen Time
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, minHeight: 28 }}>
+        <div style={{
+          fontSize: 11, color: "#4ade80", textTransform: "uppercase",
+          letterSpacing: "0.15em", fontWeight: 600,
+        }}>
+          Screen Time
+        </div>
+        {!hasGoal && (
+          <button
+            onClick={onSetGoal}
+            style={{
+              border: "1px solid rgba(96,165,250,0.28)",
+              background: isHovered ? "rgba(96,165,250,0.16)" : "rgba(96,165,250,0.08)",
+              color: "#93c5fd",
+              borderRadius: 999,
+              padding: "4px 10px",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              opacity: isHovered ? 1 : 0,
+              pointerEvents: isHovered ? "auto" : "none",
+              transform: isHovered ? "translateY(0)" : "translateY(2px)",
+              transition: "opacity 0.2s ease, transform 0.2s ease, background 0.2s ease",
+            }}
+            title="Set Screen Time Goal"
+          >
+            Set Goal
+          </button>
+        )}
       </div>
 
       <div style={{

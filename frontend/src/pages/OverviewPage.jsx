@@ -221,6 +221,7 @@ export default function OverviewPage({
   selectedDate,
   onGoToLimits,
   onGoToday,
+  onGoToGoals,
   sparkSeries,
   BASE,
 }) {
@@ -302,6 +303,7 @@ export default function OverviewPage({
             {...cardProps}
             sparkValues={sparkSeries?.screenTime}
             goalInfo={{ goal: screenTimeGoal, progress: screenTimeGoalProgress }}
+            onSetGoal={onGoToGoals}
           />
         </div>
 
@@ -311,6 +313,7 @@ export default function OverviewPage({
             {...cardProps}
             sparkValues={sparkSeries?.productivity}
             goalInfo={{ goal: productivityGoal, progress: productivityGoalProgress }}
+            onSetGoal={onGoToGoals}
           />
         </div>
 

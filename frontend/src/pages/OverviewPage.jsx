@@ -509,6 +509,16 @@ export default function OverviewPage({
           : <CategoryBreakdown stats={stats} />
         }
       </div>
+
+      <QuickGoalModal
+        open={goalModalOpen}
+        initial={goalModalSeed}
+        onClose={() => {
+          setGoalModalOpen(false);
+          setGoalModalSeed(null);
+        }}
+        onSave={handleSaveGoal}
+      />
     </div>
   );
 }

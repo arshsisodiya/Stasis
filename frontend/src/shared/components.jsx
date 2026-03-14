@@ -223,9 +223,9 @@ export function TrendChip({ current, previous, mode = "time", isPositiveGood = t
 
 
 // ─── SECTION CARD ─────────────────────────────────────────────────────────────
-export function SectionCard({ title, children, style = {}, className = "" }) {
+export function SectionCard({ title, children, style = {}, className = "", ...props }) {
   return (
-    <div className={className} style={{
+    <div className={className} {...props} style={{
       background: "rgba(15,18,34,0.95)", border: "1px solid rgba(255,255,255,0.07)",
       borderRadius: 24, padding: "24px", ...style
     }}>

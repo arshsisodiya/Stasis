@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fmtTime } from "../shared/utils";
 import { localYMD } from "../shared/utils";
 import { SectionCard } from "../shared/components";
@@ -224,12 +224,61 @@ export default function OverviewPage({
   sparkSeries,
   BASE,
 }) {
+  const [goals, setGoals] = useState([]);
+  const [goalProgress, setGoalProgress] = useState([]);
   const usage = stats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
   const isAllEmpty = !data || (data.totalScreenTime === 0 && !stats.length);
 
   if (!data) return null;
 
+  useEffect(() => {
+    let active = true;
+    const loadGoals = async () => {
+      try {
+        const [goalsRes, progressRes] = await Promise.all([
+          fetch(`${BASE}/api/goals`).then((r) => r.json()),
+          fetch(`${BASE}/api/goals/progress?date=${selectedDate}`).then((r) => r.json()),
+        ]);
+        if (!active) return;
+        setGoals(Array.isArray(goalsRes) ? goalsRes : []);
+        setGoalProgress(Array.isArray(progressRes) ? progressRes : []);
+      } catch {
+        if (!active) return;
+        setGoals([]);
+        setGoalProgress([]);
+      }
+    };
+    loadGoals();
+    return () => { active = false; };
+  }, [BASE, selectedDate]);
+
+  const goalsByType = useMemo(() => {
+    const typed = {
+      daily_screen_time: null,
+      daily_productivity_pct: null,
+    };
+    for (const g of goals) {
+      if (!g?.is_active) continue;
+      if (g.goal_type in typed && !typed[g.goal_type]) {
+        typed[g.goal_type] = g;
+      }
+    }
+    return typed;
+  }, [goals]);
+
+  const progressByGoalId = useMemo(() => {
+    const byId = {};
+    for (const p of goalProgress) {
+      if (p?.id != null) byId[p.id] = p;
+    }
+    return byId;
+  }, [goalProgress]);
+
   const cardProps = { prevWellbeing, showComparison, countKey };
+  const screenTimeGoal = goalsByType.daily_screen_time;
+  const screenTimeGoalProgress = screenTimeGoal ? (progressByGoalId[screenTimeGoal.id] || null) : null;
+  const productivityGoal = goalsByType.daily_productivity_pct;
+  const productivityGoalProgress = productivityGoal ? (progressByGoalId[productivityGoal.id] || null) : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
@@ -248,11 +297,21 @@ export default function OverviewPage({
       >
         {/* Each card gets staggered delay + matching sparkline */}
         <div className="metric-card" style={{ animationDelay: "0ms", display: "flex", flexDirection: "column" }}>
-          <ScreenTimeCard data={data} {...cardProps} sparkValues={sparkSeries?.screenTime} />
+          <ScreenTimeCard
+            data={data}
+            {...cardProps}
+            sparkValues={sparkSeries?.screenTime}
+            goalInfo={{ goal: screenTimeGoal, progress: screenTimeGoalProgress }}
+          />
         </div>
 
         <div className="metric-card" style={{ animationDelay: "55ms", display: "flex", flexDirection: "column" }}>
-          <ProductivityCard data={data} {...cardProps} sparkValues={sparkSeries?.productivity} />
+          <ProductivityCard
+            data={data}
+            {...cardProps}
+            sparkValues={sparkSeries?.productivity}
+            goalInfo={{ goal: productivityGoal, progress: productivityGoalProgress }}
+          />
         </div>
 
         <div className="metric-card" style={{ animationDelay: "110ms", display: "flex", flexDirection: "column" }}>

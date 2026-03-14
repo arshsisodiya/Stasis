@@ -101,6 +101,7 @@ class SettingsManager(BaseSettingsManager):
             "file_logging_enabled": "false",
             "file_logging_essential_only": "false",
             "show_yesterday_comparison": "true",
+            "show_goals_in_overview": "true",
             "hardware_acceleration": "true",
             "idle_detection": "true",
             "browser_tracking": "true",

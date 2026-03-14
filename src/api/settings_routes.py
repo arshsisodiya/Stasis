@@ -12,6 +12,7 @@ def get_settings():
         "file_logging_enabled": SettingsManager.get_bool("file_logging_enabled", False),
         "file_logging_essential_only": SettingsManager.get_bool("file_logging_essential_only", False),
         "show_yesterday_comparison": SettingsManager.get_bool("show_yesterday_comparison", True),
+        "show_goals_in_overview": SettingsManager.get_bool("show_goals_in_overview", True),
         "hardware_acceleration": SettingsManager.get_bool("hardware_acceleration", True),
         "idle_detection": SettingsManager.get_bool("idle_detection", True),
         "browser_tracking": SettingsManager.get_bool("browser_tracking", True),
@@ -47,6 +48,10 @@ def update_settings():
     if "show_yesterday_comparison" in data:
         val = "true" if data["show_yesterday_comparison"] else "false"
         SettingsManager.set("show_yesterday_comparison", val)
+
+    if "show_goals_in_overview" in data:
+        val = "true" if data["show_goals_in_overview"] else "false"
+        SettingsManager.set("show_goals_in_overview", val)
 
     if "hardware_acceleration" in data:
         val = "true" if data["hardware_acceleration"] else "false"

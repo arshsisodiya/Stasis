@@ -7,6 +7,7 @@ import { Sparkline } from "../WellbeingDashboard";
 // ─── SCREEN TIME CARD ─────────────────────────────────────────────────────────
 function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#60a5fa", goalInfo, onSetGoal, onEditGoal }) {
   const [isHovered, setIsHovered] = useState(false);
+  const goalUiEnabled = goalInfo?.enabled !== false;
   const hasGoal = Boolean(goalInfo?.goal);
   const goal = goalInfo?.goal || null;
   const goalProgress = goalInfo?.progress || null;
@@ -43,7 +44,7 @@ function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sp
         }}>
           Screen Time
         </div>
-        {!hasGoal && (
+        {goalUiEnabled && !hasGoal && (
           <button
             onClick={onSetGoal}
             style={{
@@ -137,13 +138,16 @@ function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sp
       })()}
 
       <GoalStatusBlock
-        hasGoal={hasGoal && goalTargetSeconds > 0}
+        hasGoal={goalUiEnabled && hasGoal && goalTargetSeconds > 0}
         goalMet={goalMet}
         goalLabel={`Goal ≤ ${fmtTime(goalTargetSeconds)}`}
         goalDelta={goalMet ? `${fmtTime(Math.abs(goalDeltaSeconds))} under` : `${fmtTime(Math.abs(goalDeltaSeconds))} over`}
         onEditGoal={onEditGoal || onSetGoal}
         streak7={streak7}
         currentStreak={currentStreak}
+        emptyTitle={goalUiEnabled ? "Start a screen time goal" : ""}
+        emptyHint={goalUiEnabled ? "Track over/under and streaks" : ""}
+        onCreateGoal={goalUiEnabled ? onSetGoal : undefined}
       />
 
       {sparkValues?.length >= 2 && (

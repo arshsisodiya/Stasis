@@ -384,11 +384,25 @@ export default function OverviewPage({
   const [goals, setGoals] = useState([]);
   const [goalProgress, setGoalProgress] = useState([]);
   const [goalHistory, setGoalHistory] = useState({});
+  const [showGoalsInOverview, setShowGoalsInOverview] = useState(true);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [goalModalSeed, setGoalModalSeed] = useState(null);
   const usage = stats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
 
+  useEffect(() => {
+    fetch(`${BASE}/api/settings`)
+      .then((r) => r.json())
+      .then((s) => setShowGoalsInOverview(s?.show_goals_in_overview !== false))
+      .catch(() => setShowGoalsInOverview(true));
+  }, [BASE]);
+
   const loadGoals = useCallback(async () => {
+    if (!showGoalsInOverview) {
+      setGoals([]);
+      setGoalProgress([]);
+      setGoalHistory({});
+      return;
+    }
     try {
       const [goalsRes, progressRes, historyRes] = await Promise.all([
         fetch(`${BASE}/api/goals`).then((r) => r.json()),
@@ -403,7 +417,7 @@ export default function OverviewPage({
       setGoalProgress([]);
       setGoalHistory({});
     }
-  }, [BASE, selectedDate]);
+  }, [BASE, selectedDate, showGoalsInOverview]);
 
   useEffect(() => {
     loadGoals();
@@ -517,6 +531,7 @@ export default function OverviewPage({
             {...cardProps}
             sparkValues={sparkSeries?.screenTime}
             goalInfo={{
+              enabled: showGoalsInOverview,
               goal: screenTimeGoal,
               progress: screenTimeGoalProgress,
               streak7: screenTimeGoalStreak?.streak7 || [],
@@ -533,6 +548,7 @@ export default function OverviewPage({
             {...cardProps}
             sparkValues={sparkSeries?.productivity}
             goalInfo={{
+              enabled: showGoalsInOverview,
               goal: productivityGoal,
               progress: productivityGoalProgress,
               streak7: productivityGoalStreak?.streak7 || [],
@@ -549,6 +565,7 @@ export default function OverviewPage({
             {...cardProps}
             sparkValues={sparkSeries?.focus}
             goalInfo={{
+              enabled: showGoalsInOverview,
               goal: focusGoal,
               progress: focusGoalProgress,
               streak7: focusGoalStreak?.streak7 || [],

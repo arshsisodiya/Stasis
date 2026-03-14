@@ -7,6 +7,7 @@ import { Sparkline } from "../WellbeingDashboard";
 // ─── PRODUCTIVITY CARD ────────────────────────────────────────────────────────
 function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#4ade80", goalInfo, onSetGoal, onEditGoal }) {
   const [isHovered, setIsHovered] = useState(false);
+  const goalUiEnabled = goalInfo?.enabled !== false;
   const hasGoal = Boolean(goalInfo?.goal);
   const goal = goalInfo?.goal || null;
   const goalProgress = goalInfo?.progress || null;
@@ -50,7 +51,7 @@ function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, 
         }}>
           Productivity
         </div>
-        {!hasGoal && (
+        {goalUiEnabled && !hasGoal && (
           <button
             onClick={onSetGoal}
             style={{
@@ -92,13 +93,16 @@ function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, 
         )}
 
         <GoalStatusBlock
-          hasGoal={hasGoal && goalTargetPct > 0}
+          hasGoal={goalUiEnabled && hasGoal && goalTargetPct > 0}
           goalMet={goalMet}
           goalLabel={`Goal ≥ ${Math.round(goalTargetPct)}%`}
           goalDelta={goalMet ? `+${Math.abs(goalDeltaPts)} pt` : `-${Math.abs(goalDeltaPts)} pt`}
           onEditGoal={onEditGoal || onSetGoal}
           streak7={streak7}
           currentStreak={currentStreak}
+          emptyTitle={goalUiEnabled ? "Start a productivity goal" : ""}
+          emptyHint={goalUiEnabled ? "Track target and streaks" : ""}
+          onCreateGoal={goalUiEnabled ? onSetGoal : undefined}
         />
       </div>  {/* end center block */}
 

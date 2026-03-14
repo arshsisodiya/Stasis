@@ -17,6 +17,7 @@ function FocusCardInner({
   onEditGoal,
 }) {
   const [isHovered, setIsHovered] = useState(false);
+  const goalUiEnabled = goalInfo?.enabled !== false;
   const hasGoal = Boolean(goalInfo?.goal);
   const goal = goalInfo?.goal || null;
   const goalProgress = goalInfo?.progress || null;
@@ -60,7 +61,7 @@ function FocusCardInner({
         }}>
           Focus
         </div>
-        {!hasGoal && (
+        {goalUiEnabled && !hasGoal && (
           <button
             onClick={onSetGoal}
             style={{
@@ -110,13 +111,16 @@ function FocusCardInner({
         )}
 
         <GoalStatusBlock
-          hasGoal={hasGoal && goalTargetScore > 0}
+          hasGoal={goalUiEnabled && hasGoal && goalTargetScore > 0}
           goalMet={goalMet}
           goalLabel={`Goal ≥ ${Math.round(goalTargetScore)}`}
           goalDelta={goalMet ? `+${Math.abs(goalDeltaPts)} pt` : `-${Math.abs(goalDeltaPts)} pt`}
           onEditGoal={onEditGoal || onSetGoal}
           streak7={streak7}
           currentStreak={currentStreak}
+          emptyTitle={goalUiEnabled ? "Start a focus goal" : ""}
+          emptyHint={goalUiEnabled ? "Track score and streaks" : ""}
+          onCreateGoal={goalUiEnabled ? onSetGoal : undefined}
         />
       </div>  {/* end center block */}
 

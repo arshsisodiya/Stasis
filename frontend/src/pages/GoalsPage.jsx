@@ -386,6 +386,7 @@ export default function GoalsPage({ selectedDate }) {
   const [editTarget, setEditTarget] = useState(null);
   const [toast, setToast] = useState(null);
   const [goalHistory, setGoalHistory] = useState({});
+  const [showGoalsInOverview, setShowGoalsInOverview] = useState(true);
   const toastTimer = useRef(null);
 
   const showT = (msg, type = "success") => {
@@ -396,17 +397,34 @@ export default function GoalsPage({ selectedDate }) {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [g, p, h] = await Promise.all([
+      const [g, p, h, s] = await Promise.all([
         fetch(`${BASE}/api/goals`).then(r => r.json()),
         fetch(`${BASE}/api/goals/progress?date=${selectedDate}`).then(r => r.json()),
         fetch(`${BASE}/api/goals/history?days=120`).then(r => r.json()),
+        fetch(`${BASE}/api/settings`).then(r => r.json()),
       ]);
       setGoals(Array.isArray(g) ? g : []);
       setProgress(Array.isArray(p) ? p : []);
       setGoalHistory(h && typeof h === "object" ? h : {});
+      setShowGoalsInOverview(s?.show_goals_in_overview !== false);
     } catch { }
     setLoading(false);
   }, [selectedDate]);
+
+  const updateShowGoalsInOverview = async (value) => {
+    setShowGoalsInOverview(value);
+    try {
+      await fetch(`${BASE}/api/settings/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ show_goals_in_overview: value }),
+      });
+      showT(value ? "Goals will show on Overview" : "Goals hidden on Overview", "success");
+    } catch {
+      setShowGoalsInOverview(prev => !value);
+      showT("Could not update overview goal setting", "warn");
+    }
+  };
 
   useEffect(() => {
     fetchAll();
@@ -466,15 +484,33 @@ export default function GoalsPage({ selectedDate }) {
           <div style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", textTransform: "uppercase", letterSpacing: "0.12em" }}>Goals & Targets</div>
           <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>Define what success looks like for your day</div>
         </div>
-        <button onClick={() => { setEditTarget(null); setShowModal(true); }} style={{
-          display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 12,
-          border: "1px solid rgba(74,222,128,0.3)", cursor: "pointer",
-          background: "rgba(74,222,128,0.08)", color: "#4ade80",
-          fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif",
-          transition: "all 0.22s cubic-bezier(0.34,1.56,0.64,1)"
-        }}>
-          <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 300 }}>+</span> New Goal
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <label style={{
+            display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "8px 12px", borderRadius: 12,
+            border: "1px solid rgba(255,255,255,0.09)",
+            background: "rgba(255,255,255,0.03)",
+            cursor: "pointer",
+          }}>
+            <input
+              type="checkbox"
+              checked={showGoalsInOverview}
+              onChange={(e) => updateShowGoalsInOverview(e.target.checked)}
+              style={{ accentColor: "#4ade80" }}
+            />
+            <span style={{ fontSize: 12, color: "#cbd5e1", fontWeight: 600 }}>Show goals in Overview</span>
+          </label>
+
+          <button onClick={() => { setEditTarget(null); setShowModal(true); }} style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 12,
+            border: "1px solid rgba(74,222,128,0.3)", cursor: "pointer",
+            background: "rgba(74,222,128,0.08)", color: "#4ade80",
+            fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif",
+            transition: "all 0.22s cubic-bezier(0.34,1.56,0.64,1)"
+          }}>
+            <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 300 }}>+</span> New Goal
+          </button>
+        </div>
       </div>
 
       {/* Stats */}

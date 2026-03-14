@@ -46,8 +46,6 @@ function FocusCardInner({
       style={{
         display: "flex", flexDirection: "column",
         flex: 1,
-        height: "100%",
-        minHeight: 470,
         padding: "16px 24px 12px",
         border: "1px solid rgba(255,255,255,0.04)",
         borderLeft: `5px solid ${focusColor}`,
@@ -55,38 +53,38 @@ function FocusCardInner({
         animationDelay: "120ms", transition: "border-color 0.6s ease, background 0.6s ease",
       }}
     >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, minHeight: 28 }}>
+        <div style={{
+          fontSize: 11, color: focusColor, textTransform: "uppercase",
+          letterSpacing: "0.15em", fontWeight: 600, transition: "color 0.6s ease",
+        }}>
+          Focus
+        </div>
+        {!hasGoal && (
+          <button
+            onClick={onSetGoal}
+            style={{
+              border: "1px solid rgba(96,165,250,0.28)",
+              background: isHovered ? "rgba(96,165,250,0.16)" : "rgba(96,165,250,0.08)",
+              color: "#93c5fd",
+              borderRadius: 999,
+              padding: "4px 10px",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              opacity: isHovered ? 1 : 0,
+              pointerEvents: isHovered ? "auto" : "none",
+              transform: isHovered ? "translateY(0)" : "translateY(2px)",
+              transition: "opacity 0.2s ease, transform 0.2s ease, background 0.2s ease",
+            }}
+          >
+            Set Goal
+          </button>
+        )}
+      </div>
+
       {/* ── Center-aligned content block ── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", minHeight: 28 }}>
-          <div style={{
-            fontSize: 11, color: focusColor, textTransform: "uppercase",
-            letterSpacing: "0.15em", fontWeight: 600, transition: "color 0.6s ease",
-          }}>
-            Focus
-          </div>
-          {!hasGoal && (
-            <button
-              onClick={onSetGoal}
-              style={{
-                border: "1px solid rgba(96,165,250,0.28)",
-                background: isHovered ? "rgba(96,165,250,0.16)" : "rgba(96,165,250,0.08)",
-                color: "#93c5fd",
-                borderRadius: 999,
-                padding: "4px 10px",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                opacity: isHovered ? 1 : 0,
-                pointerEvents: isHovered ? "auto" : "none",
-                transform: isHovered ? "translateY(0)" : "translateY(2px)",
-                transition: "opacity 0.2s ease, transform 0.2s ease, background 0.2s ease",
-              }}
-            >
-              Set Goal
-            </button>
-          )}
-        </div>
-
         <RadialProgress value={fC} size={150} stroke={12} color="#60a5fa" sublabel="%" />
 
         {data.deepWorkSeconds ? (
@@ -95,19 +93,20 @@ function FocusCardInner({
               <span>deep work</span><br />
               <span style={{ color: "#475569", fontWeight: 600 }}>{fmtTimeLong(data.deepWorkSeconds)}</span>
             </div>
-            {showComparison && prevWellbeing?.productivityPercent !== undefined && (
-              <TrendChip
-                current={data.focusScore ?? 0}
-                previous={prevWellbeing.focusScore}
-                mode="pct"
-                isPositiveGood={true}
-              />
-            )}
           </div>
         ) : (
           <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>
             of time in deep focus
           </div>
+        )}
+
+        {showComparison && prevWellbeing?.focusScore !== undefined && (
+          <TrendChip
+            current={data.focusScore ?? 0}
+            previous={prevWellbeing.focusScore}
+            mode="pct"
+            isPositiveGood={true}
+          />
         )}
 
         <GoalStatusBlock

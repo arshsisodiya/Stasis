@@ -29,8 +29,6 @@ function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sp
       style={{
         display: "flex", flexDirection: "column",
         flex: 1,
-        height: "100%",
-        minHeight: 470,
         padding: "16px 24px 12px",
         border: "1px solid rgba(255,255,255,0.04)",
         borderLeft: "3px solid #4ade80",

@@ -661,7 +661,6 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               selectedDate={selectedDate}
               onGoToLimits={() => { setActiveTab("insights"); setActiveInsightTab("limits"); }}
               onGoToday={() => setSelectedDate(localYMD())}
-              onGoToGoals={() => { setActiveTab("insights"); setActiveInsightTab("goals"); }}
               sparkSeries={sparkSeries}
               BASE={BASE}
             />

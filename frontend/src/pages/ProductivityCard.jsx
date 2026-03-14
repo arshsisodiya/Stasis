@@ -5,7 +5,7 @@ import { SectionCard, RadialProgress, TrendChip } from "../shared/components";
 import { Sparkline } from "../WellbeingDashboard";
 
 // ─── PRODUCTIVITY CARD ────────────────────────────────────────────────────────
-function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#4ade80", goalInfo, onSetGoal }) {
+function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#4ade80", goalInfo, onSetGoal, onEditGoal }) {
   const [isHovered, setIsHovered] = useState(false);
   const hasGoal = Boolean(goalInfo?.goal);
   const goal = goalInfo?.goal || null;
@@ -89,7 +89,7 @@ function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, 
 
         {hasGoal && goalTargetPct > 0 && (
           <button
-            onClick={onSetGoal}
+            onClick={onEditGoal || onSetGoal}
             style={{
               marginTop: 2,
               border: `1px solid ${goalMet ? "rgba(74,222,128,0.25)" : "rgba(248,113,113,0.25)"}`,

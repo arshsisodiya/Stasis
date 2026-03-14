@@ -5,7 +5,7 @@ import { SectionCard, TrendChip } from "../shared/components";
 import { Sparkline } from "../WellbeingDashboard";
 
 // ─── SCREEN TIME CARD ─────────────────────────────────────────────────────────
-function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#60a5fa", goalInfo, onSetGoal }) {
+function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#60a5fa", goalInfo, onSetGoal, onEditGoal }) {
   const [isHovered, setIsHovered] = useState(false);
   const hasGoal = Boolean(goalInfo?.goal);
   const goal = goalInfo?.goal || null;
@@ -83,7 +83,7 @@ function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sp
 
       {hasGoal && goalTargetSeconds > 0 && (
         <button
-          onClick={onSetGoal}
+          onClick={onEditGoal || onSetGoal}
           style={{
             marginTop: (showComparison && prevWellbeing) ? 8 : 12,
             border: `1px solid ${goalMet ? "rgba(74,222,128,0.25)" : "rgba(248,113,113,0.25)"}`,

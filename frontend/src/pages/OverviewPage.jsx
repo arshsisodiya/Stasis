@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmtTime } from "../shared/utils";
 import { localYMD } from "../shared/utils";
 import { SectionCard } from "../shared/components";
-
 import ScreenTimeCard from "./ScreenTimeCard";
 import ProductivityCard from "./ProductivityCard";
 import FocusCard from "./FocusCard";
@@ -206,6 +205,98 @@ function BestTimeInsight({ hourly, peakHour }) {
   );
 }
 
+const GOAL_TYPE_META = {
+  daily_screen_time: { label: "Screen Time Goal", unit: "seconds", direction: "under" },
+  daily_productivity_pct: { label: "Productivity Goal", unit: "percent", direction: "over" },
+};
+
+function QuickGoalModal({ open, initial, onClose, onSave }) {
+  const [label, setLabel] = useState("");
+  const [hours, setHours] = useState(0);
+  const [minutes, setMinutes] = useState(0);
+  const [percent, setPercent] = useState(60);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open || !initial) return;
+    setLabel(initial.label || "");
+    if (initial.goal_type === "daily_screen_time") {
+      const secs = Math.round(initial.target_value || 0);
+      setHours(Math.floor(secs / 3600));
+      setMinutes(Math.floor((secs % 3600) / 60));
+    }
+    if (initial.goal_type === "daily_productivity_pct") {
+      setPercent(Math.round(initial.target_value || 60));
+    }
+  }, [open, initial]);
+
+  if (!open || !initial) return null;
+
+  const isTime = initial.goal_type === "daily_screen_time";
+  const targetValue = isTime ? ((Number(hours) || 0) * 3600 + (Number(minutes) || 0) * 60) : Number(percent) || 0;
+  const canSave = targetValue > 0;
+
+  const handleSave = async () => {
+    if (!canSave || saving) return;
+    setSaving(true);
+    await onSave({
+      ...initial,
+      label: label.trim() || undefined,
+      target_value: targetValue,
+      target_unit: isTime ? "seconds" : "percent",
+      direction: isTime ? "under" : "over",
+    });
+    setSaving(false);
+  };
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 220, background: "rgba(0,0,0,0.62)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ width: 420, maxWidth: "92vw", borderRadius: 18, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(7,10,20,0.98)", padding: 22 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 18, color: "#f8fafc", fontWeight: 700 }}>{initial.id ? "Edit Goal" : "Set Goal"}</div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>{GOAL_TYPE_META[initial.goal_type]?.label || "Goal"}</div>
+          </div>
+          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "#94a3b8", cursor: "pointer" }}>✕</button>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>Label (optional)</div>
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={GOAL_TYPE_META[initial.goal_type]?.label || "Goal"} style={{ width: "100%", borderRadius: 10, border: "1px solid rgba(255,255,255,0.09)", background: "rgba(255,255,255,0.03)", color: "#e2e8f0", padding: "10px 12px", fontSize: 13, outline: "none" }} />
+        </div>
+
+        {isTime ? (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>Target (stay under)</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input type="number" min="0" max="23" value={hours} onChange={(e) => setHours(Math.max(0, Math.min(23, Number(e.target.value) || 0)))} style={{ borderRadius: 10, border: "1px solid rgba(255,255,255,0.09)", background: "rgba(255,255,255,0.03)", color: "#e2e8f0", padding: "10px 12px", fontSize: 14, outline: "none" }} />
+              <input type="number" min="0" max="59" value={minutes} onChange={(e) => setMinutes(Math.max(0, Math.min(59, Number(e.target.value) || 0)))} style={{ borderRadius: 10, border: "1px solid rgba(255,255,255,0.09)", background: "rgba(255,255,255,0.03)", color: "#e2e8f0", padding: "10px 12px", fontSize: 14, outline: "none" }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 11, color: "#64748b" }}>
+              <span>Hours</span>
+              <span>Minutes</span>
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>Target (reach at least)</div>
+            <input type="number" min="1" max="100" value={percent} onChange={(e) => setPercent(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} style={{ width: "100%", borderRadius: 10, border: "1px solid rgba(255,255,255,0.09)", background: "rgba(255,255,255,0.03)", color: "#e2e8f0", padding: "10px 12px", fontSize: 14, outline: "none" }} />
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#94a3b8", padding: "10px 12px", cursor: "pointer", fontWeight: 600 }}>Cancel</button>
+          <button onClick={handleSave} disabled={!canSave || saving} style={{ flex: 1, borderRadius: 10, border: "1px solid rgba(74,222,128,0.35)", background: canSave ? "rgba(74,222,128,0.16)" : "rgba(255,255,255,0.04)", color: canSave ? "#4ade80" : "#64748b", padding: "10px 12px", cursor: canSave ? "pointer" : "not-allowed", fontWeight: 700 }}>
+            {saving ? "Saving..." : initial.id ? "Update Goal" : "Create Goal"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── OVERVIEW PAGE ────────────────────────────────────────────────────────────
 export default function OverviewPage({
@@ -221,37 +312,35 @@ export default function OverviewPage({
   selectedDate,
   onGoToLimits,
   onGoToday,
-  onGoToGoals,
   sparkSeries,
   BASE,
 }) {
   const [goals, setGoals] = useState([]);
   const [goalProgress, setGoalProgress] = useState([]);
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
+  const [goalModalSeed, setGoalModalSeed] = useState(null);
   const usage = stats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
   const isAllEmpty = !data || (data.totalScreenTime === 0 && !stats.length);
 
   if (!data) return null;
 
-  useEffect(() => {
-    let active = true;
-    const loadGoals = async () => {
-      try {
-        const [goalsRes, progressRes] = await Promise.all([
-          fetch(`${BASE}/api/goals`).then((r) => r.json()),
-          fetch(`${BASE}/api/goals/progress?date=${selectedDate}`).then((r) => r.json()),
-        ]);
-        if (!active) return;
-        setGoals(Array.isArray(goalsRes) ? goalsRes : []);
-        setGoalProgress(Array.isArray(progressRes) ? progressRes : []);
-      } catch {
-        if (!active) return;
-        setGoals([]);
-        setGoalProgress([]);
-      }
-    };
-    loadGoals();
-    return () => { active = false; };
+  const loadGoals = useCallback(async () => {
+    try {
+      const [goalsRes, progressRes] = await Promise.all([
+        fetch(`${BASE}/api/goals`).then((r) => r.json()),
+        fetch(`${BASE}/api/goals/progress?date=${selectedDate}`).then((r) => r.json()),
+      ]);
+      setGoals(Array.isArray(goalsRes) ? goalsRes : []);
+      setGoalProgress(Array.isArray(progressRes) ? progressRes : []);
+    } catch {
+      setGoals([]);
+      setGoalProgress([]);
+    }
   }, [BASE, selectedDate]);
+
+  useEffect(() => {
+    loadGoals();
+  }, [loadGoals]);
 
   const goalsByType = useMemo(() => {
     const typed = {
@@ -281,6 +370,41 @@ export default function OverviewPage({
   const productivityGoal = goalsByType.daily_productivity_pct;
   const productivityGoalProgress = productivityGoal ? (progressByGoalId[productivityGoal.id] || null) : null;
 
+  const openCreateGoal = (goalType) => {
+    setGoalModalSeed({ goal_type: goalType, target_value: goalType === "daily_screen_time" ? 7200 : 60 });
+    setGoalModalOpen(true);
+  };
+
+  const openEditGoal = (goal) => {
+    if (!goal) return;
+    setGoalModalSeed(goal);
+    setGoalModalOpen(true);
+  };
+
+  const handleSaveGoal = async (payload) => {
+    const endpoint = payload.id ? `${BASE}/api/goals/${payload.id}` : `${BASE}/api/goals`;
+    const method = payload.id ? "PUT" : "POST";
+    const body = payload.id
+      ? { target_value: payload.target_value, label: payload.label }
+      : {
+        goal_type: payload.goal_type,
+        target_value: payload.target_value,
+        target_unit: payload.target_unit,
+        direction: payload.direction,
+        label: payload.label,
+      };
+
+    await fetch(endpoint, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    await loadGoals();
+    setGoalModalOpen(false);
+    setGoalModalSeed(null);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
 
@@ -303,7 +427,8 @@ export default function OverviewPage({
             {...cardProps}
             sparkValues={sparkSeries?.screenTime}
             goalInfo={{ goal: screenTimeGoal, progress: screenTimeGoalProgress }}
-            onSetGoal={onGoToGoals}
+            onSetGoal={() => openCreateGoal("daily_screen_time")}
+            onEditGoal={() => openEditGoal(screenTimeGoal)}
           />
         </div>
 
@@ -313,7 +438,8 @@ export default function OverviewPage({
             {...cardProps}
             sparkValues={sparkSeries?.productivity}
             goalInfo={{ goal: productivityGoal, progress: productivityGoalProgress }}
-            onSetGoal={onGoToGoals}
+            onSetGoal={() => openCreateGoal("daily_productivity_pct")}
+            onEditGoal={() => openEditGoal(productivityGoal)}
           />
         </div>
 
@@ -366,6 +492,13 @@ export default function OverviewPage({
           : <CategoryBreakdown stats={stats} />
         }
       </div>
+
+      <QuickGoalModal
+        open={goalModalOpen}
+        initial={goalModalSeed}
+        onClose={() => { setGoalModalOpen(false); setGoalModalSeed(null); }}
+        onSave={handleSaveGoal}
+      />
     </div>
   );
 }

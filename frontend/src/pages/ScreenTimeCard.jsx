@@ -1,7 +1,7 @@
 import { memo, useState } from "react";
 import { fmtTime } from "../shared/utils";
 import { useCountUp } from "../shared/hooks";
-import { SectionCard, TrendChip } from "../shared/components";
+import { GoalStatusBlock, SectionCard, TrendChip } from "../shared/components";
 import { Sparkline } from "../WellbeingDashboard";
 
 // ─── SCREEN TIME CARD ─────────────────────────────────────────────────────────
@@ -82,34 +82,16 @@ function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sp
         </div>
       )}
 
-      {hasGoal && goalTargetSeconds > 0 && (
-        <button
-          onClick={onEditGoal || onSetGoal}
-          style={{
-            marginTop: (showComparison && prevWellbeing) ? 8 : 12,
-            border: `1px solid ${goalMet ? "rgba(74,222,128,0.25)" : "rgba(248,113,113,0.25)"}`,
-            background: goalMet ? "rgba(74,222,128,0.08)" : "rgba(248,113,113,0.08)",
-            borderRadius: 10,
-            width: "100%",
-            padding: "8px 10px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            cursor: "pointer",
-            textAlign: "left",
-          }}
-        >
-          <span style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
-            Goal ≤ {fmtTime(goalTargetSeconds)}
-          </span>
-          <span style={{ fontSize: 11, color: goalMet ? "#4ade80" : "#f87171", fontWeight: 700 }}>
-            {goalMet ? `${fmtTime(Math.abs(goalDeltaSeconds))} under` : `${fmtTime(Math.abs(goalDeltaSeconds))} over`}
-          </span>
-        </button>
-      )}
+      <GoalStatusBlock
+        hasGoal={hasGoal && goalTargetSeconds > 0}
+        goalMet={goalMet}
+        goalLabel={`Goal ≤ ${fmtTime(goalTargetSeconds)}`}
+        goalDelta={goalMet ? `${fmtTime(Math.abs(goalDeltaSeconds))} under` : `${fmtTime(Math.abs(goalDeltaSeconds))} over`}
+        onEditGoal={onEditGoal || onSetGoal}
+      />
 
       <div style={{
-        marginTop: (showComparison && prevWellbeing) || (hasGoal && goalTargetSeconds > 0) ? 8 : 16,
+        marginTop: 8,
         display: "flex", gap: 12,
       }}>
         <div style={{ flex: 1, background: "rgba(74,222,128,0.08)", borderRadius: 10, padding: "10px 12px" }}>

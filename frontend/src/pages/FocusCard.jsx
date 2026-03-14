@@ -1,7 +1,7 @@
 import { memo, useState } from "react";
 import { fmtTimeLong, interpolateColor } from "../shared/utils";
 import { useCountUp } from "../shared/hooks";
-import { SectionCard, RadialProgress, TrendChip } from "../shared/components";
+import { GoalStatusBlock, SectionCard, RadialProgress, TrendChip } from "../shared/components";
 import { Sparkline } from "../WellbeingDashboard";
 
 // ─── FOCUS CARD ─────────────────────────────────────────────────────────────
@@ -105,32 +105,13 @@ function FocusCardInner({
           </div>
         )}
 
-        {hasGoal && goalTargetScore > 0 && (
-          <button
-            onClick={onEditGoal || onSetGoal}
-            style={{
-              marginTop: 2,
-              border: `1px solid ${goalMet ? "rgba(74,222,128,0.25)" : "rgba(248,113,113,0.25)"}`,
-              background: goalMet ? "rgba(74,222,128,0.08)" : "rgba(248,113,113,0.08)",
-              borderRadius: 10,
-              width: "100%",
-              maxWidth: 230,
-              padding: "8px 10px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              cursor: "pointer",
-              textAlign: "left",
-            }}
-          >
-            <span style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
-              Goal ≥ {Math.round(goalTargetScore)}
-            </span>
-            <span style={{ fontSize: 11, color: goalMet ? "#4ade80" : "#f87171", fontWeight: 700 }}>
-              {goalMet ? `+${Math.abs(goalDeltaPts)} pt` : `-${Math.abs(goalDeltaPts)} pt`}
-            </span>
-          </button>
-        )}
+        <GoalStatusBlock
+          hasGoal={hasGoal && goalTargetScore > 0}
+          goalMet={goalMet}
+          goalLabel={`Goal ≥ ${Math.round(goalTargetScore)}`}
+          goalDelta={goalMet ? `+${Math.abs(goalDeltaPts)} pt` : `-${Math.abs(goalDeltaPts)} pt`}
+          onEditGoal={onEditGoal || onSetGoal}
+        />
       </div>  {/* end center block */}
 
       {sparkValues?.length >= 2 && (

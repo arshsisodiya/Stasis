@@ -99,9 +99,6 @@ function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, 
           onEditGoal={onEditGoal || onSetGoal}
           streak7={streak7}
           currentStreak={currentStreak}
-          emptyTitle="Set a productivity goal"
-          emptyHint="Track your target and streaks"
-          onCreateGoal={onSetGoal}
         />
       </div>  {/* end center block */}
 

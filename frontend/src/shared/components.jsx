@@ -231,9 +231,6 @@ export function GoalStatusBlock({
   onEditGoal,
   streak7 = [],
   currentStreak = 0,
-  emptyTitle = "",
-  emptyHint = "",
-  onCreateGoal,
 }) {
   const containerStyle = {
     width: "100%",
@@ -244,35 +241,7 @@ export function GoalStatusBlock({
   };
 
   if (!hasGoal) {
-    if (!emptyTitle || !onCreateGoal) return null;
-
-    return (
-      <div style={containerStyle}>
-        <button
-          onClick={onCreateGoal}
-          style={{
-            width: "100%",
-            border: "1px dashed rgba(148,163,184,0.16)",
-            background: "rgba(148,163,184,0.03)",
-            borderRadius: 10,
-            padding: "8px 10px",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-start",
-            gap: 2,
-            cursor: "pointer",
-            textAlign: "left",
-          }}
-        >
-          <span style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 700, letterSpacing: "0.01em" }}>
-            {emptyTitle}
-          </span>
-          <span style={{ fontSize: 10, color: "#64748b" }}>
-            {emptyHint}
-          </span>
-        </button>
-      </div>
-    );
+    return null;
   }
 
   return (

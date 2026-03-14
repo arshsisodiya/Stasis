@@ -144,9 +144,6 @@ function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sp
         onEditGoal={onEditGoal || onSetGoal}
         streak7={streak7}
         currentStreak={currentStreak}
-        emptyTitle="Set a daily screen goal"
-        emptyHint="Track over/under time and streaks"
-        onCreateGoal={onSetGoal}
       />
 
       {sparkValues?.length >= 2 && (

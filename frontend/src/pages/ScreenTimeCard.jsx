@@ -10,6 +10,8 @@ function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sp
   const hasGoal = Boolean(goalInfo?.goal);
   const goal = goalInfo?.goal || null;
   const goalProgress = goalInfo?.progress || null;
+  const streak7 = goalInfo?.streak7 || [];
+  const currentStreak = goalInfo?.currentStreak || 0;
   const goalTargetSeconds = goalProgress?.target_value ?? goal?.target_value ?? 0;
   const goalActualSeconds = goalProgress?.actual_value ?? data?.totalScreenTime ?? 0;
   const goalDeltaSeconds = Math.round(goalActualSeconds - goalTargetSeconds);
@@ -88,6 +90,8 @@ function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sp
         goalLabel={`Goal ≤ ${fmtTime(goalTargetSeconds)}`}
         goalDelta={goalMet ? `${fmtTime(Math.abs(goalDeltaSeconds))} under` : `${fmtTime(Math.abs(goalDeltaSeconds))} over`}
         onEditGoal={onEditGoal || onSetGoal}
+        streak7={streak7}
+        currentStreak={currentStreak}
       />
 
       <div style={{

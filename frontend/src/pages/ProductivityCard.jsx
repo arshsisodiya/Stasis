@@ -10,6 +10,8 @@ function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, 
   const hasGoal = Boolean(goalInfo?.goal);
   const goal = goalInfo?.goal || null;
   const goalProgress = goalInfo?.progress || null;
+  const streak7 = goalInfo?.streak7 || [];
+  const currentStreak = goalInfo?.currentStreak || 0;
   const goalTargetPct = goalProgress?.target_value ?? goal?.target_value ?? 0;
   const goalActualPct = goalProgress?.actual_value ?? data?.productivityPercent ?? 0;
   const goalDeltaPts = Math.round(goalActualPct - goalTargetPct);
@@ -94,6 +96,8 @@ function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, 
           goalLabel={`Goal ≥ ${Math.round(goalTargetPct)}%`}
           goalDelta={goalMet ? `+${Math.abs(goalDeltaPts)} pt` : `-${Math.abs(goalDeltaPts)} pt`}
           onEditGoal={onEditGoal || onSetGoal}
+          streak7={streak7}
+          currentStreak={currentStreak}
         />
       </div>  {/* end center block */}
 

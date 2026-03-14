@@ -20,6 +20,8 @@ function FocusCardInner({
   const hasGoal = Boolean(goalInfo?.goal);
   const goal = goalInfo?.goal || null;
   const goalProgress = goalInfo?.progress || null;
+  const streak7 = goalInfo?.streak7 || [];
+  const currentStreak = goalInfo?.currentStreak || 0;
   const goalTargetScore = goalProgress?.target_value ?? goal?.target_value ?? 0;
   const goalActualScore = goalProgress?.actual_value ?? data?.focusScore ?? 0;
   const goalDeltaPts = Math.round(goalActualScore - goalTargetScore);
@@ -111,6 +113,8 @@ function FocusCardInner({
           goalLabel={`Goal ≥ ${Math.round(goalTargetScore)}`}
           goalDelta={goalMet ? `+${Math.abs(goalDeltaPts)} pt` : `-${Math.abs(goalDeltaPts)} pt`}
           onEditGoal={onEditGoal || onSetGoal}
+          streak7={streak7}
+          currentStreak={currentStreak}
         />
       </div>  {/* end center block */}
 

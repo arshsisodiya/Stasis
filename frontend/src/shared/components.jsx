@@ -227,13 +227,15 @@ export function GoalStatusBlock({
   goalMet = false,
   goalLabel = "",
   goalDelta = "",
-  minHeight = 58,
+  minHeight = 42,
   onEditGoal,
+  streak7 = [],
+  currentStreak = 0,
 }) {
   const containerStyle = {
     width: "100%",
     minHeight,
-    marginTop: 8,
+    marginTop: 6,
     display: "flex",
     alignItems: "stretch",
   };
@@ -246,7 +248,8 @@ export function GoalStatusBlock({
           background: "rgba(148,163,184,0.03)",
           borderRadius: 10,
           width: "100%",
-          padding: "8px 10px",
+          minHeight,
+          padding: "6px 10px",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -261,28 +264,72 @@ export function GoalStatusBlock({
 
   return (
     <div style={containerStyle}>
-      <button
-        onClick={onEditGoal}
-        style={{
-          border: `1px solid ${goalMet ? "rgba(74,222,128,0.25)" : "rgba(248,113,113,0.25)"}`,
-          background: goalMet ? "rgba(74,222,128,0.08)" : "rgba(248,113,113,0.08)",
-          borderRadius: 10,
+      <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 5 }}>
+        <button
+          onClick={onEditGoal}
+          style={{
+            border: `1px solid ${goalMet ? "rgba(74,222,128,0.25)" : "rgba(248,113,113,0.25)"}`,
+            background: goalMet ? "rgba(74,222,128,0.08)" : "rgba(248,113,113,0.08)",
+            borderRadius: 10,
+            width: "100%",
+            minHeight,
+            padding: "6px 10px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <span style={{ fontSize: 9, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+            {goalLabel}
+          </span>
+          <span style={{ fontSize: 10, color: goalMet ? "#4ade80" : "#f87171", fontWeight: 700 }}>
+            {goalDelta}
+          </span>
+        </button>
+
+        <div style={{
           width: "100%",
-          padding: "8px 10px",
+          borderRadius: 9,
+          border: "1px solid rgba(255,255,255,0.06)",
+          background: "rgba(255,255,255,0.02)",
+          padding: "5px 8px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          cursor: "pointer",
-          textAlign: "left",
-        }}
-      >
-        <span style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
-          {goalLabel}
-        </span>
-        <span style={{ fontSize: 11, color: goalMet ? "#4ade80" : "#f87171", fontWeight: 700 }}>
-          {goalDelta}
-        </span>
-      </button>
+          gap: 8,
+        }}>
+          <span style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, whiteSpace: "nowrap" }}>
+            7-Day Streak
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, flex: 1, justifyContent: "center" }}>
+            {(Array.isArray(streak7) ? streak7 : []).slice(0, 7).map((s, idx) => {
+              const dot = s === true ? "#4ade80" : s === false ? "#f87171" : "#334155";
+              return (
+                <div key={idx} style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: dot,
+                  boxShadow: s === true ? "0 0 7px rgba(74,222,128,0.8)" : "none",
+                  opacity: s === null ? 0.65 : 1,
+                  flexShrink: 0,
+                }} />
+              );
+            })}
+          </div>
+          <span style={{
+            fontSize: 10,
+            color: currentStreak > 0 ? "#fbbf24" : "#64748b",
+            fontWeight: 700,
+            fontFamily: "'DM Mono',monospace",
+            whiteSpace: "nowrap",
+          }}>
+            {currentStreak > 0 ? `${currentStreak}d` : "0d"}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

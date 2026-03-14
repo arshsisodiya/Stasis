@@ -29,6 +29,38 @@ function findBestWindow(hourly) {
   return { start: bestStart, end: bestStart + 1, score: best };
 }
 
+function shiftDate(dateStr, days) {
+  const d = new Date(dateStr + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return localYMD(d);
+}
+
+function buildLastNDates(endDate, count) {
+  const list = [];
+  for (let i = count - 1; i >= 0; i--) {
+    list.push(shiftDate(endDate, -i));
+  }
+  return list;
+}
+
+function streakWindowFromLogs(logs = [], endDate) {
+  const dates = buildLastNDates(endDate, 7);
+  const byDate = new Map(logs.map((l) => [l.date, Boolean(l.met)]));
+  return dates.map((d) => {
+    if (!byDate.has(d)) return null;
+    return byDate.get(d);
+  });
+}
+
+function currentStreakFromWindow(window = []) {
+  let streak = 0;
+  for (let i = window.length - 1; i >= 0; i--) {
+    if (window[i] === true) streak += 1;
+    else break;
+  }
+  return streak;
+}
+
 // ─── LIMIT WARNING BANNER ────────────────────────────────────────────────────
 export function LimitWarningBanner({ limits, usage, onGoToLimits, selectedDate }) {
   const today = localYMD();
@@ -351,21 +383,25 @@ export default function OverviewPage({
 }) {
   const [goals, setGoals] = useState([]);
   const [goalProgress, setGoalProgress] = useState([]);
+  const [goalHistory, setGoalHistory] = useState({});
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [goalModalSeed, setGoalModalSeed] = useState(null);
   const usage = stats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
 
   const loadGoals = useCallback(async () => {
     try {
-      const [goalsRes, progressRes] = await Promise.all([
+      const [goalsRes, progressRes, historyRes] = await Promise.all([
         fetch(`${BASE}/api/goals`).then((r) => r.json()),
         fetch(`${BASE}/api/goals/progress?date=${selectedDate}`).then((r) => r.json()),
+        fetch(`${BASE}/api/goals/history?days=120`).then((r) => r.json()),
       ]);
       setGoals(Array.isArray(goalsRes) ? goalsRes : []);
       setGoalProgress(Array.isArray(progressRes) ? progressRes : []);
+      setGoalHistory(historyRes && typeof historyRes === "object" ? historyRes : {});
     } catch {
       setGoals([]);
       setGoalProgress([]);
+      setGoalHistory({});
     }
   }, [BASE, selectedDate]);
 
@@ -396,16 +432,32 @@ export default function OverviewPage({
     return byId;
   }, [goalProgress]);
 
+  const streakByGoalId = useMemo(() => {
+    const byId = {};
+    const endDate = selectedDate || localYMD();
+    for (const [id, logs] of Object.entries(goalHistory || {})) {
+      const window = streakWindowFromLogs(Array.isArray(logs) ? logs : [], endDate);
+      byId[id] = {
+        streak7: window,
+        currentStreak: currentStreakFromWindow(window),
+      };
+    }
+    return byId;
+  }, [goalHistory, selectedDate]);
+
   const cardProps = { prevWellbeing, showComparison, countKey };
 
   if (!data) return null;
 
   const screenTimeGoal = goalsByType.daily_screen_time;
   const screenTimeGoalProgress = screenTimeGoal ? (progressByGoalId[screenTimeGoal.id] || null) : null;
+  const screenTimeGoalStreak = screenTimeGoal ? (streakByGoalId[String(screenTimeGoal.id)] || null) : null;
   const productivityGoal = goalsByType.daily_productivity_pct;
   const productivityGoalProgress = productivityGoal ? (progressByGoalId[productivityGoal.id] || null) : null;
+  const productivityGoalStreak = productivityGoal ? (streakByGoalId[String(productivityGoal.id)] || null) : null;
   const focusGoal = goalsByType.daily_focus_score;
   const focusGoalProgress = focusGoal ? (progressByGoalId[focusGoal.id] || null) : null;
+  const focusGoalStreak = focusGoal ? (streakByGoalId[String(focusGoal.id)] || null) : null;
 
   const openCreateGoal = (goalType) => {
     const defaultTarget = goalType === "daily_screen_time" ? 7200 : 60;
@@ -464,7 +516,12 @@ export default function OverviewPage({
             data={data}
             {...cardProps}
             sparkValues={sparkSeries?.screenTime}
-            goalInfo={{ goal: screenTimeGoal, progress: screenTimeGoalProgress }}
+            goalInfo={{
+              goal: screenTimeGoal,
+              progress: screenTimeGoalProgress,
+              streak7: screenTimeGoalStreak?.streak7 || [],
+              currentStreak: screenTimeGoalStreak?.currentStreak || 0,
+            }}
             onSetGoal={() => openCreateGoal("daily_screen_time")}
             onEditGoal={() => openEditGoal(screenTimeGoal)}
           />
@@ -475,7 +532,12 @@ export default function OverviewPage({
             data={data}
             {...cardProps}
             sparkValues={sparkSeries?.productivity}
-            goalInfo={{ goal: productivityGoal, progress: productivityGoalProgress }}
+            goalInfo={{
+              goal: productivityGoal,
+              progress: productivityGoalProgress,
+              streak7: productivityGoalStreak?.streak7 || [],
+              currentStreak: productivityGoalStreak?.currentStreak || 0,
+            }}
             onSetGoal={() => openCreateGoal("daily_productivity_pct")}
             onEditGoal={() => openEditGoal(productivityGoal)}
           />
@@ -486,7 +548,12 @@ export default function OverviewPage({
             data={data}
             {...cardProps}
             sparkValues={sparkSeries?.focus}
-            goalInfo={{ goal: focusGoal, progress: focusGoalProgress }}
+            goalInfo={{
+              goal: focusGoal,
+              progress: focusGoalProgress,
+              streak7: focusGoalStreak?.streak7 || [],
+              currentStreak: focusGoalStreak?.currentStreak || 0,
+            }}
             onSetGoal={() => openCreateGoal("daily_focus_score")}
             onEditGoal={() => openEditGoal(focusGoal)}
           />

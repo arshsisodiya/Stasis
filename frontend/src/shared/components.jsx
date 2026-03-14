@@ -227,7 +227,7 @@ export function GoalStatusBlock({
   goalMet = false,
   goalLabel = "",
   goalDelta = "",
-  minHeight = 42,
+  minHeight = 36,
   onEditGoal,
   streak7 = [],
   currentStreak = 0,
@@ -235,7 +235,7 @@ export function GoalStatusBlock({
   const containerStyle = {
     width: "100%",
     minHeight,
-    marginTop: 6,
+    marginTop: 5,
     display: "flex",
     alignItems: "stretch",
   };
@@ -249,12 +249,12 @@ export function GoalStatusBlock({
           borderRadius: 10,
           width: "100%",
           minHeight,
-          padding: "6px 10px",
+          padding: "5px 9px",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
         }}>
-          <span style={{ fontSize: 10, color: "#64748b", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>
+          <span style={{ fontSize: 9, color: "#64748b", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>
             Goal Not Set
           </span>
         </div>
@@ -273,7 +273,7 @@ export function GoalStatusBlock({
             borderRadius: 10,
             width: "100%",
             minHeight,
-            padding: "6px 10px",
+            padding: "5px 9px",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -294,13 +294,13 @@ export function GoalStatusBlock({
           borderRadius: 9,
           border: "1px solid rgba(255,255,255,0.06)",
           background: "rgba(255,255,255,0.02)",
-          padding: "5px 8px",
+          padding: "4px 8px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           gap: 8,
         }}>
-          <span style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, whiteSpace: "nowrap" }}>
             7-Day Streak
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, flex: 1, justifyContent: "center" }}>
@@ -308,8 +308,8 @@ export function GoalStatusBlock({
               const dot = s === true ? "#4ade80" : s === false ? "#f87171" : "#334155";
               return (
                 <div key={idx} style={{
-                  width: 7,
-                  height: 7,
+                  width: 6,
+                  height: 6,
                   borderRadius: "50%",
                   background: dot,
                   boxShadow: s === true ? "0 0 7px rgba(74,222,128,0.8)" : "none",
@@ -320,7 +320,7 @@ export function GoalStatusBlock({
             })}
           </div>
           <span style={{
-            fontSize: 10,
+            fontSize: 9,
             color: currentStreak > 0 ? "#fbbf24" : "#64748b",
             fontWeight: 700,
             fontFamily: "'DM Mono',monospace",

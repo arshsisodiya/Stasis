@@ -84,16 +84,6 @@ function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sp
         </div>
       )}
 
-      <GoalStatusBlock
-        hasGoal={hasGoal && goalTargetSeconds > 0}
-        goalMet={goalMet}
-        goalLabel={`Goal ≤ ${fmtTime(goalTargetSeconds)}`}
-        goalDelta={goalMet ? `${fmtTime(Math.abs(goalDeltaSeconds))} under` : `${fmtTime(Math.abs(goalDeltaSeconds))} over`}
-        onEditGoal={onEditGoal || onSetGoal}
-        streak7={streak7}
-        currentStreak={currentStreak}
-      />
-
       <div style={{
         marginTop: 8,
         display: "flex", gap: 12,
@@ -144,6 +134,16 @@ function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sp
           </div>
         );
       })()}
+
+      <GoalStatusBlock
+        hasGoal={hasGoal && goalTargetSeconds > 0}
+        goalMet={goalMet}
+        goalLabel={`Goal ≤ ${fmtTime(goalTargetSeconds)}`}
+        goalDelta={goalMet ? `${fmtTime(Math.abs(goalDeltaSeconds))} under` : `${fmtTime(Math.abs(goalDeltaSeconds))} over`}
+        onEditGoal={onEditGoal || onSetGoal}
+        streak7={streak7}
+        currentStreak={currentStreak}
+      />
 
       {sparkValues?.length >= 2 && (
         <div style={{

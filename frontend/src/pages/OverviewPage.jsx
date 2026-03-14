@@ -230,6 +230,15 @@ function QuickGoalModal({ open, initial, onClose, onSave }) {
     }
   }, [open, initial]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
   if (!open || !initial) return null;
 
   const isTime = initial.goal_type === "daily_screen_time";
@@ -254,7 +263,15 @@ function QuickGoalModal({ open, initial, onClose, onSave }) {
       style={{ position: "fixed", inset: 0, zIndex: 220, background: "rgba(0,0,0,0.62)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{ width: 420, maxWidth: "92vw", borderRadius: 18, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(7,10,20,0.98)", padding: 22 }}>
+      <div
+        style={{ width: 420, maxWidth: "92vw", borderRadius: 18, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(7,10,20,0.98)", padding: 22 }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleSave();
+          }
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <div>
             <div style={{ fontSize: 18, color: "#f8fafc", fontWeight: 700 }}>{initial.id ? "Edit Goal" : "Set Goal"}</div>
@@ -320,9 +337,6 @@ export default function OverviewPage({
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [goalModalSeed, setGoalModalSeed] = useState(null);
   const usage = stats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
-  const isAllEmpty = !data || (data.totalScreenTime === 0 && !stats.length);
-
-  if (!data) return null;
 
   const loadGoals = useCallback(async () => {
     try {
@@ -365,6 +379,9 @@ export default function OverviewPage({
   }, [goalProgress]);
 
   const cardProps = { prevWellbeing, showComparison, countKey };
+
+  if (!data) return null;
+
   const screenTimeGoal = goalsByType.daily_screen_time;
   const screenTimeGoalProgress = screenTimeGoal ? (progressByGoalId[screenTimeGoal.id] || null) : null;
   const productivityGoal = goalsByType.daily_productivity_pct;
@@ -492,13 +509,6 @@ export default function OverviewPage({
           : <CategoryBreakdown stats={stats} />
         }
       </div>
-
-      <QuickGoalModal
-        open={goalModalOpen}
-        initial={goalModalSeed}
-        onClose={() => { setGoalModalOpen(false); setGoalModalSeed(null); }}
-        onSave={handleSaveGoal}
-      />
     </div>
   );
 }

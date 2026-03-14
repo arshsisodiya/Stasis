@@ -21,6 +21,8 @@ function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sp
     <SectionCard
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onFocusCapture={() => setIsHovered(true)}
+      onBlurCapture={() => setIsHovered(false)}
       className="metric-card"
       style={{
         display: "flex", flexDirection: "column",

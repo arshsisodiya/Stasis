@@ -29,6 +29,8 @@ function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, 
       className="metric-card"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onFocusCapture={() => setIsHovered(true)}
+      onBlurCapture={() => setIsHovered(false)}
       style={{
         display: "flex", flexDirection: "column",
         flex: 1,

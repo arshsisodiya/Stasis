@@ -241,25 +241,7 @@ export function GoalStatusBlock({
   };
 
   if (!hasGoal) {
-    return (
-      <div style={containerStyle}>
-        <div style={{
-          border: "1px dashed rgba(148,163,184,0.18)",
-          background: "rgba(148,163,184,0.03)",
-          borderRadius: 10,
-          width: "100%",
-          minHeight,
-          padding: "5px 9px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}>
-          <span style={{ fontSize: 9, color: "#64748b", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>
-            Goal Not Set
-          </span>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (

@@ -76,7 +76,6 @@ function FocusCardInner({
                 transform: isHovered ? "translateY(0)" : "translateY(2px)",
                 transition: "opacity 0.2s ease, transform 0.2s ease, background 0.2s ease",
               }}
-              title="Set Focus Goal"
             >
               Set Goal
             </button>
@@ -123,7 +122,6 @@ function FocusCardInner({
               cursor: "pointer",
               textAlign: "left",
             }}
-            title="Edit Focus Goal"
           >
             <span style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
               Goal ≥ {Math.round(goalTargetScore)}

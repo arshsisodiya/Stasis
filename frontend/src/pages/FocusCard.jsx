@@ -117,6 +117,9 @@ function FocusCardInner({
           onEditGoal={onEditGoal || onSetGoal}
           streak7={streak7}
           currentStreak={currentStreak}
+          emptyTitle="Set a focus goal"
+          emptyHint="Track your progress and streaks"
+          onCreateGoal={onSetGoal}
         />
       </div>  {/* end center block */}
 

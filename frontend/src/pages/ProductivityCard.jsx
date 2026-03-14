@@ -36,6 +36,7 @@ function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, 
       style={{
         display: "flex", flexDirection: "column",
         flex: 1,
+        padding: "16px 24px 12px",
         border: "1px solid rgba(255,255,255,0.04)",
         borderLeft: `5px solid ${prodColor}`,
         background: `linear-gradient(135deg,${prodColor}08 0%,rgba(15,18,34,0.7) 60%)`,
@@ -105,7 +106,7 @@ function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, 
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           marginTop: "auto",
-          padding: "6px 0 10px",
+          padding: "6px 0 0",
           borderTop: "1px solid rgba(255,255,255,0.04)",
         }}>
           <span style={{ fontSize: 9, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.08em" }}>7d trend</span>

@@ -8,6 +8,12 @@ import { Sparkline } from "../WellbeingDashboard";
 function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#4ade80", goalInfo, onSetGoal }) {
   const [isHovered, setIsHovered] = useState(false);
   const hasGoal = Boolean(goalInfo?.goal);
+  const goal = goalInfo?.goal || null;
+  const goalProgress = goalInfo?.progress || null;
+  const goalTargetPct = goalProgress?.target_value ?? goal?.target_value ?? 0;
+  const goalActualPct = goalProgress?.actual_value ?? data?.productivityPercent ?? 0;
+  const goalDeltaPts = Math.round(goalActualPct - goalTargetPct);
+  const goalMet = goalProgress?.met ?? (goalTargetPct > 0 ? goalActualPct >= goalTargetPct : false);
   const pC = useCountUp(data?.productivityPercent || 0, 2000, countKey);
 
   const prodColor = interpolateColor(data.productivityPercent, [
@@ -79,6 +85,34 @@ function ProductivityCardInner({ data, prevWellbeing, showComparison, countKey, 
           <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>
             of active time on<br />productive work
           </div>
+        )}
+
+        {hasGoal && goalTargetPct > 0 && (
+          <button
+            onClick={onSetGoal}
+            style={{
+              marginTop: 2,
+              border: `1px solid ${goalMet ? "rgba(74,222,128,0.25)" : "rgba(248,113,113,0.25)"}`,
+              background: goalMet ? "rgba(74,222,128,0.08)" : "rgba(248,113,113,0.08)",
+              borderRadius: 10,
+              width: "100%",
+              maxWidth: 230,
+              padding: "8px 10px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+            title="Edit Productivity Goal"
+          >
+            <span style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+              Goal ≥ {Math.round(goalTargetPct)}%
+            </span>
+            <span style={{ fontSize: 11, color: goalMet ? "#4ade80" : "#f87171", fontWeight: 700 }}>
+              {goalMet ? `+${Math.abs(goalDeltaPts)} pt` : `-${Math.abs(goalDeltaPts)} pt`}
+            </span>
+          </button>
         )}
       </div>  {/* end center block */}
 

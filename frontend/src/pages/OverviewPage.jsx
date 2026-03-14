@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { fmtTime } from "../shared/utils";
 import { localYMD } from "../shared/utils";
 import { SectionCard } from "../shared/components";
@@ -208,6 +209,7 @@ function BestTimeInsight({ hourly, peakHour }) {
 const GOAL_TYPE_META = {
   daily_screen_time: { label: "Screen Time Goal", unit: "seconds", direction: "under" },
   daily_productivity_pct: { label: "Productivity Goal", unit: "percent", direction: "over" },
+  daily_focus_score: { label: "Focus Score Goal", unit: "score", direction: "over" },
 };
 
 function QuickGoalModal({ open, initial, onClose, onSave }) {
@@ -215,6 +217,7 @@ function QuickGoalModal({ open, initial, onClose, onSave }) {
   const [hours, setHours] = useState(0);
   const [minutes, setMinutes] = useState(0);
   const [percent, setPercent] = useState(60);
+  const [score, setScore] = useState(60);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -227,6 +230,9 @@ function QuickGoalModal({ open, initial, onClose, onSave }) {
     }
     if (initial.goal_type === "daily_productivity_pct") {
       setPercent(Math.round(initial.target_value || 60));
+    }
+    if (initial.goal_type === "daily_focus_score") {
+      setScore(Math.round(initial.target_value || 60));
     }
   }, [open, initial]);
 
@@ -242,7 +248,10 @@ function QuickGoalModal({ open, initial, onClose, onSave }) {
   if (!open || !initial) return null;
 
   const isTime = initial.goal_type === "daily_screen_time";
-  const targetValue = isTime ? ((Number(hours) || 0) * 3600 + (Number(minutes) || 0) * 60) : Number(percent) || 0;
+  const isPercent = initial.goal_type === "daily_productivity_pct";
+  const targetValue = isTime
+    ? ((Number(hours) || 0) * 3600 + (Number(minutes) || 0) * 60)
+    : (isPercent ? (Number(percent) || 0) : (Number(score) || 0));
   const canSave = targetValue > 0;
 
   const handleSave = async () => {
@@ -252,13 +261,15 @@ function QuickGoalModal({ open, initial, onClose, onSave }) {
       ...initial,
       label: label.trim() || undefined,
       target_value: targetValue,
-      target_unit: isTime ? "seconds" : "percent",
+      target_unit: isTime ? "seconds" : (isPercent ? "percent" : "score"),
       direction: isTime ? "under" : "over",
     });
     setSaving(false);
   };
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       style={{ position: "fixed", inset: 0, zIndex: 220, background: "rgba(0,0,0,0.62)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -297,10 +308,15 @@ function QuickGoalModal({ open, initial, onClose, onSave }) {
               <span>Minutes</span>
             </div>
           </div>
-        ) : (
+        ) : isPercent ? (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>Target (reach at least)</div>
             <input type="number" min="1" max="100" value={percent} onChange={(e) => setPercent(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} style={{ width: "100%", borderRadius: 10, border: "1px solid rgba(255,255,255,0.09)", background: "rgba(255,255,255,0.03)", color: "#e2e8f0", padding: "10px 12px", fontSize: 14, outline: "none" }} />
+          </div>
+        ) : (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>Target (reach at least)</div>
+            <input type="number" min="1" max="100" value={score} onChange={(e) => setScore(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} style={{ width: "100%", borderRadius: 10, border: "1px solid rgba(255,255,255,0.09)", background: "rgba(255,255,255,0.03)", color: "#e2e8f0", padding: "10px 12px", fontSize: 14, outline: "none" }} />
           </div>
         )}
 
@@ -311,7 +327,8 @@ function QuickGoalModal({ open, initial, onClose, onSave }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -360,6 +377,7 @@ export default function OverviewPage({
     const typed = {
       daily_screen_time: null,
       daily_productivity_pct: null,
+      daily_focus_score: null,
     };
     for (const g of goals) {
       if (!g?.is_active) continue;
@@ -386,9 +404,12 @@ export default function OverviewPage({
   const screenTimeGoalProgress = screenTimeGoal ? (progressByGoalId[screenTimeGoal.id] || null) : null;
   const productivityGoal = goalsByType.daily_productivity_pct;
   const productivityGoalProgress = productivityGoal ? (progressByGoalId[productivityGoal.id] || null) : null;
+  const focusGoal = goalsByType.daily_focus_score;
+  const focusGoalProgress = focusGoal ? (progressByGoalId[focusGoal.id] || null) : null;
 
   const openCreateGoal = (goalType) => {
-    setGoalModalSeed({ goal_type: goalType, target_value: goalType === "daily_screen_time" ? 7200 : 60 });
+    const defaultTarget = goalType === "daily_screen_time" ? 7200 : 60;
+    setGoalModalSeed({ goal_type: goalType, target_value: defaultTarget });
     setGoalModalOpen(true);
   };
 
@@ -461,7 +482,14 @@ export default function OverviewPage({
         </div>
 
         <div className="metric-card" style={{ animationDelay: "110ms", display: "flex", flexDirection: "column" }}>
-          <FocusCard data={data} {...cardProps} sparkValues={sparkSeries?.focus} />
+          <FocusCard
+            data={data}
+            {...cardProps}
+            sparkValues={sparkSeries?.focus}
+            goalInfo={{ goal: focusGoal, progress: focusGoalProgress }}
+            onSetGoal={() => openCreateGoal("daily_focus_score")}
+            onEditGoal={() => openEditGoal(focusGoal)}
+          />
         </div>
 
         <div className="metric-card" style={{ animationDelay: "165ms", display: "flex", flexDirection: "column" }}>

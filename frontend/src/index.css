@@ -67,6 +67,24 @@ body {
     background: rgba(255, 255, 255, 0.1) !important;
 }
 
+.hover-raise-warn {
+    transition: background var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+}
+
+.hover-raise-warn:hover {
+    background: rgba(248, 113, 113, 0.14) !important;
+    transform: translateY(-1px);
+}
+
+.hover-raise-amber {
+    transition: background var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+}
+
+.hover-raise-amber:hover {
+    background: rgba(251, 191, 36, 0.18) !important;
+    transform: translateY(-1px);
+}
+
 ::-webkit-scrollbar {
     width: 8px;
 }

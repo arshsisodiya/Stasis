@@ -179,9 +179,10 @@ const BrowserRow = memo(function BrowserRow({ browsers, maxActive, index, BASE, 
 });
 
 // ─── APPS PAGE ────────────────────────────────────────────────────────────────
-export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignoredApps }) {
+export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignoredApps, isActive = true }) {
   const [appFilter, setAppFilter] = useState("all");
   const [prevFilter, setPrevFilter] = useState("all");
+  const [visibleCount, setVisibleCount] = useState(120);
 
   const handleFilterChange = (cat) => {
     setPrevFilter(appFilter);
@@ -190,6 +191,21 @@ export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignored
 
   const prevMap = prevStats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
   const sorted = [...stats].sort((a, b) => b.active - a.active);
+
+  useEffect(() => {
+    setVisibleCount(120);
+  }, [selectedDate, appFilter, stats.length]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const onScroll = () => {
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 520) {
+        setVisibleCount((c) => c + 80);
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [isActive]);
 
   return (
     <SectionCard>
@@ -267,13 +283,39 @@ export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignored
         filteredGrouped.sort((a, b) => b.active - a.active);
         const maxAllA = filteredGrouped.length > 0 ? filteredGrouped[0].active || 1 : 1;
 
-        return filteredGrouped.map((item, i) => {
-          const isBrowser = BROWSER_EXES.has(item.app.toLowerCase());
-          if (isBrowser) {
-            return <BrowserRow key={item.app} browsers={item.browsers} maxActive={maxAllA} index={i} BASE={BASE} selectedDate={selectedDate} prevActive={prevMap[item.app]} />;
-          }
-          return <AppRow key={item.app} {...item} maxActive={maxAllA} index={i} prevActive={prevMap[item.app]} />;
-        });
+        const windowed = filteredGrouped.slice(0, visibleCount);
+
+        return (
+          <>
+            {windowed.map((item, i) => {
+              const isBrowser = BROWSER_EXES.has(item.app.toLowerCase());
+              if (isBrowser) {
+                return <BrowserRow key={item.app} browsers={item.browsers} maxActive={maxAllA} index={i} BASE={BASE} selectedDate={selectedDate} prevActive={prevMap[item.app]} />;
+              }
+              return <AppRow key={item.app} {...item} maxActive={maxAllA} index={i} prevActive={prevMap[item.app]} />;
+            })}
+
+            {visibleCount < filteredGrouped.length && (
+              <div style={{ marginTop: 14, textAlign: "center" }}>
+                <button
+                  onClick={() => setVisibleCount((c) => c + 120)}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(255,255,255,0.04)",
+                    color: "#94a3b8",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontFamily: "'DM Sans',sans-serif",
+                  }}
+                >
+                  Show more ({filteredGrouped.length - visibleCount} remaining)
+                </button>
+              </div>
+            )}
+          </>
+        );
       })()}
     </SectionCard>
   );

@@ -62,12 +62,16 @@ function NoiseOverlay() {
 const MemoNoiseOverlay = memo(NoiseOverlay);
 
 // ─── ANIMATED TAB PANEL ───────────────────────────────────────────────────────
-function AnimatedTabPanel({ active, children }) {
+function AnimatedTabPanel({ active, preload = false, children }) {
   const [everActive, setEverActive] = useState(active);
 
   useEffect(() => {
     if (active) setEverActive(true);
   }, [active]);
+
+  useEffect(() => {
+    if (preload) setEverActive(true);
+  }, [preload]);
 
   if (!everActive) return null;
 
@@ -263,6 +267,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
   const [activeTab, setActiveTab] = useState("overview");
   const [activeInsightTab, setActiveInsightTab] = useState("goals");
+  const [prewarmTabs, setPrewarmTabs] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [selectedDate, setSelectedDate] = useState(localYMD());
   const [availableDates, setAvailableDates] = useState([]);
@@ -274,6 +279,32 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
   const scrollRef = useRef(null);
   const { elapsed, isToday } = useLiveClock(selectedDate);
+
+  useEffect(() => {
+    if (loading || prewarmTabs) return;
+
+    let cancelled = false;
+    let timeoutId = null;
+    let idleId = null;
+
+    const warm = () => {
+      if (!cancelled) setPrewarmTabs(true);
+    };
+
+    if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(warm, { timeout: 1200 });
+    } else {
+      timeoutId = setTimeout(warm, 450);
+    }
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      if (idleId && typeof window !== "undefined" && typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(idleId);
+      }
+    };
+  }, [loading, prewarmTabs]);
 
   // Scroll to top on date change
   useEffect(() => {
@@ -662,11 +693,18 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               />
             </AnimatedTabPanel>
 
-            <AnimatedTabPanel active={activeTab === "apps"}>
-              <AppsPage BASE={BASE} stats={stats} prevStats={prevStats} selectedDate={selectedDate} ignoredApps={ignoredApps} />
+            <AnimatedTabPanel active={activeTab === "apps"} preload={prewarmTabs}>
+              <AppsPage
+                isActive={activeTab === "apps"}
+                BASE={BASE}
+                stats={stats}
+                prevStats={prevStats}
+                selectedDate={selectedDate}
+                ignoredApps={ignoredApps}
+              />
             </AnimatedTabPanel>
 
-            <AnimatedTabPanel active={activeTab === "activity"}>
+            <AnimatedTabPanel active={activeTab === "activity"} preload={prewarmTabs}>
               <ActivityPage
                 BASE={BASE} selectedDate={selectedDate}
                 data={data || { totalScreenTime: 0, totalSessions: 0, totalKeystrokes: 0, totalClicks: 0 }}
@@ -675,12 +713,12 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               />
             </AnimatedTabPanel>
 
-            <AnimatedTabPanel active={activeTab === "insights"}>
+            <AnimatedTabPanel active={activeTab === "insights"} preload={prewarmTabs}>
               {activeInsightTab === "goals" && (
                 <GoalsPage selectedDate={selectedDate} />
               )}
               {activeInsightTab === "limits" && (
-                <LimitsPage BASE={BASE} stats={stats} />
+                <LimitsPage isActive={activeTab === "insights" && activeInsightTab === "limits"} BASE={BASE} stats={stats} />
               )}
               {activeInsightTab === "reports" && (
                 <WeeklyReportPage />

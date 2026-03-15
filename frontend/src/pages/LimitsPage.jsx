@@ -900,7 +900,7 @@ function UnblockModal({ appName, onClose, onUnblock }) {
 }
 
 // ─── LIMITS PAGE ─────────────────────────────────────────────────────────────
-export default function LimitsPage({ BASE, stats }) {
+export default function LimitsPage({ BASE, stats, isActive = true }) {
   useEffect(() => { injectStyles(); }, []);
 
   const [limits, setLimits] = useState([]);
@@ -918,6 +918,7 @@ export default function LimitsPage({ BASE, stats }) {
   const [lastSync, setLastSync] = useState(null);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("name");
+  const [visibleLimitCards, setVisibleLimitCards] = useState(90);
   const toastTimer = useRef(null);
   const resetLabel = useResetCountdown();
 
@@ -1107,6 +1108,21 @@ export default function LimitsPage({ BASE, stats }) {
     return s < 10 ? "just now" : s < 60 ? `${s}s ago` : `${Math.floor(s / 60)}m ago`;
   })() : null;
 
+  useEffect(() => {
+    setVisibleLimitCards(90);
+  }, [view, search, sort, limits.length]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const onScroll = () => {
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 520) {
+        setVisibleLimitCards((c) => c + 60);
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [isActive]);
+
   const STATS = [
     { color: "#4ade80", bg: "rgba(74,222,128,0.05)", border: "rgba(74,222,128,0.12)", label: "Active Limits", val: limits.filter(l => l.is_enabled).length, sub: `${limits.length} total configured` },
     { color: "#f87171", bg: "rgba(248,113,113,0.05)", border: "rgba(248,113,113,0.12)", label: "Blocked Now", val: blockedNow.length, sub: "apps hit their limit today" },
@@ -1147,15 +1163,13 @@ export default function LimitsPage({ BASE, stats }) {
           {syncAgo && <span style={{ fontSize: 10, color: "#2d3d55" }}>Updated {syncAgo}</span>}
 
           {/* Breach log button with today's count badge */}
-          <button onClick={() => setShowLog(true)} style={{
+          <button className="hover-raise-warn" onClick={() => setShowLog(true)} style={{
             display: "flex", alignItems: "center", gap: 7, padding: "8px 14px", borderRadius: 11,
             border: "1px solid rgba(248,113,113,0.22)", cursor: "pointer",
             background: "rgba(248,113,113,0.07)", color: "#f87171",
             fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans',sans-serif",
             transition: "all 0.2s cubic-bezier(0.34,1.56,0.64,1)"
-          }}
-            onMouseEnter={e => { e.currentTarget.style.background = "rgba(248,113,113,0.14)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "rgba(248,113,113,0.07)"; e.currentTarget.style.transform = "none"; }}>
+          }}>
             📋 Breach Log
             {breachCount > 0 && (
               <span style={{ background: "#f87171", color: "#060c14", borderRadius: 6, fontSize: 10, fontWeight: 800, padding: "1px 6px", lineHeight: 1.5 }}>{breachCount}</span>
@@ -1239,6 +1253,19 @@ export default function LimitsPage({ BASE, stats }) {
           const warnCards = displayList.filter(l => { const u = usage[l.app_name] || 0; return !blocked.includes(l.app_name) && u >= l.daily_limit_seconds * 0.8 && l.is_enabled; });
           const healthyCards = displayList.filter(l => !blockedCards.includes(l) && !warnCards.includes(l));
 
+          let remaining = Math.max(visibleLimitCards, 0);
+          const takeCards = (cards) => {
+            const taken = cards.slice(0, remaining);
+            remaining = Math.max(remaining - taken.length, 0);
+            return taken;
+          };
+
+          const blockedWindow = takeCards(blockedCards);
+          const warnWindow = takeCards(warnCards);
+          const healthyWindow = takeCards(healthyCards);
+
+          const renderedCount = blockedWindow.length + warnWindow.length + healthyWindow.length;
+
           const renderGroup = (label, color, cards, startIdx) => {
             if (cards.length === 0) return null;
             return (
@@ -1263,9 +1290,29 @@ export default function LimitsPage({ BASE, stats }) {
 
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-              {renderGroup("⛔ Blocked", "#f87171", blockedCards, 0)}
-              {renderGroup("⚠️ Near Limit", "#fbbf24", warnCards, blockedCards.length)}
-              {renderGroup("✅ Within Limit", "#4ade80", healthyCards, blockedCards.length + warnCards.length)}
+              {renderGroup("⛔ Blocked", "#f87171", blockedWindow, 0)}
+              {renderGroup("⚠️ Near Limit", "#fbbf24", warnWindow, blockedWindow.length)}
+              {renderGroup("✅ Within Limit", "#4ade80", healthyWindow, blockedWindow.length + warnWindow.length)}
+
+              {renderedCount < displayList.length && (
+                <div style={{ textAlign: "center", marginTop: -4 }}>
+                  <button
+                    onClick={() => setVisibleLimitCards((c) => c + 120)}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: 10,
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.04)",
+                      color: "#94a3b8",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontFamily: "'DM Sans',sans-serif",
+                    }}
+                  >
+                    Show more ({displayList.length - renderedCount} remaining)
+                  </button>
+                </div>
+              )}
             </div>
           );
         })()
@@ -1282,10 +1329,9 @@ export default function LimitsPage({ BASE, stats }) {
                     <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#f87171", boxShadow: "0 0 6px #f87171", animation: "pulse-dot 2s ease-in-out infinite" }} />
                     <span style={{ fontSize: 14, color: "#f1f5f9", fontWeight: 500 }}>{name.replace(".exe", "")}</span>
                   </div>
-                  <button onClick={() => setUnblockTarget(name)}
+                  <button className="hover-raise-amber" onClick={() => setUnblockTarget(name)}
                     style={{ padding: "5px 14px", borderRadius: 9, border: "none", cursor: "pointer", background: "rgba(251,191,36,0.09)", color: "#fbbf24", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", transition: "all 0.2s" }}
-                    onMouseEnter={e => { e.target.style.background = "rgba(251,191,36,0.18)"; e.target.style.transform = "translateY(-1px)"; }}
-                    onMouseLeave={e => { e.target.style.background = "rgba(251,191,36,0.09)"; e.target.style.transform = "none"; }}>🔓 Unblock</button>
+                    >🔓 Unblock</button>
                 </div>
               );
             })}

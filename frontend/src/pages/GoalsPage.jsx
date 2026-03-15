@@ -485,21 +485,54 @@ export default function GoalsPage({ selectedDate }) {
           <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>Define what success looks like for your day</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <label style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            padding: "8px 12px", borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.09)",
-            background: "rgba(255,255,255,0.03)",
-            cursor: "pointer",
-          }}>
-            <input
-              type="checkbox"
-              checked={showGoalsInOverview}
-              onChange={(e) => updateShowGoalsInOverview(e.target.checked)}
-              style={{ accentColor: "#4ade80" }}
-            />
-            <span style={{ fontSize: 12, color: "#cbd5e1", fontWeight: 600 }}>Show goals in Overview</span>
-          </label>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showGoalsInOverview}
+            onClick={() => updateShowGoalsInOverview(!showGoalsInOverview)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 12px",
+              borderRadius: 12,
+              border: `1px solid ${showGoalsInOverview ? "rgba(74,222,128,0.28)" : "rgba(255,255,255,0.09)"}`,
+              background: showGoalsInOverview ? "rgba(74,222,128,0.08)" : "rgba(255,255,255,0.03)",
+              color: "#cbd5e1",
+              cursor: "pointer",
+              fontFamily: "'DM Sans',sans-serif",
+              transition: "all 0.2s ease",
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                width: 34,
+                height: 18,
+                borderRadius: 999,
+                background: showGoalsInOverview ? "rgba(74,222,128,0.45)" : "rgba(100,116,139,0.45)",
+                border: `1px solid ${showGoalsInOverview ? "rgba(74,222,128,0.45)" : "rgba(148,163,184,0.35)"}`,
+                position: "relative",
+                flexShrink: 0,
+                transition: "all 0.2s ease",
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  top: 1,
+                  left: showGoalsInOverview ? 17 : 1,
+                  width: 14,
+                  height: 14,
+                  borderRadius: "50%",
+                  background: showGoalsInOverview ? "#4ade80" : "#cbd5e1",
+                  boxShadow: showGoalsInOverview ? "0 0 8px rgba(74,222,128,0.6)" : "none",
+                  transition: "all 0.2s ease",
+                }}
+              />
+            </span>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>Show goals in Overview</span>
+          </button>
 
           <button onClick={() => { setEditTarget(null); setShowModal(true); }} style={{
             display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 12,

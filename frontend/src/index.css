@@ -1,4 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;500;600;700&family=DM+Serif+Display&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;500;600;700&family=DM+Serif+Display&family=JetBrains+Mono:wght@300;400&display=swap');
+
+:root {
+    --motion-fast: 140ms;
+    --motion-base: 220ms;
+    --motion-slow: 320ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+    --glass-blur: 10px;
+    --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
 
 body {
     margin: 0;
@@ -19,6 +29,42 @@ body {
 /* Base resets */
 * {
     box-sizing: border-box;
+}
+
+.hover-fade {
+    transition: opacity var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+}
+
+.hover-fade:hover {
+    opacity: 0.75;
+    transform: translateY(-1px);
+}
+
+.hover-surface {
+    transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
+
+.hover-surface:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #f8fafc;
+}
+
+.hover-green-outline {
+    transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+}
+
+.hover-green-outline:hover {
+    background: rgba(74, 222, 128, 0.14);
+    border-color: rgba(74, 222, 128, 0.45);
+}
+
+.hover-warn-banner {
+    transition: background var(--motion-fast) var(--ease-standard);
+}
+
+.hover-warn-banner:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
 }
 
 ::-webkit-scrollbar {
@@ -59,5 +105,21 @@ body {
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    .orb-float,
+    .orb-float-2 {
+        animation: none !important;
     }
 }

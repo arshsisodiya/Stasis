@@ -85,13 +85,11 @@ export function LimitWarningBanner({ limits, usage, onGoToLimits, selectedDate }
     const bg = isBlocked ? "rgba(248,113,133,0.07)" : "rgba(251,191,36,0.06)";
     const border = isBlocked ? "rgba(248,113,133,0.2)" : "rgba(251,191,36,0.18)";
     return (
-      <div onClick={onGoToLimits} style={{
+      <div className="hover-warn-banner" onClick={onGoToLimits} style={{
         display: "flex", alignItems: "center", gap: 10, padding: "8px 14px",
         borderRadius: 12, cursor: "pointer", background: bg, border: `1px solid ${border}`,
         marginBottom: 4, animation: "banner-in 0.35s ease", transition: "background 0.2s",
-      }}
-        onMouseEnter={e => e.currentTarget.style.background = isBlocked ? "rgba(248,113,133,0.12)" : "rgba(251,191,36,0.1)"}
-        onMouseLeave={e => e.currentTarget.style.background = bg}>
+      }}>
         <span style={{ fontSize: 13 }}>{isBlocked ? "⛔" : "⚠️"}</span>
         <span style={{ fontSize: 12, color: accent, fontWeight: 600 }}>{item.app_name.replace(".exe", "")}</span>
         <span style={{ fontSize: 12, color: "#475569" }}>
@@ -107,14 +105,12 @@ export function LimitWarningBanner({ limits, usage, onGoToLimits, selectedDate }
   const bg2 = blocked.length ? "rgba(248,113,133,0.07)" : "rgba(251,191,36,0.06)";
   const border2 = blocked.length ? "rgba(248,113,133,0.2)" : "rgba(251,191,36,0.18)";
   return (
-    <div onClick={onGoToLimits} style={{
+    <div className="hover-warn-banner" onClick={onGoToLimits} style={{
       display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
       padding: "8px 14px", borderRadius: 12, cursor: "pointer",
       background: bg2, border: `1px solid ${border2}`,
       marginBottom: 4, animation: "banner-in 0.35s ease", transition: "background 0.2s",
-    }}
-      onMouseEnter={e => e.currentTarget.style.background = blocked.length ? "rgba(248,113,133,0.12)" : "rgba(251,191,36,0.1)"}
-      onMouseLeave={e => e.currentTarget.style.background = bg2}>
+    }}>
       <span style={{ fontSize: 13 }}>{blocked.length ? "⛔" : "⚠️"}</span>
       <span style={{ fontSize: 12, color: primary, fontWeight: 600, whiteSpace: "nowrap" }}>
         {blocked.length && warning.length
@@ -163,13 +159,11 @@ function HistoricalBanner({ selectedDate, onGoToday }) {
       <span style={{ fontSize: 12, color: "#818cf8", fontWeight: 600 }}>{label}</span>
       <span style={{ fontSize: 12, color: "#2d3d52" }}>·</span>
       <span style={{ fontSize: 11, color: "#475569" }}>{ago}</span>
-      <button onClick={onGoToday} style={{
+      <button className="hover-fade" onClick={onGoToday} style={{
         marginLeft: "auto", fontSize: 11, color: "#818cf8", background: "none",
         border: "none", cursor: "pointer", padding: 0, fontFamily: "'DM Sans',sans-serif",
         opacity: 0.65, transition: "opacity 0.15s",
-      }}
-        onMouseEnter={e => e.currentTarget.style.opacity = "1"}
-        onMouseLeave={e => e.currentTarget.style.opacity = "0.65"}>
+      }}>
         Back to today →
       </button>
     </div>

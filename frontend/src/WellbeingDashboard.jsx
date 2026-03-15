@@ -213,15 +213,13 @@ const DateNavigator = memo(function DateNavigator({ selectedDate, onChange, avai
 
       {/* "Today ↩" jump — only shown when browsing history */}
       {isHistorical && dateSet.has(today) && (
-        <button onClick={() => onChange(today)} style={{
+        <button className="hover-green-outline" onClick={() => onChange(today)} style={{
           flexShrink: 0, padding: "4px 10px", borderRadius: 7,
           border: "1px solid rgba(74,222,128,0.28)", background: "rgba(74,222,128,0.07)",
           color: "#4ade80", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
           textTransform: "uppercase", cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
           whiteSpace: "nowrap", transition: "background 0.2s, border-color 0.2s",
-        }}
-          onMouseEnter={e => { e.currentTarget.style.background = "rgba(74,222,128,0.14)"; e.currentTarget.style.borderColor = "rgba(74,222,128,0.45)"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "rgba(74,222,128,0.07)"; e.currentTarget.style.borderColor = "rgba(74,222,128,0.28)"; }}>
+        }}>
           Today ↩
         </button>
       )}
@@ -461,6 +459,10 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
         .db-scroll-wrapper::-webkit-scrollbar{width:4px;}
         .db-scroll-wrapper::-webkit-scrollbar-track{background:transparent;}
         .db-scroll-wrapper::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:4px;}
+        @media(prefers-reduced-motion:reduce){
+          .orb-float,.orb-float-2{animation:none!important;}
+          .metric-card,.tab-btn{animation:none!important;transition:none!important;}
+        }
         @media(max-width:900px){.grid-4{grid-template-columns:1fr 1fr!important;}.grid-4-sm{grid-template-columns:1fr 1fr!important;}}
         @media(max-width:600px){
           .grid-4{grid-template-columns:1fr!important;}
@@ -556,14 +558,12 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
                     </button>
                   ))}
                 </div>
-                <button onClick={() => setShowSettings("drawer")} title="Menu" style={{
+                <button className="hover-surface" onClick={() => setShowSettings("drawer")} title="Menu" style={{
                   width: 36, height: 36, borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)",
                   background: "rgba(255,255,255,0.04)", cursor: "pointer",
                   display: "flex", flexDirection: "column", alignItems: "center",
                   justifyContent: "center", gap: 4, padding: 0, flexShrink: 0, transition: "all 0.2s ease",
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.07)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.14)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"; }}>
+                }}>
                   {[18, 14, 18].map((w, i) => (
                     <span key={i} style={{ display: "block", borderRadius: 2, background: "#64748b", width: w, height: 2, transition: "all 0.2s" }} />
                   ))}
@@ -693,10 +693,9 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
           {/* Footer */}
           <div style={{ textAlign: "center", marginTop: 48, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <a href="https://github.com/arshsisodiya/Stasis" target="_blank" rel="noopener noreferrer"
+            <a className="hover-fade" href="https://github.com/arshsisodiya/Stasis" target="_blank" rel="noopener noreferrer"
               style={{ letterSpacing: "0.04em", opacity: 0.35, textDecoration: "none", color: "#475569", transition: "opacity 0.15s ease, transform 0.15s ease", cursor: "pointer", fontVariantNumeric: "tabular-nums" }}
-              onMouseEnter={e => { e.currentTarget.style.opacity = "0.7"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-              onMouseLeave={e => { e.currentTarget.style.opacity = "0.35"; e.currentTarget.style.transform = "translateY(0)"; }}>
+              >
               Stasis{appVersion ? ` v${appVersion}` : ""} · © {new Date().getFullYear()} Arsh Sisodiya
             </a>
           </div>
@@ -708,13 +707,13 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
         <>
           <div onClick={() => setShowSettings(null)} style={{
             position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,0.55)",
-            backdropFilter: "blur(6px)", animation: "drawer-fade-in 0.22s ease",
+            backdropFilter: "blur(var(--glass-blur))", animation: "drawer-fade-in 0.22s ease",
           }} />
           <div style={{
             position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 160, width: 280,
             background: "rgba(8,11,20,0.97)", borderLeft: "1px solid rgba(255,255,255,0.07)",
             display: "flex", flexDirection: "column",
-            boxShadow: "-24px 0 80px rgba(15,18,34,0.7)",
+            boxShadow: "var(--shadow-soft)",
             animation: "drawer-slide-in 0.28s cubic-bezier(0.34,1.1,0.64,1)",
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 20px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -738,13 +737,11 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
                 { icon: "ℹ️", label: "About & Privacy", sub: "About, licenses, policy", section: "about" },
                 { icon: "🚀", label: "Updates", sub: "Version & changelog", section: "updates" },
               ].map(({ icon, label, sub, section }) => (
-                <button key={section} onClick={() => setShowSettings(section)} style={{
+                <button key={section} className="hover-surface" onClick={() => setShowSettings(section)} style={{
                   display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
                   borderRadius: 12, border: "none", cursor: "pointer", textAlign: "left", width: "100%",
                   background: "transparent", color: "#475569", transition: "all 0.15s ease",
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "#f8fafc"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#475569"; }}>
+                }}>
                   <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>{icon}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 500, fontFamily: "'DM Sans',sans-serif" }}>{label}</div>

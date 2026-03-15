@@ -418,6 +418,9 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
   const peakHour = hourly.reduce((pi, v, i) => v > hourly[pi] ? i : pi, 0);
   const countKey = `${selectedDate}-${activeTab}`;
   const enrichedData = data ? { ...data, focusScore: focusData?.score ?? 0, deepWorkSeconds: focusData?.deepWorkSeconds ?? 0 } : null;
+  const historicalDiffDays = !isToday
+    ? Math.round((new Date(localYMD() + "T12:00:00") - new Date(selectedDate + "T12:00:00")) / 86400000)
+    : 0;
 
   // 7-day sparkline series — all metrics sourced from /api/spark-series
   const sparkSeries = (() => {
@@ -605,6 +608,15 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
                   : activeTab === "insights" && activeInsightTab === "reports" ? "Weekly usage summary & insights"
                   : new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
               </span>
+              {!isToday && activeTab !== "insights" && (
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11,
+                  color: "#818cf8", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)",
+                  borderRadius: 8, padding: "3px 10px", fontWeight: 500,
+                }}>
+                  {historicalDiffDays === 1 ? "yesterday" : `${historicalDiffDays} days ago`}
+                </span>
+              )}
               {isToday && activeTab !== "insights" && (
                 <span style={{
                   display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11,
@@ -687,7 +699,6 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
                 countKey={countKey}
                 selectedDate={selectedDate}
                 onGoToLimits={() => { setActiveTab("insights"); setActiveInsightTab("limits"); }}
-                onGoToday={() => setSelectedDate(localYMD())}
                 sparkSeries={sparkSeries}
                 BASE={BASE}
               />

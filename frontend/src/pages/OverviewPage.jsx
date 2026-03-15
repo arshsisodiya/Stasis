@@ -142,36 +142,6 @@ export function LimitWarningBanner({ limits, usage, onGoToLimits, selectedDate }
   );
 }
 
-// ─── HISTORICAL VIEW BANNER ──────────────────────────────────────────────────
-function HistoricalBanner({ selectedDate, onGoToday }) {
-  const today = localYMD();
-  if (selectedDate === today) return null;
-  const sel = new Date(selectedDate + "T12:00:00");
-  const diffDays = Math.round((new Date(today + "T12:00:00") - sel) / 86400000);
-  const label = sel.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-  const ago = diffDays === 1 ? "yesterday" : `${diffDays} days ago`;
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 10, padding: "7px 14px",
-      borderRadius: 10, marginBottom: 4,
-      background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)",
-      animation: "banner-in 0.35s ease",
-    }}>
-      <span style={{ fontSize: 12 }}>📅</span>
-      <span style={{ fontSize: 12, color: "#818cf8", fontWeight: 600 }}>{label}</span>
-      <span style={{ fontSize: 12, color: "#2d3d52" }}>·</span>
-      <span style={{ fontSize: 11, color: "#475569" }}>{ago}</span>
-      <button className="hover-fade" onClick={onGoToday} style={{
-        marginLeft: "auto", fontSize: 11, color: "#818cf8", background: "none",
-        border: "none", cursor: "pointer", padding: 0, fontFamily: "'DM Sans',sans-serif",
-        opacity: 0.65, transition: "opacity 0.15s",
-      }}>
-        Back to today →
-      </button>
-    </div>
-  );
-}
-
 // ─── SECTION EMPTY STATE ─────────────────────────────────────────────────────
 function SectionEmpty({ icon = "📊", message = "No data for this period" }) {
   return (
@@ -373,7 +343,6 @@ export default function OverviewPage({
   countKey,
   selectedDate,
   onGoToLimits,
-  onGoToday,
   sparkSeries,
   BASE,
 }) {
@@ -516,9 +485,6 @@ export default function OverviewPage({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-
-      {/* Historical banner */}
-      <HistoricalBanner selectedDate={selectedDate} onGoToday={onGoToday} />
 
       {/* Limit warnings */}
       <LimitWarningBanner limits={limits} usage={usage} onGoToLimits={onGoToLimits} selectedDate={selectedDate} />

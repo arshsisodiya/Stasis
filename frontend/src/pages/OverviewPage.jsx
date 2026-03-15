@@ -491,7 +491,6 @@ export default function OverviewPage({
 
       {/* ── Metric cards — staggered entrance, 20px gap ── */}
       <div
-        key={selectedDate}
         className="grid-4"
         style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 16, marginBottom: 20, alignItems: "stretch" }}
       >

@@ -813,7 +813,7 @@ export default function WeeklyReportPage() {
       ) : (
         <AnimatedContent animKey={weekMonday}>
           {compareData?.diff && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 }}>
               <div style={{ background: "rgba(96,165,250,0.06)", border: "1px solid rgba(96,165,250,0.16)", borderRadius: 10, padding: "9px 10px" }}>
                 <div style={{ fontSize: 10, color: "#60a5fa", textTransform: "uppercase" }}>Screen Δ</div>
                 <div style={{ fontSize: 14, color: "#cbd5e1", fontWeight: 700 }}>{fmtTime(Math.abs(compareData.diff.screen_time_delta || 0))} {compareData.diff.screen_time_delta >= 0 ? "↑" : "↓"}</div>
@@ -853,7 +853,7 @@ export default function WeeklyReportPage() {
             </SectionCard>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 16 }}>
             {/* Daily breakdown — now a real bar chart */}
             <SectionCard title="Daily Breakdown" style={{ gridColumn: "1 / -1" }}>
               <DailyBars days={report.daily_breakdown || []} animKey={weekMonday} />
@@ -933,7 +933,7 @@ export default function WeeklyReportPage() {
 
             {report.goal_impact_correlation && (
               <SectionCard title="Goal Impact Correlation" style={{ gridColumn: "1 / -1" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
                   <div style={{ border: "1px solid rgba(74,222,128,0.2)", background: "rgba(74,222,128,0.06)", borderRadius: 10, padding: "10px 12px" }}>
                     <div style={{ fontSize: 10, color: "#4ade80", textTransform: "uppercase" }}>With Goals Met</div>
                     <div style={{ fontSize: 20, color: "#e2e8f0", fontWeight: 700 }}>{report.goal_impact_correlation.with_goal_met_productivity ?? "—"}%</div>

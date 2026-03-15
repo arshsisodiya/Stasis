@@ -516,7 +516,7 @@ export default function OverviewPage({
       <div
         key={selectedDate}
         className="grid-4"
-        style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16, marginBottom: 20, alignItems: "stretch" }}
+        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 16, marginBottom: 20, alignItems: "stretch" }}
       >
         {/* Each card gets staggered delay + matching sparkline */}
         <div className="metric-card" style={{ animationDelay: "0ms", display: "flex", flexDirection: "column" }}>

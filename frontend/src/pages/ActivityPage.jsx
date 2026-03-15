@@ -37,7 +37,7 @@ export default function ActivityPage({
       {/* Stat pills */}
       <div
         className="grid-4-sm"
-        style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}
+        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 16 }}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <StatPill icon="⏱" label="Screen Time" value={fmtTime(data.totalScreenTime)} color="#4ade80" />

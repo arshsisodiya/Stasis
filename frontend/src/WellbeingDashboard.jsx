@@ -9,7 +9,7 @@ import WeeklyReportPage from "./pages/WeeklyReportPage";
 import DaySummary from "./pages/DaySummary";
 import { Skeleton, SkeletonCard, TabPanel, AppIcon } from "./shared/components";
 import { localYMD, yesterday, fmtTime, fmtTimeFull } from "./shared/utils";
-import { useCountUp, useLiveClock } from "./shared/hooks";
+import { useCountUp, useLiveClock, useVisibilityPolling } from "./shared/hooks";
 
 // ─── useReducer — atomic state for all dashboard data ─────────────────────────
 const initialDashState = {
@@ -372,21 +372,23 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
     }
   }, [selectedDate, availableDates]);
 
-  // Live refresh today
-  useEffect(() => {
+  // Live refresh today, throttled while the window is hidden.
+  useVisibilityPolling(async () => {
     const today = localYMD();
     if (selectedDate !== today) return;
-    const iv = setInterval(async () => {
-      try {
-        delete cache.current[today];
-        const entry = await fetchDate(today);
-        if (selectedDate === today) applyData(entry);
-      } catch (err) {
-        if (err instanceof TypeError && onDisconnect) onDisconnect();
-      }
-    }, 60_000);
-    return () => clearInterval(iv);
-  }, [selectedDate, fetchDate, applyData]);
+    try {
+      delete cache.current[today];
+      const entry = await fetchDate(today);
+      if (selectedDate === today) applyData(entry);
+    } catch (err) {
+      if (err instanceof TypeError && onDisconnect) onDisconnect();
+    }
+  }, {
+    enabled: selectedDate === localYMD(),
+    visibleIntervalMs: 60_000,
+    hiddenIntervalMs: 180_000,
+    immediate: false,
+  });
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const peakHour = hourly.reduce((pi, v, i) => v > hourly[pi] ? i : pi, 0);

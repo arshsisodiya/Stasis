@@ -88,3 +88,65 @@ export function useLiveClock(selectedDate) {
   }, [isToday]);
   return { elapsed, isToday };
 }
+
+// ─── VISIBILITY-AWARE POLLING ───────────────────────────────────────────────
+// Runs a polling task with one interval when the tab is visible and a slower
+// interval (or disabled) when hidden to reduce background churn.
+export function useVisibilityPolling(task, {
+  enabled = true,
+  visibleIntervalMs,
+  hiddenIntervalMs = 0,
+  immediate = true,
+} = {}) {
+  const taskRef = useRef(task);
+
+  useEffect(() => {
+    taskRef.current = task;
+  }, [task]);
+
+  useEffect(() => {
+    if (!enabled || !visibleIntervalMs) return;
+
+    let alive = true;
+    let timer = null;
+
+    const getDelay = () => (
+      document.visibilityState === "visible" ? visibleIntervalMs : hiddenIntervalMs
+    );
+
+    const schedule = () => {
+      if (!alive) return;
+      const delay = getDelay();
+      if (!delay || delay <= 0) return;
+      timer = setTimeout(run, delay);
+    };
+
+    const run = async () => {
+      if (!alive) return;
+      try {
+        await taskRef.current();
+      } finally {
+        schedule();
+      }
+    };
+
+    const onVisibility = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      schedule();
+    };
+
+    if (immediate) {
+      run();
+    } else {
+      schedule();
+    }
+
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [enabled, visibleIntervalMs, hiddenIntervalMs, immediate]);
+}

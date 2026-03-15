@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { fmtTime } from "../shared/utils";
 import { SectionCard, AppIcon } from "../shared/components";
+import { useVisibilityPolling } from "../shared/hooks";
 
 // ─── STORAGE KEY ─────────────────────────────────────────────────────────────
 const TEMP_UNBLOCK_KEY = "wellbeing_temp_unblocks";
@@ -991,11 +992,11 @@ export default function LimitsPage({ BASE, stats }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [BASE]);
 
-  useEffect(() => {
-    fetchAll();
-    const iv = setInterval(fetchAll, 30_000);
-    return () => clearInterval(iv);
-  }, [fetchAll]);
+  useVisibilityPolling(fetchAll, {
+    visibleIntervalMs: 30_000,
+    hiddenIntervalMs: 120_000,
+    immediate: true,
+  });
 
   // ── Optimistic mutations ──
   const save = async (name, secs) => {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { GITHUB_REPO, shouldAutoCheckUpdate, recordUpdateCheck } from "../shared/updateUtils";
+import { useVisibilityPolling } from "../shared/hooks";
 
 // ─── CONSTANTS (mirrors SettingsPage) ────────────────────────────────────────
 const BASE_URL = "http://127.0.0.1:7432";
@@ -673,11 +674,11 @@ export default function UpdateSection({ push }) {
     } catch { }
   }, []);
 
-  useEffect(() => {
-    fetchUpdateStatus();
-    const iv = setInterval(fetchUpdateStatus, 3000);
-    return () => clearInterval(iv);
-  }, [fetchUpdateStatus]);
+  useVisibilityPolling(fetchUpdateStatus, {
+    visibleIntervalMs: 3000,
+    hiddenIntervalMs: 15000,
+    immediate: true,
+  });
 
   const fetchGithubReleases = useCallback(async () => {
     setRelError(null);

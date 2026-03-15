@@ -6,7 +6,11 @@
 # -----------------------------
 
 !macro NSIS_HOOK_POSTINSTALL
-  # Intentionally left empty. Tauri's built-in run checkbox handles this.
+  # Register stasis:// deep-link protocol for notification action buttons.
+  WriteRegStr HKCU "Software\Classes\stasis" "" "URL:Stasis Protocol"
+  WriteRegStr HKCU "Software\Classes\stasis" "URL Protocol" ""
+  WriteRegStr HKCU "Software\Classes\stasis\DefaultIcon" "" "$INSTDIR\Stasis.exe,0"
+  WriteRegStr HKCU "Software\Classes\stasis\shell\open\command" "" '"$INSTDIR\Stasis.exe" "%1"'
 !macroend
 
 # -----------------------------
@@ -38,4 +42,8 @@ FunctionEnd
 
 !macro NSIS_HOOK_CUSTOM_PAGES
   Page custom StartupPage StartupPageLeave
+!macroend
+
+!macro NSIS_HOOK_PREUNINSTALL
+  DeleteRegKey HKCU "Software\Classes\stasis"
 !macroend

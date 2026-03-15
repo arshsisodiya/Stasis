@@ -4,6 +4,8 @@ import psutil
 from datetime import datetime
 
 from src.database.database import get_blocked_app_names
+from src.core.desktop_notifications import desktop_notifier
+from src.config.ignored_apps_manager import is_ignored
 
 LIMIT_CHECK_INTERVAL = 15
 PROCESS_CHECK_INTERVAL = 2
@@ -30,6 +32,8 @@ class BlockingService:
 
         self.limit_thread = None
         self.guard_thread = None
+        self.last_goal_check_ts = 0.0
+        self.goal_state = {}
 
         self.initialized = True
 
@@ -178,6 +182,24 @@ class BlockingService:
                                     log_limit_event(app_name, "hit", old_value=daily_limit, new_value=usage)
                                 except Exception:
                                     pass
+                                over_by = max(0, int(usage - daily_limit))
+                                over_mins = int(round(over_by / 60))
+                                desktop_notifier.notify(
+                                    title="App limit reached",
+                                    message=(
+                                        f"{app_name}: {int(usage // 60)} min used "
+                                        f"(limit {int(daily_limit // 60)} min"
+                                        f"{', +' + str(over_mins) + ' min' if over_mins > 0 else ''})."
+                                    ),
+                                    event_key=f"limit-hit:{today}:{app_name}",
+                                    cooldown_seconds=60,
+                                    event_type=desktop_notifier.EVENT_LIMIT,
+                                    actions=[
+                                        ("Open Limits", desktop_notifier.build_action_url("open-limits")),
+                                        ("Mute 1h", desktop_notifier.build_action_url("snooze-limit", minutes=60)),
+                                    ],
+                                    launch_url=desktop_notifier.build_action_url("open-limits"),
+                                )
                         else:
                             cursor.execute(
                                 """
@@ -192,6 +214,13 @@ class BlockingService:
 
                     # Single commit for the entire cycle
                     conn.commit()
+
+                    # Evaluate goal thresholds at most once per minute (same DB connection).
+                    now_ts = time.time()
+                    if now_ts - self.last_goal_check_ts >= 60:
+                        self._check_goal_notifications(cursor, today)
+                        self.last_goal_check_ts = now_ts
+
                     with self._blocked_apps_lock:
                         self.blocked_apps = new_blocked
 
@@ -204,6 +233,143 @@ class BlockingService:
                     continue
                 print("LimitMonitor error:", e)
             time.sleep(LIMIT_CHECK_INTERVAL)
+
+    def _check_goal_notifications(self, cursor, date: str):
+        cursor.execute(
+            """
+            SELECT id, goal_type, COALESCE(label, ''), target_value, target_unit, direction
+            FROM goals
+            WHERE is_active = 1
+            """
+        )
+        goals = cursor.fetchall()
+
+        if not goals:
+            return
+
+        for goal_id, goal_type, label, target_value, target_unit, direction in goals:
+            actual = self._compute_goal_actual(cursor, date, goal_type)
+            threshold_reached = actual >= target_value
+
+            state_key = (goal_id, date)
+            previous_state = self.goal_state.get(state_key)
+            self.goal_state[state_key] = threshold_reached
+
+            # Notify on first check if already at/over threshold, or on later transitions.
+            should_notify = False
+            if previous_state is None and threshold_reached:
+                should_notify = True
+            elif previous_state is not None and previous_state != threshold_reached:
+                should_notify = True
+            if not should_notify:
+                continue
+
+            goal_name = label or goal_type.replace("_", " ").title()
+            target_str = self._format_target(target_value, target_unit)
+
+            if direction == "under" and threshold_reached:
+                desktop_notifier.notify(
+                    title="Screen-time goal threshold reached" if goal_type == "daily_screen_time" else "Goal threshold reached",
+                    message=f"{goal_name}: {self._format_target(actual, target_unit)} used (target {target_str}).",
+                    event_key=f"goal-threshold:{goal_id}:{date}",
+                    cooldown_seconds=600,
+                    event_type=desktop_notifier.EVENT_GOAL,
+                    actions=[
+                        ("Open Goals", desktop_notifier.build_action_url("open-goals")),
+                    ],
+                    launch_url=desktop_notifier.build_action_url("open-goals"),
+                )
+            elif direction != "under" and threshold_reached:
+                desktop_notifier.notify(
+                    title="Goal achieved",
+                    message=f"{goal_name}: reached {self._format_target(actual, target_unit)} (target {target_str}).",
+                    event_key=f"goal-met:{goal_id}:{date}",
+                    cooldown_seconds=600,
+                    event_type=desktop_notifier.EVENT_GOAL,
+                    actions=[
+                        ("Open Goals", desktop_notifier.build_action_url("open-goals")),
+                    ],
+                    launch_url=desktop_notifier.build_action_url("open-goals"),
+                )
+
+        # Keep only today's state to avoid unbounded growth.
+        self.goal_state = {k: v for k, v in self.goal_state.items() if k[1] == date}
+
+    @staticmethod
+    def _compute_goal_actual(cursor, date: str, goal_type: str) -> float:
+        if goal_type == "daily_screen_time":
+            cursor.execute(
+                """
+                SELECT app_name, COALESCE(SUM(active_seconds), 0)
+                FROM daily_stats
+                WHERE date = ?
+                GROUP BY app_name
+                """,
+                (date,),
+            )
+            return float(sum(active for app_name, active in cursor.fetchall() if not is_ignored(app_name)))
+
+        if goal_type == "daily_productive_time":
+            cursor.execute(
+                """
+                SELECT app_name, COALESCE(SUM(active_seconds), 0)
+                FROM daily_stats
+                WHERE date = ? AND main_category = 'productive'
+                GROUP BY app_name
+                """,
+                (date,),
+            )
+            return float(sum(active for app_name, active in cursor.fetchall() if not is_ignored(app_name)))
+
+        if goal_type == "daily_productivity_pct":
+            cursor.execute(
+                """
+                SELECT app_name, main_category, COALESCE(SUM(active_seconds), 0)
+                FROM daily_stats
+                WHERE date = ?
+                GROUP BY app_name, main_category
+                """,
+                (date,),
+            )
+            total = 0.0
+            productive = 0.0
+            for app_name, category, active in cursor.fetchall():
+                if is_ignored(app_name):
+                    continue
+                total += float(active or 0)
+                if category == "productive":
+                    productive += float(active or 0)
+            if total <= 0:
+                return 0.0
+            return round((productive / total) * 100, 1)
+
+        if goal_type == "daily_focus_score":
+            try:
+                cursor.execute(
+                    """
+                    SELECT focus_score
+                    FROM focus_sessions
+                    WHERE date = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (date,),
+                )
+                row = cursor.fetchone()
+                return float(row[0]) if row and row[0] is not None else 0.0
+            except Exception:
+                return 0.0
+
+        return 0.0
+
+    @staticmethod
+    def _format_target(value: float, unit: str) -> str:
+        if unit == "seconds":
+            mins = int(round(value / 60))
+            return f"{mins} min"
+        if unit == "percent":
+            return f"{round(value, 1)}%"
+        return str(round(value, 1))
 
     # ─── PROCESS GUARD ────────────────────────────────────────────────────────
     def _process_guard(self):

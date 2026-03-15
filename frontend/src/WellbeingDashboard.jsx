@@ -280,6 +280,61 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
   const scrollRef = useRef(null);
   const { elapsed, isToday } = useLiveClock(selectedDate);
 
+  const handleDeepLink = useCallback(async (urlLike) => {
+    if (!urlLike) return;
+    let parsed;
+    try {
+      parsed = new URL(urlLike);
+    } catch {
+      return;
+    }
+
+    const isStasis = parsed.protocol.toLowerCase() === "stasis:";
+    if (!isStasis) return;
+
+    const action = (parsed.searchParams.get("action") || "").toLowerCase();
+    if (action === "open-limits") {
+      setActiveTab("insights");
+      setActiveInsightTab("limits");
+      return;
+    }
+    if (action === "open-goals") {
+      setActiveTab("insights");
+      setActiveInsightTab("goals");
+      return;
+    }
+    if (action === "snooze-limit") {
+      const minutes = parsed.searchParams.get("minutes") || "60";
+      try {
+        await fetch(`${BASE}/api/settings/notifications/action/snooze-limit?minutes=${encodeURIComponent(minutes)}`);
+      } catch { }
+      return;
+    }
+  }, [BASE]);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const section = (params.get("section") || "").toLowerCase();
+      if (section === "limits") {
+        setActiveTab("insights");
+        setActiveInsightTab("limits");
+      } else if (section === "goals") {
+        setActiveTab("insights");
+        setActiveInsightTab("goals");
+      }
+    } catch { }
+  }, []);
+
+  useEffect(() => {
+    const onDeepLink = (event) => {
+      const url = event?.detail?.url;
+      handleDeepLink(url);
+    };
+    window.addEventListener("stasis:deep-link", onDeepLink);
+    return () => window.removeEventListener("stasis:deep-link", onDeepLink);
+  }, [handleDeepLink]);
+
   useEffect(() => {
     if (loading || prewarmTabs) return;
 

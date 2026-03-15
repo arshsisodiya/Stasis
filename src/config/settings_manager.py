@@ -98,6 +98,14 @@ class SettingsManager(BaseSettingsManager):
         """)
 
         defaults = {
+            "notifications": "false",
+            "notifications_enable_goal_events": "true",
+            "notifications_enable_limit_events": "true",
+            "notifications_enable_test_events": "true",
+            "notifications_quiet_hours_enabled": "false",
+            "notifications_quiet_start": "22:00",
+            "notifications_quiet_end": "07:00",
+            "notifications_limit_snooze_until": "",
             "file_logging_enabled": "false",
             "file_logging_essential_only": "false",
             "show_yesterday_comparison": "true",

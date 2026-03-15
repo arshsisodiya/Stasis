@@ -6,7 +6,7 @@
 use std::process::Child;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Emitter};
 use tauri::tray::TrayIconBuilder;
 use tauri::menu::{Menu, MenuItem};
 use tauri_plugin_dialog::{MessageDialogBuilder, MessageDialogButtons, DialogExt};
@@ -14,6 +14,16 @@ use tauri_plugin_dialog::{MessageDialogBuilder, MessageDialogButtons, DialogExt}
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 
 struct BackendState(Mutex<Option<Child>>);
+
+fn extract_deep_link(args: &[String]) -> Option<String> {
+    args.iter()
+        .find(|a| a.to_lowercase().starts_with("stasis://"))
+        .cloned()
+}
+
+fn emit_deep_link(app: &AppHandle, url: &str) {
+    let _ = app.emit("stasis-deep-link", url.to_string());
+}
 
 fn main() {
     // Check if hardware acceleration should be disabled
@@ -32,6 +42,12 @@ fn main() {
 
         .setup(|app| {
             start_backend(app.handle());
+
+            // Handle deep-link when app is launched directly via protocol.
+            let args: Vec<String> = std::env::args().collect();
+            if let Some(url) = extract_deep_link(&args) {
+                emit_deep_link(app.handle(), &url);
+            }
 
             // -------- Tray Menu --------
             let open = MenuItem::with_id(app, "open", "Open Stasis", true, None::<&str>)?;
@@ -107,7 +123,7 @@ fn main() {
         // By default, closing the window will now destroy it (freeing RAM).
         // The RunEvent handler below will prevent the app from exiting.
 
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
@@ -123,6 +139,10 @@ fn main() {
                 .fullscreen(false)
                 .decorations(true)
                 .build();
+            }
+
+            if let Some(url) = extract_deep_link(&args) {
+                emit_deep_link(app, &url);
             }
         }))
         .plugin(tauri_plugin_opener::init())

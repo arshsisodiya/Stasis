@@ -812,6 +812,7 @@ function GeneralSection({ push }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          notifications: s.notifications,
           file_logging_enabled: s.file_logging_enabled,
           file_logging_essential_only: s.file_logging_essential_only,
           show_yesterday_comparison: s.show_yesterday_comparison,
@@ -1033,6 +1034,234 @@ function GeneralSection({ push }) {
         </div>
       )}
     </div >
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEVELOPER SECTION
+// ═══════════════════════════════════════════════════════════════════════════════
+function DeveloperSection({ push }) {
+  const [testingNotifications, setTestingNotifications] = useState(false);
+  const [testingGoalNotification, setTestingGoalNotification] = useState(false);
+  const [testingAppLimitNotification, setTestingAppLimitNotification] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [notifCfg, setNotifCfg] = useState({
+    notifications_enable_goal_events: true,
+    notifications_enable_limit_events: true,
+    notifications_enable_test_events: true,
+    notifications_quiet_hours_enabled: false,
+    notifications_quiet_start: "22:00",
+    notifications_quiet_end: "07:00",
+  });
+  const [savingNotifCfg, setSavingNotifCfg] = useState(false);
+
+  const loadNotifCfg = useCallback(async () => {
+    try {
+      const d = await fetch(`${BASE_URL}/api/settings`).then(r => r.json());
+      setNotifCfg(p => ({ ...p, ...d }));
+    } catch { }
+  }, []);
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const d = await fetch(`${BASE_URL}/api/settings/notifications/history?limit=20`).then(r => r.json());
+      setHistory(Array.isArray(d?.items) ? d.items : []);
+    } catch {
+      setHistory([]);
+    }
+    setLoadingHistory(false);
+  }, []);
+
+  useEffect(() => {
+    fetchHistory();
+    loadNotifCfg();
+    const iv = setInterval(fetchHistory, 5000);
+    return () => clearInterval(iv);
+  }, [fetchHistory, loadNotifCfg]);
+
+  const saveNotifCfg = async (patch) => {
+    const next = { ...notifCfg, ...patch };
+    setNotifCfg(next);
+    setSavingNotifCfg(true);
+    try {
+      await fetch(`${BASE_URL}/api/settings/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+    } catch {
+      push("Failed to save notification controls", "error");
+      loadNotifCfg();
+    }
+    setSavingNotifCfg(false);
+  };
+
+  const runTest = async (endpoint, loadingSetter, successLabel, failureLabel) => {
+    loadingSetter(true);
+    try {
+      const r = await fetch(`${BASE_URL}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const d = await r.json();
+      if (r.ok && d.status === "sent") {
+        push(`${successLabel} (${d.method || "backend"})`, "success");
+      } else {
+        push(d.reason || d.message || failureLabel, "error");
+      }
+    } catch {
+      push(failureLabel, "error");
+    }
+    loadingSetter(false);
+    fetchHistory();
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Card>
+        <SectionLabel>Delivery Controls</SectionLabel>
+        <SettingRow
+          label="Goal notifications"
+          desc="Send alerts when goal thresholds are reached"
+          control={<Toggle on={notifCfg.notifications_enable_goal_events} onChange={v => saveNotifCfg({ notifications_enable_goal_events: v })} />}
+        />
+        <SettingRow
+          label="App-limit notifications"
+          desc="Send alerts when an app reaches its configured limit"
+          control={<Toggle on={notifCfg.notifications_enable_limit_events} onChange={v => saveNotifCfg({ notifications_enable_limit_events: v })} />}
+        />
+        <SettingRow
+          label="Test notifications"
+          desc="Allow manual developer test notifications"
+          control={<Toggle on={notifCfg.notifications_enable_test_events} onChange={v => saveNotifCfg({ notifications_enable_test_events: v })} />}
+        />
+        <SettingRow
+          label="Quiet hours"
+          desc="Suppress all notifications during the selected time window"
+          control={<Toggle on={notifCfg.notifications_quiet_hours_enabled} onChange={v => saveNotifCfg({ notifications_quiet_hours_enabled: v })} />}
+        />
+        <SettingRow
+          borderless
+          label="Quiet hours window"
+          desc="Format: HH:MM (24h)"
+          control={(
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                value={notifCfg.notifications_quiet_start || "22:00"}
+                onChange={e => setNotifCfg(p => ({ ...p, notifications_quiet_start: e.target.value }))}
+                onBlur={() => saveNotifCfg({ notifications_quiet_start: notifCfg.notifications_quiet_start || "22:00" })}
+                style={{ width: 70, padding: "6px 8px", borderRadius: 8, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.05)", color: C.text, fontSize: 12 }}
+              />
+              <span style={{ fontSize: 11, color: C.textMuted }}>to</span>
+              <input
+                value={notifCfg.notifications_quiet_end || "07:00"}
+                onChange={e => setNotifCfg(p => ({ ...p, notifications_quiet_end: e.target.value }))}
+                onBlur={() => saveNotifCfg({ notifications_quiet_end: notifCfg.notifications_quiet_end || "07:00" })}
+                style={{ width: 70, padding: "6px 8px", borderRadius: 8, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.05)", color: C.text, fontSize: 12 }}
+              />
+            </div>
+          )}
+        />
+        {savingNotifCfg && <div style={{ marginTop: 8, fontSize: 11, color: C.textMuted }}>Saving notification controls...</div>}
+      </Card>
+
+      <Card>
+        <SectionLabel>Notification Test Tools</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <Btn
+            size="sm"
+            loading={testingNotifications}
+            onClick={() => runTest(
+              "/api/settings/notifications/test",
+              setTestingNotifications,
+              "General test notification sent",
+              "General notification test failed"
+            )}
+          >
+            Send General Test
+          </Btn>
+          <Btn
+            size="sm"
+            loading={testingGoalNotification}
+            onClick={() => runTest(
+              "/api/settings/notifications/test-goal",
+              setTestingGoalNotification,
+              "Goal-threshold notification sent",
+              "Goal-threshold notification test failed"
+            )}
+          >
+            Send Goal Test
+          </Btn>
+          <Btn
+            size="sm"
+            loading={testingAppLimitNotification}
+            onClick={() => runTest(
+              "/api/settings/notifications/test-limit",
+              setTestingAppLimitNotification,
+              "App-limit notification sent",
+              "App-limit notification test failed"
+            )}
+          >
+            Send App Limit Test
+          </Btn>
+        </div>
+        <div style={{ marginTop: 10, fontSize: 11, color: C.textMuted }}>
+          These controls trigger notification endpoints instantly without waiting for real limit/goal thresholds.
+        </div>
+      </Card>
+
+      <Card>
+        <SectionLabel>Notification History (Last 20)</SectionLabel>
+        {loadingHistory ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Skel h={34} />
+            <Skel h={34} />
+            <Skel h={34} />
+          </div>
+        ) : history.length === 0 ? (
+          <div style={{
+            fontSize: 12,
+            color: C.textMuted,
+            border: `1px dashed ${C.borderMed}`,
+            borderRadius: 12,
+            padding: "12px 14px"
+          }}>
+            No notification events yet.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {history.map((item, idx) => (
+              <div key={`${item.timestamp}-${idx}`} style={{
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                background: "rgba(255,255,255,0.03)",
+                padding: "10px 12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10
+              }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 12, color: C.textSub, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {item.title}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {item.message}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 10, color: C.green, fontWeight: 600 }}>{item.method || "unknown"}</div>
+                  <div style={{ fontSize: 10, color: C.blue, marginTop: 2, textTransform: "uppercase" }}>{item.event_type || "general"}</div>
+                  <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>{item.source || "runtime"}</div>
+                  <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>{timeAgo(item.timestamp) || item.timestamp}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -1487,6 +1716,7 @@ const NAV_ITEMS = [
   { id: "security", icon: "🔐", label: "Security", sub: "Access & encryption" },
   { id: "updates", icon: "🚀", label: "Updates", sub: "Version & changelog" },
   { id: "about", icon: "ℹ️", label: "About", sub: "Privacy & licenses" },
+  { id: "developer", icon: "🛠️", label: "Developer", sub: "Diagnostics & logs" },
 ];
 
 function SideNav({ active, onChange, tgStatus, tgConfig, updateState }) {
@@ -1498,7 +1728,7 @@ function SideNav({ active, onChange, tgStatus, tgConfig, updateState }) {
         const isAct = active === id;
         const badge = id === "telegram" && tgSt && tgSt.key !== "running" && tgSt.key !== "disabled";
         const updateBadge = id === "updates" && hasUpdate;
-        const showDivider = idx === 3; // divider before Updates+About
+        const showDivider = idx === 3; // divider before Updates+About+Developer
         return (
           <div key={id}>
             {showDivider && <div style={{ height: 1, background: C.border, margin: "8px 4px", borderRadius: 1 }} />}
@@ -1594,6 +1824,7 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
     security: { label: "Security", sub: "Access control and encryption" },
     updates: { label: "Updates", sub: "Version history and changelog" },
     about: { label: "About & Privacy", sub: "Version, licenses and data policy" },
+    developer: { label: "Developer", sub: "Notification diagnostics and history" },
   };
 
   return (
@@ -1656,6 +1887,7 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
                     <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5, lineHeight: 1.4 }}>{meta[id]?.sub}</div>
                   </div>
                   {id === "general" && <GeneralSection push={push} />}
+                  {id === "developer" && <DeveloperSection push={push} />}
                   {id === "telegram" && <TelegramSection push={push} />}
                   {id === "security" && <SecuritySection push={push} />}
                   {id === "updates" && <UpdateSection push={push} />}

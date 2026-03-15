@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { SectionCard, AppIcon } from "../shared/components";
 import { fmtTime, localYMD } from "../shared/utils";
 
+const OVERVIEW_GOALS_VISIBILITY_EVENT = "stasis:overview-goals-visibility";
+
 const BASE = "http://127.0.0.1:7432";
 
 const GOAL_TYPES = [
@@ -413,6 +415,7 @@ export default function GoalsPage({ selectedDate }) {
 
   const updateShowGoalsInOverview = async (value) => {
     setShowGoalsInOverview(value);
+    window.dispatchEvent(new CustomEvent(OVERVIEW_GOALS_VISIBILITY_EVENT, { detail: { value } }));
     try {
       await fetch(`${BASE}/api/settings/update`, {
         method: "POST",
@@ -422,6 +425,7 @@ export default function GoalsPage({ selectedDate }) {
       showT(value ? "Goals will show on Overview" : "Goals hidden on Overview", "success");
     } catch {
       setShowGoalsInOverview(prev => !value);
+      window.dispatchEvent(new CustomEvent(OVERVIEW_GOALS_VISIBILITY_EVENT, { detail: { value: !value } }));
       showT("Could not update overview goal setting", "warn");
     }
   };

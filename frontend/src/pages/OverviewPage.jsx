@@ -10,6 +10,8 @@ import InputActivityCard from "./InputActivityCard";
 import HourlyActivityPattern from "./HourlyActivityPattern";
 import CategoryBreakdown from "./CategoryBreakdown";
 
+const OVERVIEW_GOALS_VISIBILITY_EVENT = "stasis:overview-goals-visibility";
+
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function fmt12h(h) {
   if (h === 0) return "12 AM";
@@ -389,6 +391,15 @@ export default function OverviewPage({
       .then((s) => setShowGoalsInOverview(s?.show_goals_in_overview !== false))
       .catch(() => setShowGoalsInOverview(true));
   }, [BASE]);
+
+  useEffect(() => {
+    const onVisibilityChanged = (e) => {
+      const next = e?.detail?.value;
+      if (typeof next === "boolean") setShowGoalsInOverview(next);
+    };
+    window.addEventListener(OVERVIEW_GOALS_VISIBILITY_EVENT, onVisibilityChanged);
+    return () => window.removeEventListener(OVERVIEW_GOALS_VISIBILITY_EVENT, onVisibilityChanged);
+  }, []);
 
   const loadGoals = useCallback(async () => {
     if (!showGoalsInOverview) {

@@ -63,29 +63,22 @@ const MemoNoiseOverlay = memo(NoiseOverlay);
 
 // ─── ANIMATED TAB PANEL ───────────────────────────────────────────────────────
 function AnimatedTabPanel({ active, children }) {
-  const [rendered, setRendered] = useState(active);
-  const wasActive = useRef(active);
+  const [everActive, setEverActive] = useState(active);
 
   useEffect(() => {
-    if (active) {
-      setRendered(true);
-      wasActive.current = true;
-    } else {
-      // keep rendered briefly so fade-out can play; then unmount
-      const t = setTimeout(() => { setRendered(false); wasActive.current = false; }, 320);
-      return () => clearTimeout(t);
-    }
+    if (active) setEverActive(true);
   }, [active]);
 
-  if (!rendered) return null;
+  if (!everActive) return null;
 
   return (
     <div style={{
+      position: active ? "relative" : "absolute",
+      inset: active ? "auto" : 0,
       opacity: active ? 1 : 0,
-      transform: active ? "translateY(0)" : "translateY(8px)",
-      transition: active
-        ? "opacity 0.32s ease, transform 0.32s cubic-bezier(0.16,1,0.3,1)"
-        : "opacity 0.18s ease, transform 0.18s ease",
+      transform: active ? "translateY(0)" : "translateY(6px)",
+      pointerEvents: active ? "auto" : "none",
+      transition: "opacity 0.24s ease, transform 0.24s cubic-bezier(0.16,1,0.3,1)",
       willChange: "opacity, transform",
     }}>
       {children}
@@ -649,49 +642,51 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
           </div>
 
           {/* ── TAB CONTENT with fluid transitions ── */}
-          <AnimatedTabPanel active={activeTab === "overview"}>
-            <OverviewPage
-              data={enrichedData}
-              stats={stats}
-              prevStats={prevStats}
-              prevWellbeing={prevWellbeing}
-              showComparison={showYesterdayComparison}
-              limits={limits}
-              hourly={hourly}
-              peakHour={peakHour}
-              countKey={countKey}
-              selectedDate={selectedDate}
-              onGoToLimits={() => { setActiveTab("insights"); setActiveInsightTab("limits"); }}
-              onGoToday={() => setSelectedDate(localYMD())}
-              sparkSeries={sparkSeries}
-              BASE={BASE}
-            />
-          </AnimatedTabPanel>
+          <div style={{ position: "relative", minHeight: 420 }}>
+            <AnimatedTabPanel active={activeTab === "overview"}>
+              <OverviewPage
+                data={enrichedData}
+                stats={stats}
+                prevStats={prevStats}
+                prevWellbeing={prevWellbeing}
+                showComparison={showYesterdayComparison}
+                limits={limits}
+                hourly={hourly}
+                peakHour={peakHour}
+                countKey={countKey}
+                selectedDate={selectedDate}
+                onGoToLimits={() => { setActiveTab("insights"); setActiveInsightTab("limits"); }}
+                onGoToday={() => setSelectedDate(localYMD())}
+                sparkSeries={sparkSeries}
+                BASE={BASE}
+              />
+            </AnimatedTabPanel>
 
-          <AnimatedTabPanel active={activeTab === "apps"}>
-            <AppsPage BASE={BASE} stats={stats} prevStats={prevStats} selectedDate={selectedDate} ignoredApps={ignoredApps} />
-          </AnimatedTabPanel>
+            <AnimatedTabPanel active={activeTab === "apps"}>
+              <AppsPage BASE={BASE} stats={stats} prevStats={prevStats} selectedDate={selectedDate} ignoredApps={ignoredApps} />
+            </AnimatedTabPanel>
 
-          <AnimatedTabPanel active={activeTab === "activity"}>
-            <ActivityPage
-              BASE={BASE} selectedDate={selectedDate}
-              data={data || { totalScreenTime: 0, totalSessions: 0, totalKeystrokes: 0, totalClicks: 0 }}
-              stats={stats} prevStats={prevStats} prevWellbeing={prevWellbeing}
-              showComparison={showYesterdayComparison} hourly={hourly} peakHour={peakHour} countKey={countKey}
-            />
-          </AnimatedTabPanel>
+            <AnimatedTabPanel active={activeTab === "activity"}>
+              <ActivityPage
+                BASE={BASE} selectedDate={selectedDate}
+                data={data || { totalScreenTime: 0, totalSessions: 0, totalKeystrokes: 0, totalClicks: 0 }}
+                stats={stats} prevStats={prevStats} prevWellbeing={prevWellbeing}
+                showComparison={showYesterdayComparison} hourly={hourly} peakHour={peakHour} countKey={countKey}
+              />
+            </AnimatedTabPanel>
 
-          <AnimatedTabPanel active={activeTab === "insights"}>
-            {activeInsightTab === "goals" && (
-              <GoalsPage selectedDate={selectedDate} />
-            )}
-            {activeInsightTab === "limits" && (
-              <LimitsPage BASE={BASE} stats={stats} />
-            )}
-            {activeInsightTab === "reports" && (
-              <WeeklyReportPage />
-            )}
-          </AnimatedTabPanel>
+            <AnimatedTabPanel active={activeTab === "insights"}>
+              {activeInsightTab === "goals" && (
+                <GoalsPage selectedDate={selectedDate} />
+              )}
+              {activeInsightTab === "limits" && (
+                <LimitsPage BASE={BASE} stats={stats} />
+              )}
+              {activeInsightTab === "reports" && (
+                <WeeklyReportPage />
+              )}
+            </AnimatedTabPanel>
+          </div>
 
           {/* Footer */}
           <div style={{ textAlign: "center", marginTop: 48, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>

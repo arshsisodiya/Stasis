@@ -7,19 +7,13 @@ import { AppIcon, CategoryChip, TrendBadge, SectionCard } from "../shared/compon
 const AppRow = memo(function AppRow({ app, active, maxActive, main, sub, index, prevActive }) {
   const pct = maxActive > 0 ? (active / maxActive) * 100 : 0;
   const col = CATEGORY_COLORS[main] || CATEGORY_COLORS.other;
-  const [vis, setVis] = useState(false);
   const [hov, setHov] = useState(false);
   const trend = trendPct(active, prevActive);
-  useEffect(() => {
-    const t = setTimeout(() => setVis(true), 80 + index * 60);
-    return () => clearTimeout(t);
-  }, [index]);
   return (
     <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{
         display: "flex", alignItems: "center", gap: 12, padding: "10px 8px", borderRadius: 12,
-        opacity: vis ? 1 : 0, transform: vis ? "translateX(0)" : "translateX(-20px)",
-        transition: `opacity 0.4s ease ${index * 0.04}s, transform 0.4s ease ${index * 0.04}s, background 0.15s`,
+        transition: "background 0.15s",
         background: hov ? "rgba(255, 255, 255, 0.04)" : "transparent"
       }}>
       <AppIcon appName={app} category={main} size={36} />
@@ -57,18 +51,12 @@ const BrowserRow = memo(function BrowserRow({ browsers, maxActive, index, BASE, 
   const [expanded, setExpanded] = useState(false);
   const [sites, setSites] = useState(null);
   const [loadingSites, setLoadingSites] = useState(false);
-  const [vis, setVis] = useState(false);
   const [hov, setHov] = useState(false);
 
   const totalActive = browsers.reduce((s, b) => s + b.active, 0);
   const pct = maxActive > 0 ? (totalActive / maxActive) * 100 : 0;
   const col = CATEGORY_COLORS.neutral;
   const trend = trendPct(totalActive, prevActive);
-
-  useEffect(() => {
-    const t = setTimeout(() => setVis(true), 80 + index * 60);
-    return () => clearTimeout(t);
-  }, [index]);
 
   const fetchSites = () => {
     const cacheKey = `${selectedDate}:${browsers[0].app}`;
@@ -100,10 +88,7 @@ const BrowserRow = memo(function BrowserRow({ browsers, maxActive, index, BASE, 
   };
 
   return (
-    <div style={{
-      opacity: vis ? 1 : 0, transform: vis ? "translateX(0)" : "translateX(-20px)",
-      transition: `opacity 0.4s ease ${index * 0.04}s, transform 0.4s ease ${index * 0.04}s`,
-    }}>
+    <div>
       <div
         onClick={handleExpand}
         onMouseEnter={() => setHov(true)}

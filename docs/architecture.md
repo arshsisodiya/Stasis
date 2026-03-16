@@ -12,7 +12,7 @@ Stasis uses a **dual-process architecture**: a compiled Python telemetry engine 
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  React 19 Frontend  (Vite)                               │   │
 │  │  WellbeingDashboard → Overview / Activity / Apps /       │   │
-│  │                        Limits / Settings tabs             │   │
+│  │                        Insights (Goals, Limits, Reports)  │   │
 │  └─────────────────────┬────────────────────────────────────┘   │
 │                         │  HTTP  localhost:7432                  │
 └─────────────────────────┼───────────────────────────────────────┘
@@ -62,8 +62,9 @@ The backend is a single compiled `.exe` (PyInstaller) that spawns several daemon
 | Thread name | Class / function | Restart policy |
 |---|---|---|
 | `ActivityLoggerThread` | `start_logging()` in `src/core/activity_logger.py` (external) | Daemon — restarted by watchdog if crashed |
-| `APIServerThread` | `APIServer.start()` — Flask/Werkzeug | Daemon |
+| `APIServerThread` | `APIServer.start()` — Flask/Werkzeug (threaded) | Daemon |
 | `DataRetentionThread` | `retention_worker()` | Daemon, sleeps 6 h between runs |
+| `WeeklyReportSchedulerThread` | Weekly Telegram report scheduler | Daemon |
 | `FileMonitorController` | `watchdog.Observer` | Managed separately, starts/stops on settings change |
 | `BlockingService._limit_monitor` | Checks limits every 15 s | Non-daemon (runs until `.stop()`) |
 | `BlockingService._process_guard` | Terminates blocked processes every 0.5 s | Non-daemon |
@@ -75,12 +76,14 @@ Flask is used with CORS enabled. All routes are registered as **Blueprints** via
 
 ```
 wellbeing_bp  ←  activity_routes, dashboard_routes, focus_routes,
-                  limits_routes, settings_routes, telegram_routes,
-                  system_routes, stats_routes, health_routes,
-                  danger_routes, spark_routes, update_routes
+                  limits_routes, goals_routes, report_routes,
+                  settings_routes, system_routes, stats_routes,
+                  health_routes, danger_routes, spark_routes
+telegram_bp   ←  telegram_routes
+update_bp     ←  update_routes
 ```
 
-The server binds to `127.0.0.1:7432` using Werkzeug's `make_server` (single-threaded, synchronous). All responses are JSON.
+The server binds to `127.0.0.1:7432` using Werkzeug's `make_server(..., threaded=True)`. All responses are JSON.
 
 ### Data pipeline
 
@@ -156,8 +159,10 @@ ActivityLogger  ─── window focus hook (Win32 GetForegroundWindow)
 | Overview | `OverviewPage.jsx` | `/api/wellbeing`, `/api/focus`, `/api/daily-stats`, `/api/spark-series` |
 | Activity | `ActivityPage.jsx` | `/api/sessions`, `/api/hourly-stats`, `/api/site-stats` |
 | Apps | `AppsPage.jsx` | `/api/daily-stats`, `/api/app-icon/<name>` |
-| Limits | `LimitsPage.jsx` | `/limits/all`, `/limits/blocked`, `/api/system/apps` |
-| Settings | `SettingsPage.jsx` | `/api/settings`, `/api/telegram/*`, `/api/update/*` |
+| Insights → Goals | `GoalsPage.jsx` | `/api/goals`, `/api/goals/progress`, `/api/goals/history` |
+| Insights → Limits | `LimitsPage.jsx` | `/limits/all`, `/limits/blocked`, `/api/system/apps`, `/api/limit-events` |
+| Insights → Reports | `WeeklyReportPage.jsx` | `/api/weekly-report/*`, `/api/hourly-activity` |
+| Settings | `SettingsPage.jsx` | `/api/settings`, `/api/settings/notifications/*`, `/api/telegram/*`, `/api/update/*` |
 
 ### Build output
 

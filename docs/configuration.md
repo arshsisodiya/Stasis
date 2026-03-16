@@ -8,15 +8,30 @@ Stasis stores all runtime configuration in the **`settings` table** of the SQLit
 
 | Key | Type | Default | UI location | Description |
 |---|---|---|---|---|
+| `notifications` | bool | `false` | Settings → General | Master toggle for desktop notifications. |
+| `notifications_enable_goal_events` | bool | `true` | Settings → General | Enable goal-threshold notifications. |
+| `notifications_enable_limit_events` | bool | `true` | Settings → General | Enable app-limit notifications. |
+| `notifications_enable_test_events` | bool | `true` | Settings → General | Allow test notification actions from settings. |
+| `notifications_enable_digest_events` | bool | `true` | Settings → General | Enable daily digest notifications. |
+| `notifications_quiet_hours_enabled` | bool | `false` | Settings → General | Silence notifications during configured quiet hours. |
+| `notifications_quiet_start` | str | `22:00` | Settings → General | Quiet-hours start time. |
+| `notifications_quiet_end` | str | `07:00` | Settings → General | Quiet-hours end time. |
+| `notifications_context_quiet_mode_enabled` | bool | `true` | Settings → General | Contextual suppression of noisy events. |
+| `notifications_daily_digest_time` | str | `21:00` | Settings → General | Preferred digest delivery time. |
+| `notifications_limit_snooze_until` | str | empty | Runtime | Snooze marker for limit notifications. |
 | `telegram_enabled` | bool | `false` | Settings → Telegram | Whether the Telegram bot service starts on boot. |
 | `telegram_token` | str (encrypted) | — | Settings → Telegram | Fernet-encrypted Telegram Bot token. |
 | `telegram_chat_id` | str (encrypted) | — | Settings → Telegram | Fernet-encrypted Telegram Chat ID. |
 | `file_logging_enabled` | bool | `false` | Settings → File Logging | Enable the watchdog file system monitor. |
 | `file_logging_essential_only` | bool | `false` | Settings → File Logging | Restrict file events to Documents, Desktop, and Downloads. |
 | `show_yesterday_comparison` | bool | `true` | Settings → Appearance | Show a yesterday-delta column in the Apps tab. |
+| `show_goals_in_overview` | bool | `true` | Settings → Appearance | Show goals status widgets on the overview screen. |
 | `hardware_acceleration` | bool | `true` | Settings → Appearance | Enable WebView2 GPU acceleration. Disable if you see rendering glitches. |
 | `browser_tracking` | bool | `true` | Settings → Tracking | Capture the active URL from Chrome/Firefox/Edge/Opera/Brave. |
 | `idle_detection` | bool | `true` | Settings → Tracking | Subtract idle time (no input for ≥ 2 min) from screen time totals. |
+| `weekly_report_telegram` | bool | `false` | Settings → Reports | Auto-send weekly report via Telegram (Sunday scheduler). |
+| `weekly_report_verbosity` | str | `standard` | Settings → Reports | Weekly report detail level: `compact`, `standard`, `detailed`. |
+| `weekly_report_last_sent_week` | str | empty | Runtime | Internal marker to prevent duplicate weekly sends. |
 | `data_retention_days` | int | `0` | Settings → Data | Auto-delete activity records older than N days. `0` = keep forever. |
 
 ---

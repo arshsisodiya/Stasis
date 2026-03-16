@@ -143,8 +143,10 @@ App.jsx
         ├── OverviewPage.jsx       ← Summary cards + trend chart
         ├── ActivityPage.jsx       ← Session timeline + site stats
         ├── AppsPage.jsx           ← Per-app breakdown with icons
-        ├── LimitsPage.jsx         ← Limit management + blocking UI
-        └── SettingsPage.jsx       ← All configuration panels
+    ├── GoalsPage.jsx          ← Goal definitions and progress
+    ├── LimitsPage.jsx         ← Limit management + blocking UI
+    ├── WeeklyReportPage.jsx   ← Weekly summaries, compare, export
+    └── SettingsPage.jsx       ← All configuration panels
 ```
 
 ### Shared utilities (`frontend/src/shared/`)
@@ -167,7 +169,7 @@ App.jsx
 
 1. Add your route function in the appropriate file under `src/api/` (or create a new one).
 2. If creating a new file, register the blueprint in `src/api/api_server.py` → `create_app()`.
-3. Decorate your function with `@wellbeing_bp.route("/api/my-endpoint")` (or a new blueprint).
+3. Decorate your function with `@wellbeing_bp.route("/api/my-endpoint")` (or use `telegram_bp` / `update_bp` when appropriate).
 4. Return `jsonify(your_data)`.
 
 ---

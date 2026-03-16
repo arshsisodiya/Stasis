@@ -19,7 +19,9 @@ It runs silently in the background, capturing which app you are using, how activ
 |---|---|
 | **Screen-time tracking** | Logs every foreground app with second-granularity, including the active window title and (for browsers) the current URL. |
 | **Productivity & focus scoring** | A configurable weighted formula rates each day 0–100 using deep-work time, engagement, flow streaks, and switch/idle penalties. |
+| **Weekly reporting** | Built-in weekly report experience with per-day breakdown, top apps, category insights, goals impact, and week-over-week comparison. |
 | **App limit enforcement** | Set per-app daily time budgets. Stasis automatically terminates processes once limits are reached, with optional temporary unblocks. |
+| **Goals & coaching signals** | Define goals, track daily progress, review drift alerts, and correlate goal completion with weekly productivity outcomes. |
 | **Telegram remote control** | Receive boot notifications, capture screenshots, pull activity logs, and lock/shutdown your PC from anywhere. |
 | **File system monitoring** | Optional background watcher for file create/modify/delete events across all drives. |
 | **Automatic self-updates** | Checks GitHub Releases and installs new versions in the background. |
@@ -41,6 +43,9 @@ It runs silently in the background, capturing which app you are using, how activ
 
 - :material-download: **[Installation](installation.md)**  
   Download the installer, system requirements, first-run setup.
+
+- :material-shield-lock: **[Privacy Policy](privacy-policy.md)**  
+  What Stasis collects, when data leaves your device, and your controls.
 
 - :material-cog: **[Configuration](configuration.md)**  
   Settings reference, app categories, ignored processes, startup options.

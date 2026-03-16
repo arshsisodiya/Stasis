@@ -5,6 +5,7 @@ The Python backend exposes a local REST API on **`http://127.0.0.1:7432`**.
 - All responses are **JSON**.
 - The optional `?date=YYYY-MM-DD` query parameter selects a historical day; omitting it defaults to **today**.
 - No authentication is required — the server only accepts connections from `127.0.0.1`.
+- The API includes daily analytics, goals, weekly reporting, notifications, limits, Telegram control, and updater endpoints.
 
 ---
 
@@ -51,6 +52,14 @@ Daily summary combining per-app screen time, hourly chart, category totals, and 
   "hourly": [0, 0, 0, 0, 0, 0, 30, 55, 60, 58, ...]
 }
 ```
+
+---
+
+### `GET /api/dashboard-bundle`
+
+Single-request convenience payload used by the frontend for faster first paint. Includes dashboard, wellbeing, focus, hourly, and related slices for the selected date.
+
+**Query params:** `?date=YYYY-MM-DD`
 
 ---
 
@@ -262,6 +271,12 @@ Lightweight last-N-days aggregate used for sparkline mini charts.
 
 ## System & Apps
 
+### `GET /api/init-bundle`
+
+Startup helper endpoint returning initial bootstrap data used by the shell.
+
+---
+
 ### `GET /api/ignored-apps`
 
 List of process names that are excluded from all activity reports.
@@ -373,6 +388,47 @@ Enable or disable idle-time subtraction from screen time totals.
 
 ---
 
+### `POST /api/settings/notifications/test`
+
+Sends a generic Windows notification test event.
+
+---
+
+### `POST /api/settings/notifications/test-goal`
+
+Sends a sample goal-threshold notification.
+
+---
+
+### `POST /api/settings/notifications/test-limit`
+
+Sends a sample limit notification with actions (snooze/extend/keep blocked).
+
+---
+
+### `GET /api/settings/notifications/history`
+
+Returns recent in-app notification history.
+
+**Query params:** `?limit=20`
+
+---
+
+### `GET /api/settings/notifications/action/<action>`
+
+Action handler endpoint used by Windows notification buttons.
+
+Supported actions include:
+
+- `open-limits`
+- `open-goals`
+- `open-review-day`
+- `snooze-limit`
+- `extend-limit`
+- `keep-blocked`
+
+---
+
 ## App Limits & Blocking
 
 ### `GET /limits/all`
@@ -428,6 +484,17 @@ Sets `unblock_until = now + 30 minutes`. The blocking service respects this unti
 
 ---
 
+### `POST /limits/reblock`
+
+Immediately removes temporary unblock and forces the app back into blocked state.
+
+**Body**
+```json
+{ "app_name": "chrome.exe" }
+```
+
+---
+
 ### `POST /limits/delete`
 
 Remove a limit entirely.
@@ -449,6 +516,112 @@ List of currently blocked apps (those over their limit and not temporarily unblo
   { "app_name": "chrome.exe", "blocked_at": "2024-01-15 18:32:00" }
 ]
 ```
+
+---
+
+## Goals
+
+### `GET /api/goals`
+
+List all configured goals.
+
+---
+
+### `POST /api/goals`
+
+Create a goal.
+
+**Body**
+```json
+{
+  "goal_type": "screen_time",
+  "target_value": 14400,
+  "target_unit": "seconds",
+  "direction": "under",
+  "label": "Daily screen time"
+}
+```
+
+---
+
+### `PUT /api/goals/<goal_id>`
+
+Update goal target/label/active state.
+
+---
+
+### `DELETE /api/goals/<goal_id>`
+
+Delete a goal and its associated logs.
+
+---
+
+### `GET /api/goals/progress`
+
+Returns daily progress against all active goals.
+
+**Query params:** `?date=YYYY-MM-DD`
+
+---
+
+### `GET /api/goals/history`
+
+Goal trend/history API for recent days.
+
+**Query params:** `?days=30`
+
+---
+
+## Weekly Reports
+
+### `GET /api/weekly-report`
+
+Main weekly report endpoint used by the Reports tab.
+
+**Query params:** `?week_of=YYYY-MM-DD&verbosity=compact|standard|detailed`
+
+Returns period summary, daily breakdown, category and app insights, limits, goals, and week trend slices.
+
+---
+
+### `GET /api/weekly-report/compare`
+
+Compare two weeks and return deltas.
+
+**Query params:** `?week_a=YYYY-MM-DD&week_b=YYYY-MM-DD`
+
+---
+
+### `GET /api/weekly-report/available-weeks`
+
+Returns selectable Monday-start week options.
+
+---
+
+### `POST /api/weekly-report/send-telegram`
+
+Send rendered weekly report to configured Telegram chat.
+
+**Body**
+```json
+{ "week_of": "2026-03-09" }
+```
+
+---
+
+### `GET /api/hourly-activity`
+
+Weekly 7x24 activity grid with productivity percentage per hour bucket.
+
+**Query params:** `?week_of=YYYY-MM-DD`
+
+---
+
+### `GET /api/limit-events`
+
+Range query for limit edits/hits used in weekly reporting.
+
+**Query params:** `?start=YYYY-MM-DD&end=YYYY-MM-DD`
 
 ---
 
@@ -487,6 +660,30 @@ Masked credentials and the last 10 commands received.
 ### `GET /api/telegram/full-status`
 
 Combined response of `/api/telegram/status` and `/api/telegram/config`.
+
+---
+
+### `POST /api/telegram/update-permissions`
+
+Update allowed Telegram command permissions.
+
+---
+
+### `GET /api/dependencies/check`
+
+Check optional dependency availability for media-related Telegram features.
+
+---
+
+### `GET /api/dependencies/progress`
+
+Track dependency installation progress.
+
+---
+
+### `POST /api/dependencies/install`
+
+Trigger dependency installation workflow.
 
 ---
 

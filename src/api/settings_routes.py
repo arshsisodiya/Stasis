@@ -26,9 +26,13 @@ def get_settings():
         "notifications_enable_goal_events": SettingsManager.get_bool("notifications_enable_goal_events", True),
         "notifications_enable_limit_events": SettingsManager.get_bool("notifications_enable_limit_events", True),
         "notifications_enable_test_events": SettingsManager.get_bool("notifications_enable_test_events", True),
+        "notifications_enable_digest_events": SettingsManager.get_bool("notifications_enable_digest_events", True),
         "notifications_quiet_hours_enabled": SettingsManager.get_bool("notifications_quiet_hours_enabled", False),
         "notifications_quiet_start": SettingsManager.get("notifications_quiet_start") or "22:00",
         "notifications_quiet_end": SettingsManager.get("notifications_quiet_end") or "07:00",
+        "notifications_context_quiet_mode_enabled": SettingsManager.get_bool("notifications_context_quiet_mode_enabled", True),
+        "notifications_daily_digest_time": SettingsManager.get("notifications_daily_digest_time") or "21:00",
+        "notifications_digest_last_sent_date": SettingsManager.get("notifications_digest_last_sent_date") or "",
         "notifications_limit_snooze_until": SettingsManager.get("notifications_limit_snooze_until") or "",
         "file_logging_enabled": SettingsManager.get_bool("file_logging_enabled", False),
         "file_logging_essential_only": SettingsManager.get_bool("file_logging_essential_only", False),
@@ -60,6 +64,9 @@ def update_settings():
     if "notifications_enable_test_events" in data:
         SettingsManager.set("notifications_enable_test_events", "true" if data["notifications_enable_test_events"] else "false")
 
+    if "notifications_enable_digest_events" in data:
+        SettingsManager.set("notifications_enable_digest_events", "true" if data["notifications_enable_digest_events"] else "false")
+
     if "notifications_quiet_hours_enabled" in data:
         SettingsManager.set("notifications_quiet_hours_enabled", "true" if data["notifications_quiet_hours_enabled"] else "false")
 
@@ -68,6 +75,15 @@ def update_settings():
 
     if "notifications_quiet_end" in data:
         SettingsManager.set("notifications_quiet_end", str(data["notifications_quiet_end"]).strip())
+
+    if "notifications_context_quiet_mode_enabled" in data:
+        SettingsManager.set("notifications_context_quiet_mode_enabled", "true" if data["notifications_context_quiet_mode_enabled"] else "false")
+
+    if "notifications_daily_digest_time" in data:
+        SettingsManager.set("notifications_daily_digest_time", str(data["notifications_daily_digest_time"]).strip())
+
+    if "notifications_digest_last_sent_date" in data:
+        SettingsManager.set("notifications_digest_last_sent_date", str(data["notifications_digest_last_sent_date"]).strip())
 
     if "notifications_limit_snooze_until" in data:
         SettingsManager.set("notifications_limit_snooze_until", str(data["notifications_limit_snooze_until"]).strip())
@@ -151,11 +167,13 @@ def test_goal_threshold_notification():
 def test_app_limit_notification():
     return _send_test_notification(
         title="App limit reached",
-        message="Test alert: Firefox reached its daily app time limit.",
+        message="Test alert: notepad++ reached its daily app time limit.",
         source="test-limit",
         actions=[
-            ("Open Limits", desktop_notifier.build_action_url("open-limits")),
-            ("Mute 1h", desktop_notifier.build_action_url("snooze-limit", minutes=60)),
+            ("Snooze 15m", desktop_notifier.build_action_url("snooze-limit", minutes=15)),
+            ("Snooze 1h", desktop_notifier.build_action_url("snooze-limit", minutes=60)),
+            ("Extend 10m", desktop_notifier.build_action_url("extend-limit", app="notepad++", minutes=10)),
+            ("Keep blocked", desktop_notifier.build_action_url("keep-blocked", app="notepad++")),
         ],
     )
 
@@ -179,9 +197,41 @@ def notification_action(action):
         body = f"<meta http-equiv='refresh' content='0;url={target}'><p>Opening Goals...</p>"
         return body, 200, {"Content-Type": "text/html; charset=utf-8"}
 
+    if action == "open-review-day":
+        target = f"{app_url}?section=activity"
+        body = f"<meta http-equiv='refresh' content='0;url={target}'><p>Opening daily review...</p>"
+        return body, 200, {"Content-Type": "text/html; charset=utf-8"}
+
     if action == "snooze-limit":
         minutes = request.args.get("minutes", 60, type=int)
         desktop_notifier.snooze_limit_notifications(minutes=minutes)
         return "<p>Limit notifications snoozed.</p>", 200, {"Content-Type": "text/html; charset=utf-8"}
+
+    if action == "extend-limit":
+        app_name = (request.args.get("app", "") or "").strip()
+        minutes = request.args.get("minutes", 10, type=int)
+        if not app_name:
+            return "<p>Missing app.</p>", 400, {"Content-Type": "text/html; charset=utf-8"}
+        try:
+            from src.database.database import set_temporary_unblock
+            from src.services.blocking_service import BlockingService
+            set_temporary_unblock(app_name, max(1, minutes))
+            BlockingService().force_unblock(app_name)
+            return f"<p>Extended {app_name} by {max(1, minutes)} minute(s).</p>", 200, {"Content-Type": "text/html; charset=utf-8"}
+        except Exception as exc:
+            return f"<p>Failed to extend limit: {exc}</p>", 500, {"Content-Type": "text/html; charset=utf-8"}
+
+    if action == "keep-blocked":
+        app_name = (request.args.get("app", "") or "").strip()
+        if not app_name:
+            return "<p>Missing app.</p>", 400, {"Content-Type": "text/html; charset=utf-8"}
+        try:
+            from src.database.database import force_reblock_app
+            from src.services.blocking_service import BlockingService
+            force_reblock_app(app_name)
+            BlockingService().force_reblock(app_name)
+            return f"<p>{app_name} remains blocked.</p>", 200, {"Content-Type": "text/html; charset=utf-8"}
+        except Exception as exc:
+            return f"<p>Failed to keep blocked: {exc}</p>", 500, {"Content-Type": "text/html; charset=utf-8"}
 
     return "<p>Unknown action.</p>", 404, {"Content-Type": "text/html; charset=utf-8"}

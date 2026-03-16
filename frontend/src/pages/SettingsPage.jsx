@@ -1050,9 +1050,12 @@ function DeveloperSection({ push }) {
     notifications_enable_goal_events: true,
     notifications_enable_limit_events: true,
     notifications_enable_test_events: true,
+    notifications_enable_digest_events: true,
     notifications_quiet_hours_enabled: false,
     notifications_quiet_start: "22:00",
     notifications_quiet_end: "07:00",
+    notifications_context_quiet_mode_enabled: true,
+    notifications_daily_digest_time: "21:00",
   });
   const [savingNotifCfg, setSavingNotifCfg] = useState(false);
 
@@ -1137,9 +1140,19 @@ function DeveloperSection({ push }) {
           control={<Toggle on={notifCfg.notifications_enable_test_events} onChange={v => saveNotifCfg({ notifications_enable_test_events: v })} />}
         />
         <SettingRow
+          label="Daily digest notifications"
+          desc="Send one end-of-day summary with screen time, top distraction, productivity ratio, and best streak"
+          control={<Toggle on={notifCfg.notifications_enable_digest_events} onChange={v => saveNotifCfg({ notifications_enable_digest_events: v })} />}
+        />
+        <SettingRow
           label="Quiet hours"
           desc="Suppress all notifications during the selected time window"
           control={<Toggle on={notifCfg.notifications_quiet_hours_enabled} onChange={v => saveNotifCfg({ notifications_quiet_hours_enabled: v })} />}
+        />
+        <SettingRow
+          label="Context-aware quiet mode"
+          desc="Suppress low-priority alerts when fullscreen, gaming, presenting, or focus session context is active"
+          control={<Toggle on={notifCfg.notifications_context_quiet_mode_enabled} onChange={v => saveNotifCfg({ notifications_context_quiet_mode_enabled: v })} />}
         />
         <SettingRow
           borderless
@@ -1161,6 +1174,19 @@ function DeveloperSection({ push }) {
                 style={{ width: 70, padding: "6px 8px", borderRadius: 8, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.05)", color: C.text, fontSize: 12 }}
               />
             </div>
+          )}
+        />
+        <SettingRow
+          borderless
+          label="Daily digest time"
+          desc="One summary notification at this time each day (HH:MM, 24h)"
+          control={(
+            <input
+              value={notifCfg.notifications_daily_digest_time || "21:00"}
+              onChange={e => setNotifCfg(p => ({ ...p, notifications_daily_digest_time: e.target.value }))}
+              onBlur={() => saveNotifCfg({ notifications_daily_digest_time: notifCfg.notifications_daily_digest_time || "21:00" })}
+              style={{ width: 70, padding: "6px 8px", borderRadius: 8, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.05)", color: C.text, fontSize: 12 }}
+            />
           )}
         />
         {savingNotifCfg && <div style={{ marginTop: 8, fontSize: 11, color: C.textMuted }}>Saving notification controls...</div>}

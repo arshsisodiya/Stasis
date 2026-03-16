@@ -6,6 +6,8 @@ from datetime import datetime
 from src.database.database import get_blocked_app_names
 from src.core.desktop_notifications import desktop_notifier
 from src.config.ignored_apps_manager import is_ignored
+from src.config.settings_manager import SettingsManager
+from src.config.category_manager import get_category
 
 LIMIT_CHECK_INTERVAL = 15
 PROCESS_CHECK_INTERVAL = 2
@@ -194,9 +196,12 @@ class BlockingService:
                                     event_key=f"limit-hit:{today}:{app_name}",
                                     cooldown_seconds=60,
                                     event_type=desktop_notifier.EVENT_LIMIT,
+                                    priority="critical",
                                     actions=[
-                                        ("Open Limits", desktop_notifier.build_action_url("open-limits")),
-                                        ("Mute 1h", desktop_notifier.build_action_url("snooze-limit", minutes=60)),
+                                        ("Snooze 15m", desktop_notifier.build_action_url("snooze-limit", minutes=15)),
+                                        ("Snooze 1h", desktop_notifier.build_action_url("snooze-limit", minutes=60)),
+                                        ("Extend 10m", desktop_notifier.build_action_url("extend-limit", app=app_name, minutes=10)),
+                                        ("Keep blocked", desktop_notifier.build_action_url("keep-blocked", app=app_name)),
                                     ],
                                     launch_url=desktop_notifier.build_action_url("open-limits"),
                                 )
@@ -219,6 +224,7 @@ class BlockingService:
                     now_ts = time.time()
                     if now_ts - self.last_goal_check_ts >= 60:
                         self._check_goal_notifications(cursor, today)
+                        self._check_daily_digest(cursor, now, today)
                         self.last_goal_check_ts = now_ts
 
                     with self._blocked_apps_lock:
@@ -370,6 +376,148 @@ class BlockingService:
         if unit == "percent":
             return f"{round(value, 1)}%"
         return str(round(value, 1))
+
+    def _check_daily_digest(self, cursor, now: datetime, date: str):
+        if not SettingsManager.get_bool("notifications_enable_digest_events", True):
+            return
+
+        digest_time = (SettingsManager.get("notifications_daily_digest_time") or "21:00").strip()
+        try:
+            digest_h, digest_m = [int(x) for x in digest_time.split(":", 1)]
+        except Exception:
+            digest_h, digest_m = 21, 0
+
+        if (now.hour, now.minute) < (digest_h, digest_m):
+            return
+
+        if (SettingsManager.get("notifications_digest_last_sent_date") or "") == date:
+            return
+
+        summary = self._build_daily_digest_summary(cursor, date)
+        if not summary:
+            return
+
+        sent = desktop_notifier.notify(
+            title="End-of-day summary",
+            message=summary,
+            event_key=f"daily-digest:{date}",
+            cooldown_seconds=3600,
+            event_type=desktop_notifier.EVENT_DIGEST,
+            actions=[("Review day", desktop_notifier.build_action_url("open-review-day"))],
+            launch_url=desktop_notifier.build_action_url("open-review-day"),
+        )
+        if sent:
+            SettingsManager.set("notifications_digest_last_sent_date", date)
+
+    def _build_daily_digest_summary(self, cursor, date: str) -> str | None:
+        cursor.execute(
+            """
+            SELECT app_name, main_category, COALESCE(SUM(active_seconds), 0)
+            FROM daily_stats
+            WHERE date = ?
+            GROUP BY app_name, main_category
+            """,
+            (date,),
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            return None
+
+        total_active = 0.0
+        productive = 0.0
+        distract_by_app: dict[str, float] = {}
+
+        for app_name, main_category, seconds in rows:
+            if is_ignored(app_name):
+                continue
+            secs = float(seconds or 0)
+            total_active += secs
+            if main_category == "productive":
+                productive += secs
+            if main_category == "unproductive":
+                distract_by_app[app_name] = distract_by_app.get(app_name, 0.0) + secs
+
+        if total_active <= 0:
+            return None
+
+        cursor.execute(
+            """
+            SELECT target_value
+            FROM goals
+            WHERE is_active = 1
+              AND goal_type = 'daily_screen_time'
+            ORDER BY updated_at DESC, id DESC
+            LIMIT 1
+            """
+        )
+        goal_row = cursor.fetchone()
+        screen_part = f"Screen {self._fmt_secs(total_active)}"
+        if goal_row and goal_row[0] is not None:
+            goal_secs = float(goal_row[0])
+            delta = total_active - goal_secs
+            if delta <= 0:
+                screen_part = f"Screen {self._fmt_secs(total_active)} vs goal {self._fmt_secs(goal_secs)}"
+            else:
+                screen_part = (
+                    f"Screen {self._fmt_secs(total_active)} vs goal {self._fmt_secs(goal_secs)} "
+                    f"(+{self._fmt_secs(delta)})"
+                )
+
+        top_distracting = "None"
+        if distract_by_app:
+            top_app = max(distract_by_app.items(), key=lambda x: x[1])
+            top_distracting = f"{top_app[0].replace('.exe', '')} ({self._fmt_secs(top_app[1])})"
+
+        productive_ratio = round((productive / total_active) * 100, 1)
+        best_streak = self._compute_best_productive_streak(cursor, date)
+
+        return (
+            f"{screen_part}. "
+            f"Top distraction: {top_distracting}. "
+            f"Productive ratio: {productive_ratio}%. "
+            f"Best streak: {self._fmt_secs(best_streak)}."
+        )
+
+    @staticmethod
+    def _fmt_secs(seconds: float) -> str:
+        total = int(max(0, round(seconds)))
+        h = total // 3600
+        m = (total % 3600) // 60
+        if h > 0:
+            return f"{h}h {m}m"
+        return f"{m}m"
+
+    @staticmethod
+    def _compute_best_productive_streak(cursor, date: str) -> float:
+        cursor.execute(
+            """
+            SELECT app_name, COALESCE(active_seconds, 0)
+            FROM activity_logs
+            WHERE timestamp LIKE ?
+            ORDER BY timestamp ASC
+            """,
+            (f"{date}%",),
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            return 0.0
+
+        best = 0.0
+        current = 0.0
+        for app_name, active_seconds in rows:
+            if is_ignored(app_name):
+                continue
+            main_category, _ = get_category(app_name, None)
+            secs = float(active_seconds or 0)
+            if secs <= 0:
+                secs = 1.0
+            if main_category == "productive":
+                current += secs
+                if current > best:
+                    best = current
+            else:
+                current = 0.0
+        return best
 
     # ─── PROCESS GUARD ────────────────────────────────────────────────────────
     def _process_guard(self):

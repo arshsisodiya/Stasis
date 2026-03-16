@@ -303,10 +303,33 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
       setActiveInsightTab("goals");
       return;
     }
+    if (action === "open-review-day") {
+      setActiveTab("activity");
+      return;
+    }
     if (action === "snooze-limit") {
       const minutes = parsed.searchParams.get("minutes") || "60";
       try {
         await fetch(`${BASE}/api/settings/notifications/action/snooze-limit?minutes=${encodeURIComponent(minutes)}`);
+      } catch { }
+      return;
+    }
+    if (action === "extend-limit") {
+      const app = parsed.searchParams.get("app") || "";
+      const minutes = parsed.searchParams.get("minutes") || "10";
+      if (!app) return;
+      try {
+        await fetch(
+          `${BASE}/api/settings/notifications/action/extend-limit?app=${encodeURIComponent(app)}&minutes=${encodeURIComponent(minutes)}`
+        );
+      } catch { }
+      return;
+    }
+    if (action === "keep-blocked") {
+      const app = parsed.searchParams.get("app") || "";
+      if (!app) return;
+      try {
+        await fetch(`${BASE}/api/settings/notifications/action/keep-blocked?app=${encodeURIComponent(app)}`);
       } catch { }
       return;
     }
@@ -322,6 +345,8 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
       } else if (section === "goals") {
         setActiveTab("insights");
         setActiveInsightTab("goals");
+      } else if (section === "activity") {
+        setActiveTab("activity");
       }
     } catch { }
   }, []);

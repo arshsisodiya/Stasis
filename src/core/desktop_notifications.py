@@ -21,6 +21,7 @@ class DesktopNotifier:
     EVENT_TEST = "test"
     EVENT_GOAL = "goal"
     EVENT_LIMIT = "limit"
+    EVENT_DIGEST = "digest"
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -37,10 +38,11 @@ class DesktopNotifier:
         event_key: str | None = None,
         cooldown_seconds: int = 300,
         event_type: str = EVENT_GENERAL,
+        priority: str = "normal",
         actions: list[tuple[str, str]] | None = None,
         launch_url: str | None = None,
     ) -> bool:
-        if not self._can_send(event_type):
+        if not self._can_send(event_type, priority=priority):
             return False
 
         now = time.time()
@@ -78,7 +80,7 @@ class DesktopNotifier:
         return ok
 
     def notify_test_with_details(self, title: str, message: str, source: str = "test", actions: list[tuple[str, str]] | None = None) -> dict:
-        if not self._can_send(self.EVENT_TEST):
+        if not self._can_send(self.EVENT_TEST, priority="normal"):
             return {
                 "ok": False,
                 "methods": [],
@@ -113,7 +115,7 @@ class DesktopNotifier:
         with self._lock:
             self._history.append(event)
 
-    def _can_send(self, event_type: str) -> bool:
+    def _can_send(self, event_type: str, priority: str = "normal") -> bool:
         if not self.is_enabled():
             return False
 
@@ -123,6 +125,8 @@ class DesktopNotifier:
             return False
         if event_type == self.EVENT_LIMIT and not SettingsManager.get_bool("notifications_enable_limit_events", True):
             return False
+        if event_type == self.EVENT_DIGEST and not SettingsManager.get_bool("notifications_enable_digest_events", True):
+            return False
 
         if self._is_quiet_hours_now():
             return False
@@ -130,7 +134,86 @@ class DesktopNotifier:
         if event_type == self.EVENT_LIMIT and self._is_limit_snoozed():
             return False
 
+        # Context-aware quiet mode suppresses only non-critical notifications.
+        if str(priority).strip().lower() != "critical" and self._is_context_quiet_now():
+            return False
+
         return True
+
+    @staticmethod
+    def _is_context_quiet_now() -> bool:
+        if not SettingsManager.get_bool("notifications_context_quiet_mode_enabled", True):
+            return False
+
+        try:
+            from src.core.activity_logger import get_active_window_info
+            info = get_active_window_info() or {}
+        except Exception:
+            return False
+
+        if not info:
+            return False
+
+        title = str(info.get("title") or "").lower()
+        app_name = str(info.get("app_name") or "").lower()
+        is_fullscreen = bool(info.get("is_fullscreen", False))
+
+        if is_fullscreen:
+            return True
+
+        presentation_markers = (
+            "presenting",
+            "presentation",
+            "slide show",
+            "slideshow",
+            "powerpoint",
+            "meeting is being recorded",
+        )
+        if any(m in title for m in presentation_markers):
+            return True
+
+        game_markers = (
+            "game",
+            "valorant",
+            "cs2",
+            "dota",
+            "fortnite",
+            "eldenring",
+            "gta",
+        )
+        if any(m in app_name for m in game_markers):
+            return True
+
+        # Best-effort focus-session detection from optional schema variants.
+        try:
+            from src.database.database import get_connection
+
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='focus_sessions'")
+            if cursor.fetchone():
+                cursor.execute("PRAGMA table_info(focus_sessions)")
+                cols = {row[1] for row in cursor.fetchall()}
+                if "is_active" in cols:
+                    cursor.execute("SELECT 1 FROM focus_sessions WHERE is_active = 1 LIMIT 1")
+                    if cursor.fetchone():
+                        conn.close()
+                        return True
+                elif "end_time" in cols:
+                    cursor.execute("SELECT 1 FROM focus_sessions WHERE (end_time IS NULL OR end_time = '') LIMIT 1")
+                    if cursor.fetchone():
+                        conn.close()
+                        return True
+                elif "ended_at" in cols:
+                    cursor.execute("SELECT 1 FROM focus_sessions WHERE (ended_at IS NULL OR ended_at = '') LIMIT 1")
+                    if cursor.fetchone():
+                        conn.close()
+                        return True
+            conn.close()
+        except Exception:
+            pass
+
+        return False
 
     @staticmethod
     def _is_quiet_hours_now() -> bool:

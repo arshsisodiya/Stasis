@@ -4,6 +4,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::process::Child;
+use std::io::Write;
+use std::net::TcpStream;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager, Emitter};
@@ -23,6 +25,74 @@ fn extract_deep_link(args: &[String]) -> Option<String> {
 
 fn emit_deep_link(app: &AppHandle, url: &str) {
     let _ = app.emit("stasis-deep-link", url.to_string());
+}
+
+fn get_query_param(url: &str, key: &str) -> Option<String> {
+    let q_start = url.find('?')?;
+    let query = &url[q_start + 1..];
+    for part in query.split('&') {
+        let mut kv = part.splitn(2, '=');
+        let k = kv.next().unwrap_or("");
+        let v = kv.next().unwrap_or("");
+        if k.eq_ignore_ascii_case(key) {
+            return Some(v.to_string());
+        }
+    }
+    None
+}
+
+fn deep_link_action(url: &str) -> Option<String> {
+    get_query_param(url, "action").map(|a| a.to_lowercase())
+}
+
+fn is_backend_only_action(url: &str) -> bool {
+    matches!(
+        deep_link_action(url).as_deref(),
+        Some("snooze-limit") | Some("extend-limit") | Some("keep-blocked")
+    )
+}
+
+fn backend_action_path(url: &str) -> Option<String> {
+    let action = deep_link_action(url)?;
+    match action.as_str() {
+        "snooze-limit" => {
+            let minutes = get_query_param(url, "minutes").unwrap_or_else(|| "60".to_string());
+            Some(format!("/api/settings/notifications/action/snooze-limit?minutes={}", minutes))
+        }
+        "extend-limit" => {
+            let app = get_query_param(url, "app")?;
+            let minutes = get_query_param(url, "minutes").unwrap_or_else(|| "10".to_string());
+            Some(format!(
+                "/api/settings/notifications/action/extend-limit?app={}&minutes={}",
+                app, minutes
+            ))
+        }
+        "keep-blocked" => {
+            let app = get_query_param(url, "app")?;
+            Some(format!("/api/settings/notifications/action/keep-blocked?app={}", app))
+        }
+        _ => None,
+    }
+}
+
+fn call_backend_get(path: &str) -> bool {
+    let addr = "127.0.0.1:7432";
+    let mut stream = match TcpStream::connect(addr) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let req = format!(
+        "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+        path
+    );
+    stream.write_all(req.as_bytes()).is_ok()
+}
+
+fn handle_backend_only_action(url: &str) -> bool {
+    if let Some(path) = backend_action_path(url) {
+        return call_backend_get(&path);
+    }
+    false
 }
 
 fn main() {
@@ -46,7 +116,11 @@ fn main() {
             // Handle deep-link when app is launched directly via protocol.
             let args: Vec<String> = std::env::args().collect();
             if let Some(url) = extract_deep_link(&args) {
-                emit_deep_link(app.handle(), &url);
+                if is_backend_only_action(&url) {
+                    let _ = handle_backend_only_action(&url);
+                } else {
+                    emit_deep_link(app.handle(), &url);
+                }
             }
 
             // -------- Tray Menu --------
@@ -124,25 +198,46 @@ fn main() {
         // The RunEvent handler below will prevent the app from exiting.
 
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            } else {
-                let _ = tauri::WebviewWindowBuilder::new(
-                    app,
-                    "main",
-                    tauri::WebviewUrl::App("index.html".into()),
-                )
-                .title("Stasis")
-                .inner_size(1100.0, 700.0)
-                .resizable(true)
-                .fullscreen(false)
-                .decorations(true)
-                .build();
-            }
-
             if let Some(url) = extract_deep_link(&args) {
+                if is_backend_only_action(&url) {
+                    let _ = handle_backend_only_action(&url);
+                    return;
+                }
+
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                } else {
+                    let _ = tauri::WebviewWindowBuilder::new(
+                        app,
+                        "main",
+                        tauri::WebviewUrl::App("index.html".into()),
+                    )
+                    .title("Stasis")
+                    .inner_size(1100.0, 700.0)
+                    .resizable(true)
+                    .fullscreen(false)
+                    .decorations(true)
+                    .build();
+                }
                 emit_deep_link(app, &url);
+            } else {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                } else {
+                    let _ = tauri::WebviewWindowBuilder::new(
+                        app,
+                        "main",
+                        tauri::WebviewUrl::App("index.html".into()),
+                    )
+                    .title("Stasis")
+                    .inner_size(1100.0, 700.0)
+                    .resizable(true)
+                    .fullscreen(false)
+                    .decorations(true)
+                    .build();
+                }
             }
         }))
         .plugin(tauri_plugin_opener::init())

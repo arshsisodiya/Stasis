@@ -1821,6 +1821,9 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
   const [tgStatus, setTgStatus] = useState(null);
   const [tgConfig, setTgConfig] = useState(null);
   const [updateState, setUpdateState] = useState(null);
+  const [mountedSections, setMountedSections] = useState({ [initialSection]: true });
+  const [activePanelHeight, setActivePanelHeight] = useState(0);
+  const panelRefs = useRef({});
   const { toasts, push } = useToast();
 
   useEffect(() => { const t = setTimeout(() => setMounted(true), 40); return () => clearTimeout(t); }, []);
@@ -1843,6 +1846,33 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
   }, []);
 
   useEffect(() => { const h = e => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [onClose]);
+
+  useEffect(() => {
+    setMountedSections(prev => (prev[section] ? prev : { ...prev, [section]: true }));
+  }, [section]);
+
+  useEffect(() => {
+    const el = panelRefs.current[section];
+    if (!el) return;
+
+    const updateHeight = () => {
+      const h = Math.ceil(el.scrollHeight || 0);
+      if (h > 0) setActivePanelHeight(h);
+    };
+
+    updateHeight();
+    let ro;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(updateHeight);
+      ro.observe(el);
+    }
+    window.addEventListener("resize", updateHeight);
+
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener("resize", updateHeight);
+    };
+  }, [section, mountedSections]);
 
   const meta = {
     general: { label: "General", sub: "App behaviour and tracking" },
@@ -1897,19 +1927,41 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
             <div style={{ width: 200, flexShrink: 0, padding: "16px 12px", borderRight: `1px solid ${C.border}`, background: "rgba(255,255,255,0.008)", overflowY: "auto" }}>
               <SideNav active={section} onChange={setSection} tgStatus={tgStatus} tgConfig={tgConfig} updateState={updateState} />
             </div>
-            {/* Scroll only active section content to avoid hidden tabs inflating scroll height. */}
+            {/* Keep mounted panels for smooth switching; height tracks active panel to avoid blank tail scroll. */}
             <div className="sp-scroll" style={{ flex: 1, overflowY: "auto", padding: "24px 28px", position: "relative" }}>
-              <div style={{ opacity: 1, transition: "opacity 0.22s ease" }}>
-                <div style={{ marginBottom: 24, paddingBottom: 18, borderBottom: `1px solid ${C.border}` }}>
-                  <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 21, color: C.text, fontWeight: 400, lineHeight: 1.1 }}>{meta[section]?.label}</div>
-                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5, lineHeight: 1.4 }}>{meta[section]?.sub}</div>
-                </div>
-                {section === "general" && <GeneralSection push={push} />}
-                {section === "developer" && <DeveloperSection push={push} />}
-                {section === "telegram" && <TelegramSection push={push} />}
-                {section === "security" && <SecuritySection push={push} />}
-                {section === "updates" && <UpdateSection push={push} />}
-                {section === "about" && <AboutSection push={push} />}
+              <div style={{ position: "relative", minHeight: Math.max(activePanelHeight, 320), transition: "min-height 0.2s ease" }}>
+                {Object.keys(meta).map(id => {
+                  if (!mountedSections[id]) return null;
+                  const isActive = id === section;
+                  return (
+                    <div
+                      key={id}
+                      ref={el => { panelRefs.current[id] = el; }}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        opacity: isActive ? 1 : 0,
+                        transform: isActive ? "translateY(0)" : "translateY(6px)",
+                        pointerEvents: isActive ? "auto" : "none",
+                        visibility: isActive ? "visible" : "hidden",
+                        transition: "opacity 0.18s ease, transform 0.18s ease",
+                      }}
+                    >
+                      <div style={{ marginBottom: 24, paddingBottom: 18, borderBottom: `1px solid ${C.border}` }}>
+                        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 21, color: C.text, fontWeight: 400, lineHeight: 1.1 }}>{meta[id]?.label}</div>
+                        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5, lineHeight: 1.4 }}>{meta[id]?.sub}</div>
+                      </div>
+                      {id === "general" && <GeneralSection push={push} />}
+                      {id === "developer" && <DeveloperSection push={push} />}
+                      {id === "telegram" && <TelegramSection push={push} />}
+                      {id === "security" && <SecuritySection push={push} />}
+                      {id === "updates" && <UpdateSection push={push} />}
+                      {id === "about" && <AboutSection push={push} />}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

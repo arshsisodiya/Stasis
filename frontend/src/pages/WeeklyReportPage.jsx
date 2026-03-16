@@ -166,27 +166,45 @@ function CategoryDonut({ categories = [] }) {
             );
           })}
 
-          {/* Centre: TOTAL label + time */}
-          <text x={CX} y={CY - 8} textAnchor="middle" fill="#475569"
-            fontSize="8" fontWeight="700" letterSpacing="1" style={{ fontFamily: "sans-serif" }}>
-            TOTAL
-          </text>
-          <text x={CX} y={CY + 9} textAnchor="middle" fill="#f1f5f9"
-            fontSize="14" fontWeight="800" style={{ fontFamily: "monospace" }}>
-            {fmtTime(total)}
-          </text>
-
-          {/* Hover: show % in centre */}
-          {hovered && (() => {
+          {/* Centre labels — idle: TOTAL + time, hover: category name + time + % */}
+          {!hovered ? (
+            <>
+              <text x={CX} y={CY - 8} textAnchor="middle" fill="#475569"
+                fontSize="8" fontWeight="700" letterSpacing="1" style={{ fontFamily: "sans-serif" }}>
+                TOTAL
+              </text>
+              <text x={CX} y={CY + 9} textAnchor="middle" fill="#f1f5f9"
+                fontSize="14" fontWeight="800" style={{ fontFamily: "monospace" }}>
+                {fmtTime(total)}
+              </text>
+            </>
+          ) : (() => {
             const cat = categories.find(c => (c.category || "other").toLowerCase() === hovered);
             if (!cat) return null;
             const pct = total > 0 ? Math.round((cat.total_seconds / total) * 100) : 0;
             const color = CATEGORY_COLORS[hovered] || "#64748b";
+            const label = (cat.category || "other");
+            // Capitalise first letter
+            const displayLabel = label.charAt(0).toUpperCase() + label.slice(1);
             return (
-              <text x={CX} y={CY + 27} textAnchor="middle" fill={color}
-                fontSize="12" fontWeight="800" style={{ fontFamily: "monospace" }}>
-                {pct}%
-              </text>
+              <>
+                {/* Category name */}
+                <text x={CX} y={CY - 14} textAnchor="middle" fill={color}
+                  fontSize="8" fontWeight="700" letterSpacing="0.5"
+                  style={{ fontFamily: "sans-serif", textTransform: "uppercase" }}>
+                  {displayLabel}
+                </text>
+                {/* Time */}
+                <text x={CX} y={CY + 3} textAnchor="middle" fill="#f1f5f9"
+                  fontSize="14" fontWeight="800" style={{ fontFamily: "monospace" }}>
+                  {fmtTime(cat.total_seconds)}
+                </text>
+                {/* Percentage */}
+                <text x={CX} y={CY + 20} textAnchor="middle" fill={color}
+                  fontSize="11" fontWeight="700" style={{ fontFamily: "monospace" }}>
+                  {pct}%
+                </text>
+              </>
             );
           })()}
         </svg>
@@ -231,6 +249,392 @@ function CategoryDonut({ categories = [] }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ── Hourly Activity Heatmap ──
+// Expects data: { grid: [{date, hour, total_seconds, productive_pct, dominant_category}] }
+// dailyBreakdown: [{date, total_seconds, productive_pct}] from report.daily_breakdown
+
+const HOUR_LABELS_FULL = Array.from({ length: 24 }, (_, h) => {
+  if (h === 0)  return "12 AM";
+  if (h === 6)  return "6 AM";
+  if (h === 12) return "12 PM";
+  if (h === 18) return "6 PM";
+  return "";
+});
+
+function fmtHour(h) {
+  if (h === 0)  return "12 AM";
+  if (h < 12)   return `${h} AM`;
+  if (h === 12) return "12 PM";
+  return `${h - 12} PM`;
+}
+
+// Derive text insights entirely from the grid data — no extra API call
+function deriveHourlyInsights(grid, dates) {
+  if (!grid || grid.length === 0) return [];
+  const insights = [];
+
+  // Build hourly totals across the whole week (h → {secs, prodSecs, count})
+  const hourTotals = Array.from({ length: 24 }, () => ({ secs: 0, prodSecs: 0, count: 0 }));
+  // Per-day peak
+  const dayPeaks = {};
+  // Weekday vs weekend splits
+  let wdSecs = 0, weSecs = 0, wdProdSecs = 0, weProdSecs = 0;
+
+  for (const row of grid) {
+    const h = row.hour;
+    const s = row.total_seconds || 0;
+    const ps = s * ((row.productive_pct || 0) / 100);
+    hourTotals[h].secs  += s;
+    hourTotals[h].prodSecs += ps;
+    hourTotals[h].count += 1;
+    if (!dayPeaks[row.date] || s > dayPeaks[row.date].secs) {
+      dayPeaks[row.date] = { hour: h, secs: s, cat: row.dominant_category || "" };
+    }
+    // date is YYYY-MM-DD — day-of-week from dates array
+    const dateIdx = dates.indexOf(row.date);
+    const isWeekend = dateIdx >= 5;
+    if (isWeekend) { weSecs += s; weProdSecs += ps; }
+    else           { wdSecs += s; wdProdSecs += ps; }
+  }
+
+  // 1. Peak week-hour (most total screen time)
+  const peakH = hourTotals.reduce((best, cur, i) => cur.secs > hourTotals[best].secs ? i : best, 0);
+  if (hourTotals[peakH].secs > 0) {
+    insights.push({
+      icon: "⏰",
+      label: "Busiest Hour",
+      value: fmtHour(peakH),
+      detail: `avg ${fmtTime(Math.round(hourTotals[peakH].secs / Math.max(hourTotals[peakH].count, 1)))} across active days`,
+      color: "#60a5fa",
+    });
+  }
+
+  // 2. Best productive window — 3-hour block with highest productive seconds
+  let bestWindowStart = -1, bestWindowProd = 0;
+  for (let h = 0; h <= 21; h++) {
+    const prod = hourTotals[h].prodSecs + hourTotals[h+1].prodSecs + hourTotals[h+2].prodSecs;
+    if (prod > bestWindowProd) { bestWindowProd = prod; bestWindowStart = h; }
+  }
+  if (bestWindowStart >= 0 && bestWindowProd > 60) {
+    insights.push({
+      icon: "🎯",
+      label: "Focus Window",
+      value: `${fmtHour(bestWindowStart)} – ${fmtHour(bestWindowStart + 3)}`,
+      detail: `peak 3-hr productive block`,
+      color: "#4ade80",
+    });
+  }
+
+  // 3. Earliest active hour (first hour with data on any day)
+  const earliest = hourTotals.findIndex(h => h.secs > 0);
+  if (earliest >= 0 && earliest < 8) {
+    insights.push({
+      icon: "🌅",
+      label: "Early Start",
+      value: fmtHour(earliest),
+      detail: "earliest screen activity",
+      color: "#fbbf24",
+    });
+  }
+
+  // 4. Latest active hour
+  let latest = -1;
+  for (let h = 23; h >= 0; h--) { if (hourTotals[h].secs > 0) { latest = h; break; } }
+  if (latest >= 22) {
+    insights.push({
+      icon: "🌙",
+      label: "Late Night",
+      value: fmtHour(latest),
+      detail: "latest screen activity this week",
+      color: "#a78bfa",
+    });
+  }
+
+  // 5. Morning vs afternoon vs evening breakdown
+  const morning   = hourTotals.slice(6, 12).reduce((s, h) => s + h.secs, 0);
+  const afternoon = hourTotals.slice(12, 18).reduce((s, h) => s + h.secs, 0);
+  const evening   = hourTotals.slice(18, 24).reduce((s, h) => s + h.secs, 0);
+  const total = morning + afternoon + evening;
+  if (total > 0) {
+    const dominant = morning >= afternoon && morning >= evening ? "Morning"
+      : afternoon >= evening ? "Afternoon" : "Evening";
+    const domSecs = dominant === "Morning" ? morning : dominant === "Afternoon" ? afternoon : evening;
+    const domPct = Math.round((domSecs / total) * 100);
+    insights.push({
+      icon: dominant === "Morning" ? "☀️" : dominant === "Afternoon" ? "🌤️" : "🌆",
+      label: "Peak Period",
+      value: dominant,
+      detail: `${domPct}% of daily screen time`,
+      color: dominant === "Morning" ? "#fbbf24" : dominant === "Afternoon" ? "#60a5fa" : "#a78bfa",
+    });
+  }
+
+  // 6. Weekend vs weekday
+  if (weSecs > 0 && wdSecs > 0) {
+    const wdAvg = wdSecs / 5;
+    const weAvg = weSecs / 2;
+    const diff = Math.abs(wdAvg - weAvg);
+    if (diff > 900) { // >15 min difference — worth mentioning
+      const heavier = wdAvg > weAvg ? "Weekdays" : "Weekends";
+      const lighter = wdAvg > weAvg ? "weekends" : "weekdays";
+      insights.push({
+        icon: "📅",
+        label: "Work/Rest",
+        value: `${heavier} heavier`,
+        detail: `${fmtTime(Math.round(diff))} more/day vs ${lighter}`,
+        color: "#22d3ee",
+      });
+    }
+  }
+
+  return insights;
+}
+
+function HourlyHeatmap({ data, weekStart, dailyBreakdown = [] }) {
+  const [tooltip, setTooltip] = useState(null);
+  const containerRef = useRef(null);
+
+  const lookup = useMemo(() => {
+    const map = {};
+    if (!data?.grid) return map;
+    for (const row of data.grid) map[`${row.date}:${row.hour}`] = row;
+    return map;
+  }, [data]);
+
+  const dates = useMemo(() => {
+    return DAY_LABELS.map((_, i) => {
+      const d = new Date(weekStart + "T12:00:00");
+      d.setDate(d.getDate() + i);
+      return localYMD(d);
+    });
+  }, [weekStart]);
+
+  const maxSecs = useMemo(() => {
+    let m = 1;
+    if (!data?.grid) return m;
+    for (const row of data.grid) if ((row.total_seconds || 0) > m) m = row.total_seconds;
+    return m;
+  }, [data]);
+
+  const peakHourByDay = useMemo(() => {
+    const map = {};
+    if (!data?.grid) return map;
+    for (const row of data.grid) {
+      const prev = map[row.date];
+      if (!prev || row.total_seconds > prev.secs)
+        map[row.date] = { hour: row.hour, secs: row.total_seconds, domCat: row.dominant_category || "" };
+    }
+    return map;
+  }, [data]);
+
+  // Derive insights from grid data
+  const insights = useMemo(() => deriveHourlyInsights(data?.grid || [], dates), [data, dates]);
+
+  function cellColor(secs, dominantCat) {
+    if (!secs || secs < 30) return "rgba(255,255,255,0.03)";
+    const intensity = Math.pow(Math.min(secs / maxSecs, 1), 0.55);
+    const cat = (dominantCat || "").toLowerCase();
+    let r, g, b;
+    if      (cat === "productive")    { r = 30;  g = 180; b = 100; }
+    else if (cat === "communication") { r = 50;  g = 130; b = 240; }
+    else if (cat === "browser")       { r = 130; g = 90;  b = 230; }
+    else if (cat === "neutral")       { r = 200; g = 150; b = 20;  }
+    else if (cat === "entertainment") { r = 220; g = 70;  b = 70;  }
+    else if (cat === "unproductive")  { r = 200; g = 40;  b = 60;  }
+    else if (cat === "system")        { r = 20;  g = 190; b = 210; }
+    else                              { r = 80;  g = 100; b = 120; }
+    return `rgba(${r},${g},${b},${(0.12 + intensity * 0.82).toFixed(2)})`;
+  }
+
+  function borderColor(secs, dominantCat) {
+    if (!secs || secs < 30) return "transparent";
+    const cat = (dominantCat || "").toLowerCase();
+    const m = {
+      productive: "rgba(74,222,128,0.3)", communication: "rgba(96,165,250,0.3)",
+      browser: "rgba(167,139,250,0.3)",   neutral: "rgba(251,191,36,0.3)",
+      entertainment: "rgba(248,113,113,0.3)", unproductive: "rgba(251,113,133,0.3)",
+      system: "rgba(34,211,238,0.3)",
+    };
+    return m[cat] || "rgba(100,116,139,0.2)";
+  }
+
+  const CELL_W = 28, CELL_H = 20, GAP = 2;
+  const DAY_COL_W = 30;
+  const TT_W = 148, TT_H = 72;
+
+  function handleMouseEnter(e, dayIdx, date, h, secs, prodPct, domCat) {
+    if (!secs) return;
+    const cell = e.currentTarget.getBoundingClientRect();
+    const container = containerRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
+    let left = cell.left - container.left + CELL_W / 2 - TT_W / 2;
+    let top  = cell.top  - container.top  - TT_H - 6;
+    const contW = containerRef.current?.offsetWidth || 800;
+    left = Math.max(0, Math.min(left, contW - TT_W));
+    if (top < 0) top = cell.top - container.top + CELL_H + 6;
+    setTooltip({ day: DAY_LABELS[dayIdx], hour: h, secs, prodPct, domCat, left, top });
+  }
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", width: "100%" }}>
+
+      {/* ── Hour labels header ── */}
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
+        <div style={{ width: DAY_COL_W, flexShrink: 0 }} />
+        <div style={{ display: "flex", flex: 1 }}>
+          {HOUR_LABELS_FULL.map((lbl, h) => (
+            <div key={h} style={{
+              flex: 1, position: "relative", height: 14,
+            }}>
+              {lbl && (
+                <span style={{
+                  position: "absolute", left: "50%", transform: "translateX(-50%)",
+                  fontSize: 8.5, color: "#3d526b", fontFamily: "'DM Mono',monospace",
+                  fontWeight: 600, whiteSpace: "nowrap", letterSpacing: "-0.01em",
+                }}>
+                  {lbl}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Grid rows ── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: GAP }}>
+        {dates.map((date, dayIdx) => {
+          const isWeekend = dayIdx >= 5;
+          const peak = peakHourByDay[date];
+          const peakColor = peak ? (CATEGORY_COLORS[(peak.domCat || "").toLowerCase()] || "#64748b") : "#1e293b";
+
+          return (
+            <div key={date} style={{ display: "flex", alignItems: "center" }}>
+              <div style={{
+                width: DAY_COL_W, flexShrink: 0, fontSize: 9, fontWeight: 700,
+                color: isWeekend ? "#3d526b" : "#4a6080",
+                fontFamily: "'DM Sans',sans-serif",
+                textAlign: "right", paddingRight: 7, letterSpacing: "0.04em",
+              }}>
+                {DAY_LABELS[dayIdx]}
+              </div>
+
+              {/* 24 cells — flex:1 each so they fill all available width */}
+              <div style={{ display: "flex", flex: 1 }}>
+                {Array.from({ length: 24 }, (_, h) => {
+                  const entry   = lookup[`${date}:${h}`];
+                  const secs    = entry?.total_seconds    || 0;
+                  const prodPct = entry?.productive_pct   || 0;
+                  const domCat  = entry?.dominant_category || "";
+                  const isPeak  = peak?.hour === h && secs > 0;
+
+                  return (
+                    <div
+                      key={h}
+                      onMouseEnter={e => handleMouseEnter(e, dayIdx, date, h, secs, prodPct, domCat)}
+                      onMouseLeave={() => setTooltip(null)}
+                      style={{
+                        flex: 1, height: CELL_H,
+                        marginRight: h < 23 ? GAP : 0,
+                        borderRadius: 3,
+                        background: cellColor(secs, domCat),
+                        border: isPeak ? `1px solid ${peakColor}` : `1px solid ${borderColor(secs, domCat)}`,
+                        boxShadow: isPeak && secs > 0 ? `0 0 4px ${peakColor}55` : "none",
+                        transition: "transform 0.08s",
+                      }}
+                      onMouseOver={e => { if (secs > 0) e.currentTarget.style.transform = "scale(1.35)"; }}
+                      onMouseOut={e => { e.currentTarget.style.transform = "scale(1)"; }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Tooltip ── */}
+      {tooltip && (
+        <div style={{
+          position: "absolute", left: tooltip.left, top: tooltip.top,
+          pointerEvents: "none",
+          background: "rgba(8,11,22,0.97)",
+          border: "1px solid rgba(255,255,255,0.11)",
+          borderRadius: 9, padding: "8px 11px",
+          zIndex: 200, whiteSpace: "nowrap",
+          boxShadow: "0 6px 20px rgba(0,0,0,0.65)",
+          width: TT_W,
+        }}>
+          <div style={{ fontSize: 9.5, color: "#475569", fontWeight: 600, marginBottom: 3 }}>
+            {tooltip.day} · {fmtHour(tooltip.hour)}
+          </div>
+          <div style={{ fontSize: 15, color: "#f1f5f9", fontFamily: "'DM Mono',monospace", fontWeight: 800, lineHeight: 1, marginBottom: 5 }}>
+            {fmtTime(tooltip.secs)}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            {tooltip.domCat && (
+              <>
+                <div style={{ width: 6, height: 6, borderRadius: 1.5, background: CATEGORY_COLORS[tooltip.domCat] || "#64748b", flexShrink: 0 }} />
+                <span style={{ fontSize: 10, color: CATEGORY_COLORS[tooltip.domCat] || "#94a3b8", textTransform: "capitalize", fontWeight: 600 }}>
+                  {tooltip.domCat}
+                </span>
+              </>
+            )}
+            {tooltip.prodPct > 0 && (
+              <span style={{ fontSize: 9.5, color: tooltip.prodPct >= 60 ? "#4ade80" : tooltip.prodPct >= 35 ? "#fbbf24" : "#f87171", marginLeft: tooltip.domCat ? 4 : 0 }}>
+                · {tooltip.prodPct}%
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Insights row ── */}
+      {insights.length > 0 && (
+        <div style={{
+          marginTop: 10,
+          paddingTop: 10,
+          borderTop: "1px solid rgba(255,255,255,0.05)",
+          display: "grid",
+          gridTemplateColumns: `repeat(${insights.length}, 1fr)`,
+          gap: 8,
+        }}>
+          {insights.map((ins, i) => (
+            <div key={i} style={{
+              background: `${ins.color}08`,
+              border: `1px solid ${ins.color}18`,
+              borderRadius: 9, padding: "8px 10px",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+                <span style={{ fontSize: 11 }}>{ins.icon}</span>
+                <span style={{ fontSize: 8.5, color: ins.color, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+                  {ins.label}
+                </span>
+              </div>
+              <div style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 800, fontFamily: "'DM Mono',monospace", lineHeight: 1.1, marginBottom: 3 }}>
+                {ins.value}
+              </div>
+              <div style={{ fontSize: 9.5, color: "#475569", lineHeight: 1.4 }}>
+                {ins.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Legend ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, paddingLeft: DAY_COL_W, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 8.5, color: "#2d3f52", fontWeight: 700, marginRight: 1 }}>Key:</span>
+        {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
+          <div key={cat} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: color, opacity: 0.7 }} />
+            <span style={{ fontSize: 8.5, color: "#3d526b", textTransform: "capitalize" }}>{cat}</span>
+          </div>
+        ))}
+        <span style={{ fontSize: 8.5, color: "#253040", marginLeft: 4 }}>· brighter = more time · outlined = peak hour</span>
       </div>
     </div>
   );
@@ -554,6 +958,7 @@ export default function WeeklyReportPage() {
   const [compareData, setCompareData] = useState(null);
   const [compareLoading, setCompareLoading] = useState(false);
   const [verbosity, setVerbosity] = useState("standard");
+  const [hourlyData, setHourlyData] = useState(null); // 7×24 grid from backend
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
   const reportRef = useRef(null);
@@ -591,11 +996,24 @@ export default function WeeklyReportPage() {
 
   const fetchReport = useCallback(async () => {
     setLoading(true);
+    setHourlyData(null);
     try {
       const r = await fetch(`${BASE}/api/weekly-report?week_of=${weekMonday}&verbosity=${verbosity}`);
       const j = await r.json();
       setReport(j.error ? null : j);
     } catch { setReport(null); }
+
+    // Fetch hourly activity grid — endpoint: /api/hourly-activity?week_of=YYYY-MM-DD
+    // Expected response: { grid: [ {date, hour, total_seconds, productive_pct}... ] }
+    // Falls back gracefully to null if endpoint doesn't exist yet
+    try {
+      const hr = await fetch(`${BASE}/api/hourly-activity?week_of=${weekMonday}`);
+      if (hr.ok) {
+        const hj = await hr.json();
+        setHourlyData(hj.error ? null : hj);
+      }
+    } catch { /* endpoint not yet available — heatmap will be hidden */ }
+
     setLoading(false);
   }, [weekMonday, verbosity]);
 
@@ -886,6 +1304,19 @@ export default function WeeklyReportPage() {
               <CategoryDonut categories={report.category_breakdown || []} />
             </Panel>
           </div>
+
+          {/* ── ROW 2b: Hourly Heatmap (only shown if backend returns data) ── */}
+          {hourlyData?.grid?.length > 0 && (
+            <Panel title="Hourly Activity" style={{ gap: 8 }} titleRight={
+              <span style={{ fontSize: 9, color: "#2d3f52" }}>hover cell · outlined = peak hour</span>
+            }>
+              <HourlyHeatmap
+                data={hourlyData}
+                weekStart={week.start}
+                dailyBreakdown={report.daily_breakdown || []}
+              />
+            </Panel>
+          )}
 
           {/* ── ROW 3: Top apps + Limits + Goals ── */}
           <div style={{ display: "grid", gridTemplateColumns: "280px 1fr 1fr", gap: 10 }}>

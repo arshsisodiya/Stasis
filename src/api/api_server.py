@@ -31,9 +31,9 @@ class APIServer:
         self.app = create_app(app_controller)
 
     def start(self):
-        self.server = make_server(self.host, self.port, self.app)
+        self.server = make_server(self.host, self.port, self.app, threaded=True)
 
-        print(f"API running on http://{self.host}:{self.port}")
+        print(f"API running on http://{self.host}:{self.port} (threaded)")
 
         self.server.serve_forever()
 

@@ -120,7 +120,7 @@ function DonutSVG({ segments, total, hovered, onSegEnter, onLeave }) {
               onMouseEnter={() => onSegEnter(seg.cat)}
               style={{
                 filter: isHov
-                  ? `drop-shadow(0 0 8px ${col.primary}cc) drop-shadow(0 0 20px ${col.primary}44)`
+                  ? `drop-shadow(0 0 10px ${col.primary}aa)`
                   : "none",
                 cursor: "pointer",
                 transition: "stroke-width 0.18s ease, filter 0.18s ease, opacity 0.18s ease",

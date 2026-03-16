@@ -131,7 +131,8 @@ CREATE INDEX idx_blocked_app ON blocked_apps(app_name);
 **Notes:**
 - Rows are inserted by `BlockingService._limit_monitor()` every 15 s when usage > limit.
 - Rows are removed by `/limits/unblock` (temporary override) or `/limits/toggle` (disable the limit).
-- `BlockingService._process_guard()` reads this table every 0.5 s to find and terminate running blocked processes.
+- Current blocked-state source of truth is `app_limits.is_blocked` (`blocked_apps` is maintained as a compatibility/runtime cache).
+- `BlockingService._process_guard()` enforces from in-memory blocked snapshots synchronized from `app_limits` state.
 
 ---
 
@@ -147,6 +148,21 @@ CREATE TABLE IF NOT EXISTS settings (
 ```
 
 See [Configuration → Settings reference](configuration.md#settings-reference) for all recognised keys and their meaning.
+
+---
+
+### `telegram_settings`
+
+Separate key-value store dedicated to Telegram configuration.
+
+```sql
+CREATE TABLE IF NOT EXISTS telegram_settings (
+    key    TEXT PRIMARY KEY,
+    value  TEXT
+);
+```
+
+This table stores Telegram runtime values such as encrypted token/chat ID, enable flag, and recent command metadata.
 
 ---
 
@@ -169,6 +185,61 @@ CREATE TABLE IF NOT EXISTS file_logs (
 
 ---
 
+### `goals`
+
+Goal definitions used by the Goals and Weekly Reports experiences.
+
+```sql
+CREATE TABLE IF NOT EXISTS goals (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    goal_type     TEXT NOT NULL,
+    label         TEXT,
+    target_value  REAL NOT NULL,
+    target_unit   TEXT NOT NULL DEFAULT 'seconds',
+    direction     TEXT NOT NULL DEFAULT 'under',
+    is_active     INTEGER DEFAULT 1,
+    created_at    TEXT,
+    updated_at    TEXT
+);
+```
+
+---
+
+### `goal_logs`
+
+Per-day materialized goal performance snapshots.
+
+```sql
+CREATE TABLE IF NOT EXISTS goal_logs (
+    goal_id       INTEGER NOT NULL,
+    date          TEXT NOT NULL,
+    actual_value  REAL,
+    target_value  REAL,
+    met           INTEGER DEFAULT 0,
+    PRIMARY KEY (goal_id, date)
+);
+```
+
+---
+
+### `limit_events`
+
+Audit-style event stream for app-limit hits and edits.
+
+```sql
+CREATE TABLE IF NOT EXISTS limit_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    app_name   TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    old_value  INTEGER,
+    new_value  INTEGER,
+    timestamp  TEXT NOT NULL,
+    date       TEXT NOT NULL
+);
+```
+
+---
+
 ## Full index summary
 
 | Index name | Table | Columns | Purpose |
@@ -178,7 +249,11 @@ CREATE TABLE IF NOT EXISTS file_logs (
 | `idx_activity_app_date` | `activity_logs` | `app_name, timestamp` | Composite for limit usage checks |
 | `idx_daily_date` | `daily_stats` | `date` | Dashboard / heatmap date lookups |
 | `idx_limit_app` | `app_limits` | `app_name` | O(1) limit lookup by app name |
+| `idx_limit_blocked` | `app_limits` | `is_blocked` | Fast blocked-limit scans |
 | `idx_blocked_app` | `blocked_apps` | `app_name` | O(1) blocked-status check |
+| `idx_goal_logs_date` | `goal_logs` | `date` | Goal progress history filtering |
+| `idx_limit_events_date` | `limit_events` | `date` | Weekly limit-event reporting |
+| `idx_limit_events_app` | `limit_events` | `app_name` | Per-app limit event analysis |
 
 ---
 

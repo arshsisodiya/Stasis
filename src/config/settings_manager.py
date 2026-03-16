@@ -1,12 +1,20 @@
+import threading
 from src.database.database import get_connection
 
 
 class BaseSettingsManager:
     """Base class for key-value settings management in different tables."""
     TABLE_NAME = "settings"
+    _cache: dict = {}
+    _cache_lock = threading.Lock()
 
     @classmethod
     def get(cls, key: str):
+        cache_key = f"{cls.TABLE_NAME}:{key}"
+        with cls._cache_lock:
+            if cache_key in cls._cache:
+                return cls._cache[cache_key]
+
         conn = get_connection()
         cursor = conn.cursor()
 
@@ -18,10 +26,10 @@ class BaseSettingsManager:
         row = cursor.fetchone()
         conn.close()
 
-        if row:
-            return row[0]
-
-        return None
+        value = row[0] if row else None
+        with cls._cache_lock:
+            cls._cache[cache_key] = value
+        return value
 
     @classmethod
     def set(cls, key: str, value):
@@ -36,6 +44,10 @@ class BaseSettingsManager:
         conn.commit()
         conn.close()
 
+        cache_key = f"{cls.TABLE_NAME}:{key}"
+        with cls._cache_lock:
+            cls._cache[cache_key] = str(value)
+
     @classmethod
     def delete(cls, key: str):
         conn = get_connection()
@@ -48,6 +60,10 @@ class BaseSettingsManager:
 
         conn.commit()
         conn.close()
+
+        cache_key = f"{cls.TABLE_NAME}:{key}"
+        with cls._cache_lock:
+            cls._cache.pop(cache_key, None)
 
     @classmethod
     def get_bool(cls, key: str, default: bool = False) -> bool:
@@ -82,12 +98,28 @@ class SettingsManager(BaseSettingsManager):
         """)
 
         defaults = {
+            "notifications": "false",
+            "notifications_enable_goal_events": "true",
+            "notifications_enable_limit_events": "true",
+            "notifications_enable_test_events": "true",
+            "notifications_enable_digest_events": "true",
+            "notifications_quiet_hours_enabled": "false",
+            "notifications_quiet_start": "22:00",
+            "notifications_quiet_end": "07:00",
+            "notifications_context_quiet_mode_enabled": "true",
+            "notifications_daily_digest_time": "21:00",
+            "notifications_digest_last_sent_date": "",
+            "notifications_limit_snooze_until": "",
             "file_logging_enabled": "false",
             "file_logging_essential_only": "false",
             "show_yesterday_comparison": "true",
+            "show_goals_in_overview": "true",
             "hardware_acceleration": "true",
-            "idle_detection": "1",
-            "browser_tracking": "1"
+            "idle_detection": "true",
+            "browser_tracking": "true",
+            "weekly_report_telegram": "false",
+            "weekly_report_verbosity": "standard",
+            "weekly_report_last_sent_week": ""
         }
 
         for key, value in defaults.items():

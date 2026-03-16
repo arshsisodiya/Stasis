@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { CATEGORY_COLORS, KNOWN_APP_EMOJIS, CATEGORY_EMOJIS } from "./constants";
-import { fmtTime, trendPct, resolveAppIcon, localYMD } from "./utils";
+import { fmtTime, resolveAppIcon, localYMD } from "./utils";
 
 // ─── SKELETON ─────────────────────────────────────────────────────────────────
 export function Skeleton({ w = "100%", h = 20, r = 8 }) {
@@ -211,7 +211,7 @@ export function TrendChip({ current, previous, mode = "time", isPositiveGood = t
       display: "inline-flex", alignItems: "center", gap: 5, padding: "3.5px 10px", borderRadius: 20,
       background: bg, border: `1px solid ${border}`,
       fontSize: 10, fontWeight: 700, color, letterSpacing: "-0.01em",
-      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+      transition: "background 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
       animation: "legend-slide-in 0.4s ease forwards",
       cursor: "default", userSelect: "none"
     }}>
@@ -221,13 +221,139 @@ export function TrendChip({ current, previous, mode = "time", isPositiveGood = t
   );
 }
 
+// ─── GOAL STATUS BLOCK ──────────────────────────────────────────────────────
+export function GoalStatusBlock({
+  hasGoal = false,
+  goalMet = false,
+  goalLabel = "",
+  goalDelta = "",
+  minHeight = 36,
+  onEditGoal,
+  streak7 = [],
+  currentStreak = 0,
+  emptyTitle = "",
+  emptyHint = "",
+  onCreateGoal,
+}) {
+  const containerStyle = {
+    width: "100%",
+    minHeight,
+    marginTop: 5,
+    display: "flex",
+    alignItems: "stretch",
+  };
+
+  if (!hasGoal) {
+    if (!emptyTitle || !onCreateGoal) return null;
+
+    return (
+      <div style={containerStyle}>
+        <button
+          onClick={onCreateGoal}
+          style={{
+            width: "100%",
+            border: "1px dashed rgba(148,163,184,0.16)",
+            background: "rgba(148,163,184,0.03)",
+            borderRadius: 10,
+            padding: "8px 10px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
+            gap: 2,
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <span style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 700, letterSpacing: "0.01em" }}>
+            {emptyTitle}
+          </span>
+          <span style={{ fontSize: 10, color: "#64748b" }}>
+            {emptyHint}
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={containerStyle}>
+      <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 5 }}>
+        <button
+          onClick={onEditGoal}
+          style={{
+            border: `1px solid ${goalMet ? "rgba(74,222,128,0.25)" : "rgba(248,113,113,0.25)"}`,
+            background: goalMet ? "rgba(74,222,128,0.08)" : "rgba(248,113,113,0.08)",
+            borderRadius: 10,
+            width: "100%",
+            minHeight,
+            padding: "5px 9px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <span style={{ fontSize: 9, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+            {goalLabel}
+          </span>
+          <span style={{ fontSize: 10, color: goalMet ? "#4ade80" : "#f87171", fontWeight: 700 }}>
+            {goalDelta}
+          </span>
+        </button>
+
+        <div style={{
+          width: "100%",
+          borderRadius: 9,
+          border: "1px solid rgba(255,255,255,0.06)",
+          background: "rgba(255,255,255,0.02)",
+          padding: "4px 8px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}>
+          <span style={{ fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, whiteSpace: "nowrap" }}>
+            7-Day Streak
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, flex: 1, justifyContent: "center" }}>
+            {(Array.isArray(streak7) ? streak7 : []).slice(0, 7).map((s, idx) => {
+              const dot = s === true ? "#4ade80" : s === false ? "#f87171" : "#334155";
+              return (
+                <div key={idx} style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: dot,
+                  boxShadow: s === true ? "0 0 7px rgba(74,222,128,0.8)" : "none",
+                  opacity: s === null ? 0.65 : 1,
+                  flexShrink: 0,
+                }} />
+              );
+            })}
+          </div>
+          <span style={{
+            fontSize: 9,
+            color: currentStreak > 0 ? "#fbbf24" : "#64748b",
+            fontWeight: 700,
+            fontFamily: "'DM Mono',monospace",
+            whiteSpace: "nowrap",
+          }}>
+            {currentStreak > 0 ? `${currentStreak}d` : "0d"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // ─── SECTION CARD ─────────────────────────────────────────────────────────────
-export function SectionCard({ title, children, style = {}, className = "" }) {
+export function SectionCard({ title, children, style = {}, className = "", ...props }) {
   return (
-    <div className={className} style={{
-      background: "rgba(15,18,34,0.7)", border: "1px solid rgba(255,255,255,0.07)",
-      borderRadius: 24, padding: "24px", backdropFilter: "blur(20px)", ...style
+    <div className={className} {...props} style={{
+      background: "rgba(15,18,34,0.95)", border: "1px solid rgba(255,255,255,0.07)",
+      borderRadius: 24, padding: "24px", ...style
     }}>
       {title && <div style={{
         fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase",
@@ -243,7 +369,7 @@ export function StatPill({ icon, label, value, color = "#4ade80", trend }) {
   return (
     <div style={{
       background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255,255,255,0.07)",
-      borderRadius: 16, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12, backdropFilter: "blur(10px)"
+      borderRadius: 16, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12
     }}>
       <div style={{
         width: 40, height: 40, borderRadius: 12, background: `${color}18`, border: `1px solid ${color}33`,
@@ -355,6 +481,21 @@ export function HourlyBar({ data, peakHour, BASE, selectedDate }) {
   const nowHour = new Date().getHours();
   const lbl = i => i === 0 ? "12 am" : i === 12 ? "12 pm" : i < 12 ? `${i} am` : `${i - 12} pm`;
 
+  // Live clock — fractional hour position for "now" needle
+  const isToday = selectedDate === localYMD();
+  const [nowFrac, setNowFrac] = useState(() => {
+    const n = new Date(); return n.getHours() + n.getMinutes() / 60 + n.getSeconds() / 3600;
+  });
+  useEffect(() => {
+    if (!isToday) return;
+    const tick = () => {
+      const n = new Date();
+      setNowFrac(n.getHours() + n.getMinutes() / 60 + n.getSeconds() / 3600);
+    };
+    const iv = setInterval(tick, 15000); // update every 15s — no flicker
+    return () => clearInterval(iv);
+  }, [isToday]);
+
   // Per-hour app breakdown from session data
   const [hourlyApps, setHourlyApps] = useState({});
   const fetchedRef = useRef(null);
@@ -455,6 +596,25 @@ export function HourlyBar({ data, peakHour, BASE, selectedDate }) {
           <span style={{ fontSize: 9, color: "#2d3f55", fontWeight: 500, whiteSpace: "nowrap", paddingRight: 4 }}>{max}m</span>
           <div style={{ flex: 1, height: 1, borderTop: "1px dashed rgba(255,255,255,0.07)" }} />
         </div>
+        {/* ── Live "now" needle ── */}
+        {isToday && (
+          <div style={{
+            position: "absolute", top: 0, bottom: 0,
+            left: `${(nowFrac / 24) * 100}%`,
+            width: 1,
+            background: "linear-gradient(180deg, rgba(74,222,128,0) 0%, #4ade80 35%, #4ade80 100%)",
+            pointerEvents: "none", zIndex: 4,
+          }}>
+            <div style={{
+              position: "absolute", top: 0, left: "50%",
+              transform: "translate(-50%, -4px)",
+              width: 7, height: 7, borderRadius: "50%",
+              background: "#4ade80",
+              boxShadow: "0 0 0 3px rgba(74,222,128,0.25)",
+              animation: "now-pulse 2s ease-in-out infinite",
+            }} />
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 72, padding: "0 2px" }}>
           {data.map((v, i) => {
             const h = max > 0 ? (v / max) * 68 : 2;
@@ -505,6 +665,10 @@ export function HourlyBar({ data, peakHour, BASE, selectedDate }) {
 
 // ─── DONUT CSS ────────────────────────────────────────────────────────────────
 export const DONUT_CSS = `
+      @keyframes now-pulse {
+        0%, 100% { box-shadow: 0 0 0 3px rgba(74,222,128,0.25); transform: translate(-50%, -4px) scale(1); }
+        50%       { box-shadow: 0 0 0 6px rgba(74,222,128,0.08); transform: translate(-50%, -4px) scale(1.2); }
+      }
       @keyframes center-fade-in {
         from {opacity: 0; transform: scale(0.88) translateY(4px); }
       to   {opacity: 1; transform: scale(1) translateY(0); }

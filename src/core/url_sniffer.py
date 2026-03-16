@@ -138,3 +138,72 @@ def get_browser_url(hwnd=None):
         _co_uninitialize()
 
     return result[0]
+
+
+# ===============================
+# BACKGROUND URL RESOLVER
+# ===============================
+_URL_POLL_INTERVAL = 3  # seconds between background URL polls
+
+BROWSER_NAMES = ["chrome", "msedge", "brave", "firefox", "opera", "vivaldi"]
+
+
+class BackgroundURLResolver:
+    """
+    Resolves browser URLs on a dedicated daemon thread every _URL_POLL_INTERVAL
+    seconds.  The main logger loop reads the cached result via get_cached_url()
+    which never blocks.
+
+    This keeps the heavy COM/UIA work off the 1-second logger tick.
+    """
+
+    def __init__(self):
+        self._cached_url: str | None = None
+        self._cached_hwnd: int | None = None
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    # -- public ---------------------------------------------------------
+    def start(self):
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self._poll_loop, daemon=True, name="URLResolver"
+        )
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+
+    def get_cached_url(self, hwnd: int, app_name: str) -> str | None:
+        """
+        Returns the last resolved URL if *hwnd* matches the window that was
+        resolved.  If the foreground window changed since the last poll,
+        returns None (the next poll cycle will pick it up).
+        """
+        if not any(b in app_name.lower() for b in BROWSER_NAMES):
+            return None
+        with self._lock:
+            if self._cached_hwnd == hwnd:
+                return self._cached_url
+        return None
+
+    # -- internal -------------------------------------------------------
+    def _poll_loop(self):
+        while not self._stop.is_set():
+            try:
+                hwnd = win32gui.GetForegroundWindow()
+                if hwnd:
+                    url = get_browser_url(hwnd=hwnd)
+                    with self._lock:
+                        self._cached_hwnd = hwnd
+                        self._cached_url = url
+            except Exception:
+                pass
+            self._stop.wait(_URL_POLL_INTERVAL)
+
+
+# Singleton — started in activity_logger.start_logging()
+url_resolver = BackgroundURLResolver()

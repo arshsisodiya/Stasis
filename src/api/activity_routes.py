@@ -1,10 +1,22 @@
 from flask import jsonify, request
 from collections import defaultdict
 from urllib.parse import urlparse
+from datetime import datetime, timedelta
 
 from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date
 from src.database.database import get_connection
+from src.config.category_manager import get_category
 from src.config.ignored_apps_manager import is_ignored
+
+
+def _week_bounds(date_str=None):
+    if date_str:
+        date_value = datetime.strptime(date_str, "%Y-%m-%d").date()
+    else:
+        date_value = datetime.now().date()
+    monday = date_value - timedelta(days=date_value.weekday())
+    sunday = monday + timedelta(days=6)
+    return monday.isoformat(), sunday.isoformat()
 
 
 # =====================================
@@ -50,6 +62,7 @@ def heatmap():
                     ELSE 0
                 END
             FROM daily_stats
+            WHERE date >= date('now', '-60 days')
             ORDER BY date DESC
         """)
 
@@ -161,6 +174,7 @@ def weekly_trend():
                     ELSE 0
                 END
             FROM daily_stats
+            WHERE date >= date('now', '-14 days')
             ORDER BY date DESC
         """)
 
@@ -244,6 +258,84 @@ def hourly():
         ]
 
         return jsonify(hourly_data)
+
+    finally:
+        conn.close()
+
+
+@wellbeing_bp.route("/api/hourly-activity")
+def weekly_hourly_activity():
+    week_of = request.args.get("week_of")
+
+    try:
+        monday, sunday = _week_bounds(week_of)
+    except ValueError:
+        return jsonify({"error": "week_of must be YYYY-MM-DD"}), 400
+
+    week_end_exclusive = (
+        datetime.strptime(sunday, "%Y-%m-%d") + timedelta(days=1)
+    ).strftime("%Y-%m-%d")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT
+                substr(timestamp, 1, 10) AS log_date,
+                strftime('%H', timestamp) AS hour,
+                app_name,
+                url,
+                SUM(active_seconds) AS total_active
+            FROM activity_logs
+            WHERE timestamp >= ?
+              AND timestamp < ?
+              AND active_seconds > 0
+            GROUP BY log_date, hour, app_name, url
+            ORDER BY log_date ASC, hour ASC
+        """, (monday, week_end_exclusive))
+
+        buckets = defaultdict(lambda: {"total_seconds": 0, "productive_seconds": 0, "category_seconds": {}})
+        for log_date, hour, app_name, url, total_active in cursor.fetchall():
+            if is_ignored(app_name):
+                continue
+
+            seconds = safe(total_active)
+            if seconds <= 0:
+                continue
+
+            main_category, _ = get_category(app_name, url)
+            # After you compute main_category, track which category dominates the bucket
+            bucket = buckets[(log_date, int(hour))]
+            bucket["total_seconds"] += seconds
+            bucket["category_seconds"][main_category] = bucket["category_seconds"].get(main_category, 0) + seconds
+            if main_category == "productive":
+                bucket["productive_seconds"] += seconds
+
+        grid = []
+        for (log_date, hour), totals in sorted(buckets.items()):
+            total_seconds = totals["total_seconds"]
+            productive_seconds = totals["productive_seconds"]
+            productive_pct = round((productive_seconds / total_seconds) * 100, 1) if total_seconds > 0 else 0
+
+            # Pick the category with most seconds in this hour.
+            dominant_category = max(
+                totals["category_seconds"],
+                key=totals["category_seconds"].get,
+            ) if totals["category_seconds"] else "other"
+
+            grid.append({
+                "date": log_date,
+                "hour": hour,
+                "total_seconds": total_seconds,
+                "productive_pct": productive_pct,
+                "dominant_category": dominant_category,
+            })
+
+        return jsonify({
+            "week": {"start": monday, "end": sunday},
+            "grid": grid,
+        })
 
     finally:
         conn.close()

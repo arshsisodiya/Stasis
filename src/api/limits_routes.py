@@ -6,18 +6,27 @@ from src.database.database import (
     toggle_limit,
     get_blocked_apps,
     delete_app_limit,
-    set_temporary_unblock
+    set_temporary_unblock,
+    get_limit_for_app,
+    log_limit_event,
+    force_reblock_app
 )
 
 
 @wellbeing_bp.route("/limits/set", methods=["POST"])
 def api_set_limit():
     data = request.json
+    app_name = data["app_name"]
+    new_limit = int(data["limit_seconds"])
 
-    set_app_limit(
-        data["app_name"],
-        int(data["limit_seconds"])
-    )
+    # Check if this is an edit (existing limit)
+    existing = get_limit_for_app(app_name)
+    if existing:
+        old_limit = existing[0]
+        if old_limit != new_limit:
+            log_limit_event(app_name, "edit", old_value=old_limit, new_value=new_limit)
+
+    set_app_limit(app_name, new_limit)
 
     from src.services.blocking_service import BlockingService
     BlockingService().start()
@@ -34,7 +43,10 @@ def api_get_limits():
             "id": row[0],
             "app_name": row[1],
             "daily_limit_seconds": row[2],
-            "is_enabled": bool(row[3])
+            "is_enabled": bool(row[3]),
+            "unblock_until": row[4],
+            "is_blocked": bool(row[5]),
+            "blocked_at": row[6]
         }
         for row in limits
     ])
@@ -57,7 +69,23 @@ def api_unblock():
         int(data["minutes"])
     )
 
+    from src.services.blocking_service import BlockingService
+    BlockingService().force_unblock(data["app_name"])
+
     return jsonify({"status": "temporarily_unblocked"})
+
+
+@wellbeing_bp.route("/limits/reblock", methods=["POST"])
+def api_reblock_now():
+    data = request.json
+    app_name = data["app_name"]
+
+    force_reblock_app(app_name)
+
+    from src.services.blocking_service import BlockingService
+    BlockingService().force_reblock(app_name)
+
+    return jsonify({"status": "reblocked"})
 
 
 @wellbeing_bp.route("/limits/delete", methods=["POST"])

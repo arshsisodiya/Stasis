@@ -1,14 +1,29 @@
 from flask import jsonify
+import time
 
 from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date
 from src.database.database import get_connection
 from src.config.ignored_apps_manager import is_ignored
+
+# ── Focus score cache ─────────────────────────────────────────────────────────
+# Today's date is cached for up to _TTL seconds; historical dates are cached
+# permanently (they can never change).
+_focus_cache: dict = {}  # date -> (result_dict, timestamp)
+_FOCUS_TTL = 45          # seconds — today's score refreshes this often
 
 
 @wellbeing_bp.route("/api/focus")
 def focus():
 
     selected_date = get_selected_date()
+
+    # Check cache
+    import datetime as _dt
+    today = _dt.date.today().isoformat()
+    if selected_date in _focus_cache:
+        cached_result, cached_at = _focus_cache[selected_date]
+        if selected_date != today or (time.monotonic() - cached_at) < _FOCUS_TTL:
+            return jsonify(cached_result)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -58,9 +73,9 @@ def focus():
         cursor.execute("""
             SELECT timestamp, app_name
             FROM activity_logs
-            WHERE date(timestamp) = ?
+            WHERE timestamp >= ? AND timestamp < date(?, '+1 day')
             ORDER BY timestamp ASC
-        """, (selected_date,))
+        """, (selected_date, selected_date))
 
         logs = [
             (ts, app)
@@ -170,14 +185,19 @@ def focus():
 
         score = max(0, min(100, round(score)))
 
-        return jsonify({
+        result = {
             "score": score,
             "deepWorkSeconds": productive_seconds,
             "flowBonus": flow_bonus,
             "engagementScore": round(engagement_score, 1),
             "switchPenalty": round(switch_penalty, 1),
             "idlePenalty": round(idle_penalty, 1)
-        })
+        }
+
+        # Store in cache
+        _focus_cache[selected_date] = (result, time.monotonic())
+
+        return jsonify(result)
 
     finally:
         conn.close()

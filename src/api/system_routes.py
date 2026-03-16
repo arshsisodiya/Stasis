@@ -2,13 +2,50 @@ import os
 import io
 import base64
 import hashlib
-from flask import jsonify, send_file
+from flask import jsonify, send_file, current_app
 from src.api.wellbeing_routes import wellbeing_bp
 from src.database.database import get_connection
 from src.config.storage import get_icons_dir
 from src.utils.icon_extractor import extract_icon_as_base64, get_exe_path_by_name
 from src.utils.app_discovery import get_installed_apps
 from src.config.ignored_apps_manager import load_ignored_apps
+
+
+# =====================================
+# Init Bundle — single request for all mount-time metadata
+# =====================================
+
+@wellbeing_bp.route("/api/init-bundle")
+def init_bundle():
+    """
+    Returns everything the frontend needs on first mount in a single
+    round-trip: settings, ignored apps, available dates, heatmap,
+    spark series, and update status.
+    """
+    client = current_app.test_client()
+    keys = {
+        "settings":       "/api/settings",
+        "ignoredApps":    "/api/ignored-apps",
+        "availableDates": "/api/available-dates",
+        "heatmap":        "/api/heatmap",
+        "sparkSeries":    "/api/spark-series?days=7",
+    }
+    result = {}
+    for key, path in keys.items():
+        try:
+            resp = client.get(path)
+            result[key] = resp.get_json()
+        except Exception:
+            result[key] = None
+
+    # Update status comes from a different blueprint
+    try:
+        resp = client.get("/api/update/status")
+        result["updateStatus"] = resp.get_json()
+    except Exception:
+        result["updateStatus"] = None
+
+    return jsonify(result)
 
 
 @wellbeing_bp.route("/api/ignored-apps")

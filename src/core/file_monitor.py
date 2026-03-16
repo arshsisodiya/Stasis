@@ -24,6 +24,7 @@ Usage
 import time
 import datetime
 import threading
+import collections
 import psutil
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -64,11 +65,26 @@ def _get_local_drives():
 # ─── Event handler ────────────────────────────────────────────────────────────
 
 class _ActivityHandler(FileSystemEventHandler):
-    """Handles raw watchdog events and writes qualifying ones to the DB."""
+    """Handles raw watchdog events and batches DB writes for efficiency."""
+
+    _FLUSH_INTERVAL = 2  # seconds between batch flushes
+    _MAX_QUEUE = 500     # drop oldest if queue exceeds this
+    _MAX_THROTTLE_CACHE = 10_000  # max unique paths in throttle dict
 
     def __init__(self, essential_only: bool):
         self._essential_only = essential_only
-        self._last_logged: dict[str, float] = {}
+        self._last_logged: collections.OrderedDict = collections.OrderedDict()
+        self._queue: collections.deque = collections.deque(maxlen=self._MAX_QUEUE)
+        self._queue_lock = threading.Lock()
+        self._flush_thread = threading.Thread(
+            target=self._flush_loop, daemon=True, name="FileMonitorFlush"
+        )
+        self._stop = threading.Event()
+        self._flush_thread.start()
+
+    def stop_flusher(self):
+        self._stop.set()
+        self._flush_pending()  # drain remaining items
 
     def _should_ignore(self, path: str) -> bool:
         if path.startswith(BASE_DIR):
@@ -81,44 +97,61 @@ class _ActivityHandler(FileSystemEventHandler):
                 return True
         return False
 
-    def _log(self, action: str, path: str):
+    def _enqueue(self, action: str, path: str):
         now = time.time()
         # Throttle: same path within 1 s → skip
         if path in self._last_logged and now - self._last_logged[path] < 1:
             return
+        # Evict oldest entries when cache is full to prevent unbounded growth
+        while len(self._last_logged) >= self._MAX_THROTTLE_CACHE:
+            self._last_logged.popitem(last=False)
         self._last_logged[path] = now
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self._queue_lock:
+            self._queue.append((timestamp, action, path))
+
+    def _flush_pending(self):
+        with self._queue_lock:
+            batch = list(self._queue)
+            self._queue.clear()
+        if not batch:
+            return
         try:
             conn = get_connection()
             cursor = conn.cursor()
-            cursor.execute(
+            cursor.executemany(
                 "INSERT INTO file_logs (timestamp, action, file_path) VALUES (?, ?, ?)",
-                (timestamp, action, path),
+                batch,
             )
             conn.commit()
             conn.close()
         except Exception as exc:
-            logger.error("File DB insert error: %s", exc)
+            logger.error("File DB batch insert error: %s", exc)
+
+    def _flush_loop(self):
+        while not self._stop.is_set():
+            self._stop.wait(self._FLUSH_INTERVAL)
+            self._flush_pending()
 
     def on_created(self, event):
         if not event.is_directory and not self._should_ignore(event.src_path):
-            self._log("CREATED/DOWNLOADED", event.src_path)
+            self._enqueue("CREATED/DOWNLOADED", event.src_path)
 
     def on_modified(self, event):
         if not event.is_directory and not self._should_ignore(event.src_path):
-            self._log("MODIFIED", event.src_path)
+            self._enqueue("MODIFIED", event.src_path)
 
     def on_moved(self, event):
         if not event.is_directory:
             src_ok = not self._should_ignore(event.src_path)
             dst_ok = not self._should_ignore(event.dest_path)
             if src_ok or dst_ok:
-                self._log("MOVED/RENAMED", f"{event.src_path} -> {event.dest_path}")
+                self._enqueue("MOVED/RENAMED", f"{event.src_path} -> {event.dest_path}")
 
     def on_deleted(self, event):
         if not event.is_directory and not self._should_ignore(event.src_path):
-            self._log("DELETED", event.src_path)
+            self._enqueue("DELETED", event.src_path)
 
 
 # ─── Controller ───────────────────────────────────────────────────────────────
@@ -137,6 +170,7 @@ class FileMonitorController:
 
     def __init__(self):
         self._observer: Observer | None = None
+        self._handler: _ActivityHandler | None = None
         self._observer_lock = threading.Lock()
         # Poked whenever the file_logging_enabled setting changes
         self._change_event = threading.Event()
@@ -187,6 +221,7 @@ class FileMonitorController:
 
             observer.start()
             self._observer = observer
+            self._handler = handler
             logger.info("FileMonitor: Observer started (file logging ON).")
 
     def _stop_observer(self):
@@ -202,7 +237,16 @@ class FileMonitorController:
                 logger.warning("FileMonitor: error stopping Observer — %s", exc)
             finally:
                 self._observer = None
-                logger.info("FileMonitor: Observer stopped (file logging OFF).")
+
+            # Drain queued file events to DB before discarding handler
+            if self._handler is not None:
+                try:
+                    self._handler.stop_flusher()
+                except Exception:
+                    pass
+                self._handler = None
+
+            logger.info("FileMonitor: Observer stopped (file logging OFF).")
 
     def _manager_loop(self):
         """

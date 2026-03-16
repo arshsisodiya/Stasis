@@ -1,4 +1,4 @@
-from flask import jsonify
+from flask import jsonify, request
 
 from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date
 from src.database.database import get_connection
@@ -171,6 +171,9 @@ def wellbeing():
 
         category_data = {}
 
+        top_app = "N/A"
+        app_totals = {}  # track per-app total for top_app without extra query
+
         for main_cat, active_secs, app_name in category_rows:
 
             if is_ignored(app_name):
@@ -179,6 +182,11 @@ def wellbeing():
             category_data[main_cat] = (
                 category_data.get(main_cat, 0) + active_secs
             )
+            app_totals[app_name] = app_totals.get(app_name, 0) + safe(active_secs)
+
+        # Determine top app from the data we already have
+        if app_totals:
+            top_app = max(app_totals, key=app_totals.get)
 
         productive = safe(category_data.get("productive", 0))
 
@@ -189,7 +197,8 @@ def wellbeing():
 
         unproductive = safe(category_data.get("unproductive", 0))
 
-        total_active = productive + neutral + unproductive
+        # Screen time = ALL non-ignored usage (entertainment, communication, system, etc.)
+        total_active = sum(category_data.values())
 
         cursor.execute("""
             SELECT
@@ -219,23 +228,6 @@ def wellbeing():
             total_keys += safe(keys)
             total_clicks += safe(clicks)
             total_sessions += safe(sessions)
-
-        cursor.execute("""
-            SELECT app_name, SUM(active_seconds)
-            FROM daily_stats
-            WHERE date = ?
-            GROUP BY app_name
-            ORDER BY SUM(active_seconds) DESC
-        """, (selected_date,))
-
-        top_app = "N/A"
-
-        for app_name, total in cursor.fetchall():
-
-            if not is_ignored(app_name):
-
-                top_app = app_name
-                break
 
         if total_active == 0:
 
@@ -274,3 +266,61 @@ def wellbeing():
 
     finally:
         conn.close()
+
+
+# =====================================
+# Dashboard Bundle (single round-trip)
+# =====================================
+
+@wellbeing_bp.route("/api/dashboard-bundle")
+def dashboard_bundle():
+    """
+    Returns wellbeing + daily-stats + hourly + focus + yesterday stats + limits
+    in a single JSON response, eliminating 7 parallel fetches from the frontend.
+    Each sub-key calls the existing view function internally via Flask's test
+    client so the logic stays DRY.
+    """
+    from flask import current_app
+    import datetime as _dt
+
+    selected_date = get_selected_date()
+    try:
+        d = _dt.datetime.strptime(selected_date, "%Y-%m-%d")
+        yd = (d - _dt.timedelta(days=1)).strftime("%Y-%m-%d")
+    except Exception:
+        yd = selected_date
+
+    results = {}
+    client = current_app.test_client()
+    endpoints = {
+        "wb":     f"/api/wellbeing?date={selected_date}",
+        "ds":     f"/api/daily-stats?date={selected_date}",
+        "hr":     f"/api/hourly?date={selected_date}",
+        "fc":     f"/api/focus?date={selected_date}",
+        "prev":   f"/api/daily-stats?date={yd}",
+        "prevWb": f"/api/wellbeing?date={yd}",
+    }
+    for key, path in endpoints.items():
+        try:
+            resp = client.get(path)
+            results[key] = resp.get_json()
+        except Exception:
+            results[key] = None
+
+    # Limits don't depend on date
+    try:
+        from src.database.database import get_all_limits
+        limits = get_all_limits()
+        results["lim"] = [
+            {
+                "id": row[0],
+                "app_name": row[1],
+                "daily_limit_seconds": row[2],
+                "is_enabled": bool(row[3])
+            }
+            for row in limits
+        ]
+    except Exception:
+        results["lim"] = []
+
+    return jsonify(results)

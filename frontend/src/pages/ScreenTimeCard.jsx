@@ -1,36 +1,70 @@
+import { memo, useState } from "react";
 import { fmtTime } from "../shared/utils";
 import { useCountUp } from "../shared/hooks";
-import { SectionCard, TrendChip } from "../shared/components";
+import { GoalStatusBlock, SectionCard, TrendChip } from "../shared/components";
 import { Sparkline } from "../WellbeingDashboard";
 
 // ─── SCREEN TIME CARD ─────────────────────────────────────────────────────────
-// Props:
-//   data           – wellbeing data object { totalScreenTime, totalIdleTime, … }
-//   prevWellbeing  – previous period wellbeing data (for comparison chip)
-//   showComparison – boolean
-//   countKey       – key to re-trigger count-up animation on date change
-export default function ScreenTimeCard({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#60a5fa" }) {
+function ScreenTimeCardInner({ data, prevWellbeing, showComparison, countKey, sparkValues, sparkColor = "#60a5fa", goalInfo, onSetGoal, onEditGoal }) {
+  const [isHovered, setIsHovered] = useState(false);
+  const goalUiEnabled = goalInfo?.enabled !== false;
+  const hasGoal = Boolean(goalInfo?.goal);
+  const goal = goalInfo?.goal || null;
+  const goalProgress = goalInfo?.progress || null;
+  const streak7 = goalInfo?.streak7 || [];
+  const currentStreak = goalInfo?.currentStreak || 0;
+  const goalTargetSeconds = goalProgress?.target_value ?? goal?.target_value ?? 0;
+  const goalActualSeconds = goalProgress?.actual_value ?? data?.totalScreenTime ?? 0;
+  const goalDeltaSeconds = Math.round(goalActualSeconds - goalTargetSeconds);
+  const goalMet = goalProgress?.met ?? (goalTargetSeconds > 0 ? goalActualSeconds <= goalTargetSeconds : false);
   const sH = useCountUp(Math.floor((data?.totalScreenTime || 0) / 3600), 1400, countKey);
   const sM = useCountUp(Math.floor(((data?.totalScreenTime || 0) % 3600) / 60), 1200, countKey);
 
   return (
     <SectionCard
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onFocusCapture={() => setIsHovered(true)}
+      onBlurCapture={() => setIsHovered(false)}
       className="metric-card"
       style={{
         display: "flex", flexDirection: "column",
         flex: 1,
+        padding: "16px 24px 12px",
         border: "1px solid rgba(255,255,255,0.04)",
         borderLeft: "3px solid #4ade80",
         background: "linear-gradient(135deg,rgba(74,222,128,0.04) 0%,rgba(15,18,34,0.7) 60%)",
         animationDelay: "0ms",
-        paddingBottom: sparkValues?.length >= 2 ? 0 : undefined,
       }}
     >
-      <div style={{
-        fontSize: 11, color: "#4ade80", textTransform: "uppercase",
-        letterSpacing: "0.15em", marginBottom: 16, fontWeight: 600,
-      }}>
-        Screen Time
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, minHeight: 28 }}>
+        <div style={{
+          fontSize: 11, color: "#4ade80", textTransform: "uppercase",
+          letterSpacing: "0.15em", fontWeight: 600,
+        }}>
+          Screen Time
+        </div>
+        {goalUiEnabled && !hasGoal && (
+          <button
+            onClick={onSetGoal}
+            style={{
+              border: "1px solid rgba(96,165,250,0.28)",
+              background: isHovered ? "rgba(96,165,250,0.16)" : "rgba(96,165,250,0.08)",
+              color: "#93c5fd",
+              borderRadius: 999,
+              padding: "4px 10px",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              opacity: isHovered ? 1 : 0,
+              pointerEvents: isHovered ? "auto" : "none",
+              transform: isHovered ? "translateY(0)" : "translateY(2px)",
+              transition: "opacity 0.2s ease, transform 0.2s ease, background 0.2s ease",
+            }}
+          >
+            Set Goal
+          </button>
+        )}
       </div>
 
       <div style={{
@@ -53,7 +87,7 @@ export default function ScreenTimeCard({ data, prevWellbeing, showComparison, co
       )}
 
       <div style={{
-        marginTop: (showComparison && prevWellbeing) ? 8 : 16,
+        marginTop: 8,
         display: "flex", gap: 12,
       }}>
         <div style={{ flex: 1, background: "rgba(74,222,128,0.08)", borderRadius: 10, padding: "10px 12px" }}>
@@ -70,11 +104,57 @@ export default function ScreenTimeCard({ data, prevWellbeing, showComparison, co
         </div>
       </div>
 
+      {/* ── Active / Idle ratio bar ── */}
+      {data.totalScreenTime > 0 && (() => {
+        const activeTime = data.totalScreenTime - data.totalIdleTime;
+        const activePct = Math.round((activeTime / data.totalScreenTime) * 100);
+        const idlePct = 100 - activePct;
+        return (
+          <div style={{ marginTop: 12 }}>
+            <div style={{
+              height: 6, borderRadius: 6, overflow: "hidden",
+              background: "rgba(255,255,255,0.04)",
+              display: "flex",
+            }}>
+              <div style={{
+                width: `${activePct}%`, height: "100%",
+                background: "linear-gradient(90deg, #4ade80, #22d3ee)",
+                borderRadius: "6px 0 0 6px",
+                transition: "width 1.4s cubic-bezier(0.34,1.56,0.64,1)",
+                boxShadow: "0 0 8px rgba(74,222,128,0.4)",
+              }} />
+              <div style={{
+                flex: 1, height: "100%",
+                background: "rgba(100,116,139,0.25)",
+                borderRadius: "0 6px 6px 0",
+              }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+              <span style={{ fontSize: 9, color: "#4ade8077", fontWeight: 600 }}>{activePct}% active</span>
+              <span style={{ fontSize: 9, color: "#47556966" }}>{idlePct}% idle</span>
+            </div>
+          </div>
+        );
+      })()}
+
+      <GoalStatusBlock
+        hasGoal={goalUiEnabled && hasGoal && goalTargetSeconds > 0}
+        goalMet={goalMet}
+        goalLabel={`Goal ≤ ${fmtTime(goalTargetSeconds)}`}
+        goalDelta={goalMet ? `${fmtTime(Math.abs(goalDeltaSeconds))} under` : `${fmtTime(Math.abs(goalDeltaSeconds))} over`}
+        onEditGoal={onEditGoal || onSetGoal}
+        streak7={streak7}
+        currentStreak={currentStreak}
+        emptyTitle={goalUiEnabled ? "Start a screen time goal" : ""}
+        emptyHint={goalUiEnabled ? "Track over/under and streaks" : ""}
+        onCreateGoal={goalUiEnabled ? onSetGoal : undefined}
+      />
+
       {sparkValues?.length >= 2 && (
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          width: "calc(100% + 48px)", marginLeft: -24, marginTop: "auto",
-          padding: "6px 16px 10px",
+          marginTop: "auto",
+          padding: "6px 0 0",
           borderTop: "1px solid rgba(255,255,255,0.04)",
         }}>
           <span style={{ fontSize: 9, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.08em" }}>7d trend</span>
@@ -84,3 +164,5 @@ export default function ScreenTimeCard({ data, prevWellbeing, showComparison, co
     </SectionCard>
   );
 }
+
+export default memo(ScreenTimeCardInner);

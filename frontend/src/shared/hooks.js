@@ -1,6 +1,34 @@
 import { useState, useEffect, useRef } from "react";
 import { localYMD } from "./utils";
 
+// ─── SHARED RAF LOOP ──────────────────────────────────────────────────────────
+// Batches all useCountUp animations into a single requestAnimationFrame callback
+// instead of running 4+ independent RAF loops simultaneously.
+const _rafCallbacks = new Set();
+let _rafId = null;
+
+function _rafTick(ts) {
+  for (const cb of _rafCallbacks) cb(ts);
+  if (_rafCallbacks.size > 0) {
+    _rafId = requestAnimationFrame(_rafTick);
+  } else {
+    _rafId = null;
+  }
+}
+
+function _addRAF(cb) {
+  _rafCallbacks.add(cb);
+  if (_rafId === null) _rafId = requestAnimationFrame(_rafTick);
+}
+
+function _removeRAF(cb) {
+  _rafCallbacks.delete(cb);
+  if (_rafCallbacks.size === 0 && _rafId !== null) {
+    cancelAnimationFrame(_rafId);
+    _rafId = null;
+  }
+}
+
 // ─── COUNT UP ANIMATION ───────────────────────────────────────────────────────
 export function useCountUp(target, duration = 1500, key = "") {
   const [value, setValue] = useState(0);
@@ -17,7 +45,6 @@ export function useCountUp(target, duration = 1500, key = "") {
     }
 
     let start = null;
-    let raf;
     const step = ts => {
       if (!start) start = ts;
       const elapsed = ts - start;
@@ -30,16 +57,14 @@ export function useCountUp(target, duration = 1500, key = "") {
       const isFloat = target % 1 !== 0;
       setValue(isFloat ? parseFloat(current.toFixed(1)) : Math.floor(current));
 
-      if (p < 1) {
-        raf = requestAnimationFrame(step);
-      } else {
+      if (p >= 1) {
         prevTargetRef.current = target;
+        _removeRAF(step);
       }
     };
-    raf = requestAnimationFrame(step);
+    _addRAF(step);
     return () => {
-      cancelAnimationFrame(raf);
-      // Ensure we don't get stuck if unmounted or interrupted
+      _removeRAF(step);
       prevTargetRef.current = target;
     };
   }, [target, duration, key]);
@@ -62,4 +87,66 @@ export function useLiveClock(selectedDate) {
     return () => clearInterval(iv);
   }, [isToday]);
   return { elapsed, isToday };
+}
+
+// ─── VISIBILITY-AWARE POLLING ───────────────────────────────────────────────
+// Runs a polling task with one interval when the tab is visible and a slower
+// interval (or disabled) when hidden to reduce background churn.
+export function useVisibilityPolling(task, {
+  enabled = true,
+  visibleIntervalMs,
+  hiddenIntervalMs = 0,
+  immediate = true,
+} = {}) {
+  const taskRef = useRef(task);
+
+  useEffect(() => {
+    taskRef.current = task;
+  }, [task]);
+
+  useEffect(() => {
+    if (!enabled || !visibleIntervalMs) return;
+
+    let alive = true;
+    let timer = null;
+
+    const getDelay = () => (
+      document.visibilityState === "visible" ? visibleIntervalMs : hiddenIntervalMs
+    );
+
+    const schedule = () => {
+      if (!alive) return;
+      const delay = getDelay();
+      if (!delay || delay <= 0) return;
+      timer = setTimeout(run, delay);
+    };
+
+    const run = async () => {
+      if (!alive) return;
+      try {
+        await taskRef.current();
+      } finally {
+        schedule();
+      }
+    };
+
+    const onVisibility = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      schedule();
+    };
+
+    if (immediate) {
+      run();
+    } else {
+      schedule();
+    }
+
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [enabled, visibleIntervalMs, hiddenIntervalMs, immediate]);
 }

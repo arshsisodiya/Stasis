@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { GITHUB_REPO, shouldAutoCheckUpdate, recordUpdateCheck } from "../shared/updateUtils";
+import { useVisibilityPolling } from "../shared/hooks";
 
 // ─── CONSTANTS (mirrors SettingsPage) ────────────────────────────────────────
 const BASE_URL = "http://127.0.0.1:7432";
@@ -225,7 +226,7 @@ function DownloadProgress({ progress }) {
 
 // ─── CURRENT VERSION HERO ────────────────────────────────────────────────────
 
-function VersionHero({ updateState, onCheck, onInstall, checking, installing }) {
+function VersionHero({ updateState, onCheck, onInstall, installing }) {
   const status = updateState?.status;
   const current = updateState?.current_version;
   const latest = updateState?.latest_version;
@@ -659,7 +660,6 @@ function UpdateStatsStrip({ updateState, releases }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function UpdateSection({ push }) {
   const [updateState, setUpdateState] = useState(null);
-  const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [releases, setReleases] = useState(null);
   const [relError, setRelError] = useState(null);
@@ -673,11 +673,11 @@ export default function UpdateSection({ push }) {
     } catch { }
   }, []);
 
-  useEffect(() => {
-    fetchUpdateStatus();
-    const iv = setInterval(fetchUpdateStatus, 3000);
-    return () => clearInterval(iv);
-  }, [fetchUpdateStatus]);
+  useVisibilityPolling(fetchUpdateStatus, {
+    visibleIntervalMs: 3000,
+    hiddenIntervalMs: 15000,
+    immediate: true,
+  });
 
   const fetchGithubReleases = useCallback(async () => {
     setRelError(null);
@@ -703,7 +703,6 @@ export default function UpdateSection({ push }) {
   }, [fetchGithubReleases]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCheck = async () => {
-    setChecking(true);
     try {
       await fetch(`${BASE_URL}/api/update/check`, { method: "POST" });
       recordUpdateCheck(); // Record manually triggered check too
@@ -712,7 +711,6 @@ export default function UpdateSection({ push }) {
     } catch {
       push("Failed to reach update server", "error");
     }
-    setChecking(false);
   };
 
   const handleInstall = async () => {
@@ -738,7 +736,6 @@ export default function UpdateSection({ push }) {
             updateState={updateState}
             onCheck={handleCheck}
             onInstall={handleInstall}
-            checking={checking || updateState?.status === "checking"}
             installing={installing || updateState?.status === "downloading"}
           />
           : (

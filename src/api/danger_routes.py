@@ -178,7 +178,7 @@ def toggle_browser_tracking():
 
         set_setting(
             "browser_tracking",
-            "1" if enabled else "0"
+            "true" if enabled else "false"
         )
 
         return jsonify({
@@ -208,7 +208,7 @@ def toggle_idle_detection():
 
         set_setting(
             "idle_detection",
-            "1" if enabled else "0"
+            "true" if enabled else "false"
         )
 
         return jsonify({

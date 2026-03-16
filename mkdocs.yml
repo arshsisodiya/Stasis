@@ -41,6 +41,7 @@ extra_css:
 
 nav:
   - Home: index.md
+  - Privacy Policy: privacy-policy.md
   - Installation: installation.md
   - Configuration: configuration.md
   - Architecture: architecture.md

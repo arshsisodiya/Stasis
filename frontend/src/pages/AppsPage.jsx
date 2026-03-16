@@ -1,25 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { CATEGORY_COLORS, BROWSER_EXES } from "../shared/constants";
 import { fmtTime, trendPct } from "../shared/utils";
 import { AppIcon, CategoryChip, TrendBadge, SectionCard } from "../shared/components";
 
 // ─── APP ROW ─────────────────────────────────────────────────────────────────
-function AppRow({ app, active, maxActive, main, sub, index, prevActive }) {
+const AppRow = memo(function AppRow({ app, active, maxActive, main, sub, prevActive }) {
   const pct = maxActive > 0 ? (active / maxActive) * 100 : 0;
   const col = CATEGORY_COLORS[main] || CATEGORY_COLORS.other;
-  const [vis, setVis] = useState(false);
   const [hov, setHov] = useState(false);
   const trend = trendPct(active, prevActive);
-  useEffect(() => {
-    const t = setTimeout(() => setVis(true), 80 + index * 60);
-    return () => clearTimeout(t);
-  }, [index]);
   return (
     <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{
         display: "flex", alignItems: "center", gap: 12, padding: "10px 8px", borderRadius: 12,
-        opacity: vis ? 1 : 0, transform: vis ? "translateX(0)" : "translateX(-20px)",
-        transition: `opacity 0.4s ease ${index * 0.04}s, transform 0.4s ease ${index * 0.04}s, background 0.15s`,
+        transition: "background 0.15s",
         background: hov ? "rgba(255, 255, 255, 0.04)" : "transparent"
       }}>
       <AppIcon appName={app} category={main} size={36} />
@@ -47,14 +41,16 @@ function AppRow({ app, active, maxActive, main, sub, index, prevActive }) {
       </div>
     </div>
   );
-}
+});
 
-// ─── BROWSER ROW ─────────────────────────────────────────────────────────────
-function BrowserRow({ browsers, maxActive, index, BASE, selectedDate, prevActive }) {
+// ─── SITE STATS CACHE ─────────────────────────────────────────────────────────
+const _siteStatsCache = {};
+
+// ─── BROWSER ROW ───────────────────────────────────────────────────────────────
+const BrowserRow = memo(function BrowserRow({ browsers, maxActive, BASE, selectedDate, prevActive }) {
   const [expanded, setExpanded] = useState(false);
   const [sites, setSites] = useState(null);
   const [loadingSites, setLoadingSites] = useState(false);
-  const [vis, setVis] = useState(false);
   const [hov, setHov] = useState(false);
 
   const totalActive = browsers.reduce((s, b) => s + b.active, 0);
@@ -62,38 +58,37 @@ function BrowserRow({ browsers, maxActive, index, BASE, selectedDate, prevActive
   const col = CATEGORY_COLORS.neutral;
   const trend = trendPct(totalActive, prevActive);
 
-  useEffect(() => {
-    const t = setTimeout(() => setVis(true), 80 + index * 60);
-    return () => clearTimeout(t);
-  }, [index]);
-
-  useEffect(() => {
-    if (expanded) {
-      setLoadingSites(true);
-      fetch(`${BASE}/api/site-stats?date=${selectedDate}&app=${browsers[0].app}`)
-        .then(r => r.json())
-        .then(data => { setSites(Array.isArray(data) ? data : []); setLoadingSites(false); })
-        .catch(() => { setSites([]); setLoadingSites(false); });
+  const fetchSites = () => {
+    const cacheKey = `${selectedDate}:${browsers[0].app}`;
+    if (_siteStatsCache[cacheKey]) {
+      setSites(_siteStatsCache[cacheKey]);
+      return;
     }
-  }, [selectedDate, BASE, browsers[0].app, expanded]);
+    setLoadingSites(true);
+    fetch(`${BASE}/api/site-stats?date=${selectedDate}&app=${browsers[0].app}`)
+      .then(r => r.json())
+      .then(data => {
+        const result = Array.isArray(data) ? data : [];
+        _siteStatsCache[cacheKey] = result;
+        setSites(result);
+        setLoadingSites(false);
+      })
+      .catch(() => { setSites([]); setLoadingSites(false); });
+  };
+
+  // Re-fetch when date changes while expanded
+  useEffect(() => {
+    if (expanded) fetchSites();
+  }, [selectedDate]);
 
   const handleExpand = () => {
     const next = !expanded;
     setExpanded(next);
-    if (next && sites === null) {
-      setLoadingSites(true);
-      fetch(`${BASE}/api/site-stats?date=${selectedDate}&app=${browsers[0].app}`)
-        .then(r => r.json())
-        .then(data => { setSites(Array.isArray(data) ? data : []); setLoadingSites(false); })
-        .catch(() => { setSites([]); setLoadingSites(false); });
-    }
+    if (next) fetchSites();
   };
 
   return (
-    <div style={{
-      opacity: vis ? 1 : 0, transform: vis ? "translateX(0)" : "translateX(-20px)",
-      transition: `opacity 0.4s ease ${index * 0.04}s, transform 0.4s ease ${index * 0.04}s`,
-    }}>
+    <div>
       <div
         onClick={handleExpand}
         onMouseEnter={() => setHov(true)}
@@ -181,17 +176,44 @@ function BrowserRow({ browsers, maxActive, index, BASE, selectedDate, prevActive
       )}
     </div>
   );
-}
+});
 
 // ─── APPS PAGE ────────────────────────────────────────────────────────────────
-export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignoredApps }) {
+export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignoredApps, isActive = true }) {
   const [appFilter, setAppFilter] = useState("all");
+  const [visibleCount, setVisibleCount] = useState(120);
+
+  const handleFilterChange = (cat) => {
+    setAppFilter(cat);
+  };
 
   const prevMap = prevStats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
   const sorted = [...stats].sort((a, b) => b.active - a.active);
 
+  useEffect(() => {
+    setVisibleCount(120);
+  }, [selectedDate, appFilter, stats.length]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const onScroll = () => {
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 520) {
+        setVisibleCount((c) => c + 80);
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [isActive]);
+
   return (
     <SectionCard>
+      <style>{`
+        @keyframes badge-pop {
+          0%   { transform: scale(0.6); opacity: 0.4; }
+          60%  { transform: scale(1.35); opacity: 1; }
+          100% { transform: scale(1); opacity: 0.7; }
+        }
+      `}</style>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
         <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: "0.15em" }}>Time by App</div>
         <div style={{ fontSize: 11, color: "#e2e8f0" }}>vs yesterday</div>
@@ -205,16 +227,23 @@ export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignored
           const cnt = cat === "all" ? sorted.length : sorted.filter(s => s.main === cat).length;
           if (cat !== "all" && cnt === 0) return null;
           return (
-            <button key={cat} onClick={() => setAppFilter(cat)}
+            <button key={cat} onClick={() => handleFilterChange(cat)}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 20,
                 border: `1px solid ${isActive ? col.primary + "55" : "rgba(255,255,255,0.07)"}`,
                 background: isActive ? col.bg : "rgba(255, 255, 255, 0.04)",
                 color: isActive ? col.primary : "#475569", fontSize: 12, fontWeight: 500,
-                cursor: "pointer", transition: "all 0.18s", fontFamily: "'DM Sans',sans-serif"
+                cursor: "pointer", transition: "background 0.18s, color 0.18s, border-color 0.18s", fontFamily: "'DM Sans',sans-serif"
               }}>
               {cat === "all" ? "All" : cat.charAt(0).toUpperCase() + cat.slice(1)}
-              <span style={{ fontSize: 10, opacity: 0.7 }}>{cnt}</span>
+              <span
+                key={`${cat}-${cnt}`}
+                style={{
+                  fontSize: 10, opacity: 0.7,
+                  display: "inline-block",
+                  animation: appFilter === cat ? "badge-pop 0.3s cubic-bezier(0.34,1.56,0.64,1)" : "none",
+                }}
+              >{cnt}</span>
             </button>
           );
         })}
@@ -252,13 +281,39 @@ export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignored
         filteredGrouped.sort((a, b) => b.active - a.active);
         const maxAllA = filteredGrouped.length > 0 ? filteredGrouped[0].active || 1 : 1;
 
-        return filteredGrouped.map((item, i) => {
-          const isBrowser = BROWSER_EXES.has(item.app.toLowerCase());
-          if (isBrowser) {
-            return <BrowserRow key={item.app} browsers={item.browsers} maxActive={maxAllA} index={i} BASE={BASE} selectedDate={selectedDate} prevActive={prevMap[item.app]} />;
-          }
-          return <AppRow key={item.app} {...item} maxActive={maxAllA} index={i} prevActive={prevMap[item.app]} />;
-        });
+        const windowed = filteredGrouped.slice(0, visibleCount);
+
+        return (
+          <>
+            {windowed.map((item, i) => {
+              const isBrowser = BROWSER_EXES.has(item.app.toLowerCase());
+              if (isBrowser) {
+                return <BrowserRow key={item.app} browsers={item.browsers} maxActive={maxAllA} index={i} BASE={BASE} selectedDate={selectedDate} prevActive={prevMap[item.app]} />;
+              }
+              return <AppRow key={item.app} {...item} maxActive={maxAllA} index={i} prevActive={prevMap[item.app]} />;
+            })}
+
+            {visibleCount < filteredGrouped.length && (
+              <div style={{ marginTop: 14, textAlign: "center" }}>
+                <button
+                  onClick={() => setVisibleCount((c) => c + 120)}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(255,255,255,0.04)",
+                    color: "#94a3b8",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontFamily: "'DM Sans',sans-serif",
+                  }}
+                >
+                  Show more ({filteredGrouped.length - visibleCount} remaining)
+                </button>
+              </div>
+            )}
+          </>
+        );
       })()}
     </SectionCard>
   );

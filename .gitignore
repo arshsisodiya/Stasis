@@ -16,6 +16,7 @@ venv/
 .env.*
 ENV/
 .venv/
+site/
 # =========================
 # PyInstaller / Executables
 # =========================

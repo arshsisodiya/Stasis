@@ -6,7 +6,7 @@ import asyncio
 import gc
 from pynput import mouse, keyboard
 
-from src.core.url_sniffer import get_browser_url
+from src.core.url_sniffer import get_browser_url, url_resolver
 from src.analytics.daily_summary import update_daily_stats
 from src.database.database import get_connection, get_setting
 from src.core.settings_cache import settings_cache
@@ -392,13 +392,14 @@ def get_active_window_info() -> dict | None:
         if not app_name:
             return None
 
-        browser_tracking = settings_cache.get("browser_tracking", "1") == "1"
+        browser_tracking = settings_cache.get("browser_tracking", "true") in ("true", "1")
 
         url = "N/A"
 
-        if browser_tracking and any(b in app_name.lower() for b in ["chrome", "msedge", "brave", "firefox", "opera"]):
+        if browser_tracking:
             try:
-                detected = get_browser_url(hwnd=hwnd)
+                # Fast path: read cached URL from background resolver (never blocks)
+                detected = url_resolver.get_cached_url(hwnd, app_name)
                 if detected:
                     url = detected
             except Exception:
@@ -580,6 +581,9 @@ def flush_session(session: SessionState, cursor) -> bool:
 # MAIN LOGGER LOOP
 # ===============================
 def start_logging():
+    # Start background URL resolver so get_active_window_info() never blocks
+    url_resolver.start()
+
     session: SessionState | None = None
     conn   = get_connection()
     cursor = conn.cursor()
@@ -633,7 +637,7 @@ def start_logging():
             info = get_active_window_info()
 
             # ---- determine idle state ----
-            idle_detection_enabled = settings_cache.get("idle_detection", "1") == "1"
+            idle_detection_enabled = settings_cache.get("idle_detection", "true") in ("true", "1")
             idle_secs = input_tracker.get_idle_seconds() if idle_detection_enabled else 0
             media_playing = is_media_active(info)
             
@@ -704,6 +708,7 @@ def start_logging():
     except Exception as e:
         print(f"[Logger] Fatal error: {e}")
     finally:
+        url_resolver.stop()
         if session:
             flush_session(session, cursor)
         try:

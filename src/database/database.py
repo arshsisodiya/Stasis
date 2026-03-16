@@ -179,6 +179,8 @@ def init_db():
         app_name TEXT UNIQUE NOT NULL,
         daily_limit_seconds INTEGER NOT NULL,
         is_enabled INTEGER DEFAULT 1,
+        is_blocked INTEGER DEFAULT 0,
+        blocked_at TEXT,
         created_at TEXT,
         unblock_until TEXT
     )
@@ -187,6 +189,16 @@ def init_db():
     # Add unblock_until column if not exists (for backwards compatibility)
     try:
         cursor.execute("ALTER TABLE app_limits ADD COLUMN unblock_until TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+    # Add blocked-state columns if not present (migration-safe)
+    try:
+        cursor.execute("ALTER TABLE app_limits ADD COLUMN is_blocked INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE app_limits ADD COLUMN blocked_at TEXT")
     except sqlite3.OperationalError:
         pass
 
@@ -206,6 +218,22 @@ def init_db():
     )
     """)
 
+    # Backfill legacy blocked_apps state into app_limits.is_blocked once per startup.
+    # This keeps existing user data intact while moving to app_limits as the source of truth.
+    try:
+        cursor.execute("""
+            UPDATE app_limits
+            SET is_blocked = 1,
+                blocked_at = COALESCE(blocked_at, (
+                    SELECT blocked_at
+                    FROM blocked_apps b
+                    WHERE b.app_name = app_limits.app_name
+                ))
+            WHERE app_name IN (SELECT app_name FROM blocked_apps)
+        """)
+    except Exception:
+        pass
+
     # ===============================
     # INDEXES (Performance)
     # ===============================
@@ -216,7 +244,55 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_date ON daily_stats(date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_active ON daily_stats(active_seconds)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_limit_app ON app_limits(app_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_limit_blocked ON app_limits(is_blocked)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blocked_app ON blocked_apps(app_name)")
+
+    # ===============================
+    # GOALS & TARGETS
+    # ===============================
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS goals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        goal_type TEXT NOT NULL,
+        label TEXT,
+        target_value REAL NOT NULL,
+        target_unit TEXT NOT NULL DEFAULT 'seconds',
+        direction TEXT NOT NULL DEFAULT 'under',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT,
+        updated_at TEXT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS goal_logs (
+        goal_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        actual_value REAL,
+        target_value REAL,
+        met INTEGER DEFAULT 0,
+        PRIMARY KEY (goal_id, date)
+    )
+    """)
+
+    # ===============================
+    # LIMIT EVENTS (hits & edits)
+    # ===============================
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS limit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        app_name TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        old_value INTEGER,
+        new_value INTEGER,
+        timestamp TEXT NOT NULL,
+        date TEXT NOT NULL
+    )
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goal_logs_date ON goal_logs(date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_limit_events_date ON limit_events(date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_limit_events_app ON limit_events(app_name)")
 
     conn.commit()
     conn.close()
@@ -249,7 +325,7 @@ def get_all_limits():
     cursor = conn.cursor()
 
     cursor.execute("""
-                   SELECT id, app_name, daily_limit_seconds, is_enabled, unblock_until
+                   SELECT id, app_name, daily_limit_seconds, is_enabled, unblock_until, is_blocked, blocked_at
                    FROM app_limits
                    """)
 
@@ -277,11 +353,22 @@ def toggle_limit(app_name: str, enabled: bool):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        UPDATE app_limits
-        SET is_enabled = ?
-        WHERE app_name = ?
-    """, (1 if enabled else 0, app_name))
+    if enabled:
+        cursor.execute("""
+            UPDATE app_limits
+            SET is_enabled = 1
+            WHERE app_name = ?
+        """, (app_name,))
+    else:
+        cursor.execute("""
+            UPDATE app_limits
+            SET is_enabled = 0,
+                is_blocked = 0,
+                blocked_at = NULL,
+                unblock_until = NULL
+            WHERE app_name = ?
+        """, (app_name,))
+        cursor.execute("DELETE FROM blocked_apps WHERE app_name = ?", (app_name,))
 
     conn.commit()
     conn.close()
@@ -295,10 +382,20 @@ def add_blocked_app(app_name: str):
     conn = get_connection()
     cursor = conn.cursor()
 
+    now = datetime.now().isoformat()
+
     cursor.execute("""
-        INSERT OR REPLACE INTO blocked_apps (app_name)
-        VALUES (?)
-    """, (app_name,))
+        UPDATE app_limits
+        SET is_blocked = 1,
+            blocked_at = ?
+        WHERE app_name = ?
+    """, (now, app_name))
+
+    # Keep legacy table in sync for backwards compatibility.
+    cursor.execute("""
+        INSERT OR REPLACE INTO blocked_apps (app_name, blocked_at)
+        VALUES (?, ?)
+    """, (app_name, now))
 
     conn.commit()
     conn.close()
@@ -308,6 +405,12 @@ def remove_blocked_app(app_name: str):
     conn = get_connection()
     cursor = conn.cursor()
 
+    cursor.execute("""
+        UPDATE app_limits
+        SET is_blocked = 0,
+            blocked_at = NULL
+        WHERE app_name = ?
+    """, (app_name,))
     cursor.execute("DELETE FROM blocked_apps WHERE app_name = ?", (app_name,))
     conn.commit()
     conn.close()
@@ -317,7 +420,27 @@ def get_blocked_apps():
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT app_name FROM blocked_apps")
+    cursor.execute("""
+        SELECT app_name, blocked_at
+        FROM app_limits
+        WHERE is_blocked = 1 AND is_enabled = 1
+        ORDER BY COALESCE(blocked_at, created_at) DESC, app_name ASC
+    """)
+    rows = cursor.fetchall()
+
+    conn.close()
+    return [{"app_name": r[0], "blocked_at": r[1]} for r in rows]
+
+
+def get_blocked_app_names():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT app_name
+        FROM app_limits
+        WHERE is_blocked = 1 AND is_enabled = 1
+    """)
     rows = cursor.fetchall()
 
     conn.close()
@@ -367,7 +490,9 @@ def set_temporary_unblock(app_name: str, minutes: int):
 
     cursor.execute("""
         UPDATE app_limits
-        SET unblock_until = ?
+        SET unblock_until = ?,
+            is_blocked = 0,
+            blocked_at = NULL
         WHERE app_name = ?
     """, (unblock_until.isoformat(), app_name))
 
@@ -375,6 +500,29 @@ def set_temporary_unblock(app_name: str, minutes: int):
         "DELETE FROM blocked_apps WHERE app_name = ?",
         (app_name,)
     )
+
+    conn.commit()
+    conn.close()
+
+
+def force_reblock_app(app_name: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    now_iso = datetime.now().isoformat()
+
+    cursor.execute("""
+        UPDATE app_limits
+        SET unblock_until = NULL,
+            is_blocked = 1,
+            blocked_at = ?
+        WHERE app_name = ?
+    """, (now_iso, app_name))
+
+    cursor.execute("""
+        INSERT OR REPLACE INTO blocked_apps (app_name, blocked_at)
+        VALUES (?, ?)
+    """, (app_name, now_iso))
 
     conn.commit()
     conn.close()
@@ -499,16 +647,27 @@ def get_auto_delete_days():
 
 def delete_activity_older_than(days: int):
     """
-    Delete activity records older than N days
+    Delete activity records older than N days across all log tables.
     """
 
     conn = get_connection()
     cursor = conn.cursor()
 
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
     cursor.execute("""
         DELETE FROM activity_logs
+        WHERE timestamp < ?
+    """, (cutoff,))
+
+    cursor.execute("""
+        DELETE FROM daily_stats
+        WHERE date < ?
+    """, (cutoff_date,))
+
+    cursor.execute("""
+        DELETE FROM file_logs
         WHERE timestamp < ?
     """, (cutoff,))
 
@@ -526,6 +685,157 @@ def run_retention_cleanup():
         return
 
     delete_activity_older_than(days)
+
+
+# ==========================================================
+# ================= GOALS FUNCTIONS ========================
+# ==========================================================
+
+def create_goal(goal_type: str, target_value: float, target_unit: str = "seconds",
+                direction: str = "under", label: str = None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    cursor.execute("""
+        INSERT INTO goals (goal_type, label, target_value, target_unit, direction, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+    """, (goal_type, label, target_value, target_unit, direction, now, now))
+    goal_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return goal_id
+
+
+def get_all_goals():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, goal_type, label, target_value, target_unit, direction, is_active, created_at, updated_at FROM goals")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def update_goal(goal_id: int, target_value: float = None, label: str = None,
+                is_active: int = None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    if target_value is not None:
+        cursor.execute("UPDATE goals SET target_value = ?, updated_at = ? WHERE id = ?",
+                       (target_value, now, goal_id))
+    if label is not None:
+        cursor.execute("UPDATE goals SET label = ?, updated_at = ? WHERE id = ?",
+                       (label, now, goal_id))
+    if is_active is not None:
+        cursor.execute("UPDATE goals SET is_active = ?, updated_at = ? WHERE id = ?",
+                       (is_active, now, goal_id))
+    conn.commit()
+    conn.close()
+
+
+def delete_goal(goal_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM goals WHERE id = ?", (goal_id,))
+    cursor.execute("DELETE FROM goal_logs WHERE goal_id = ?", (goal_id,))
+    conn.commit()
+    conn.close()
+
+
+def log_goal_progress(goal_id: int, date: str, actual_value: float, target_value: float, met: bool):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO goal_logs (goal_id, date, actual_value, target_value, met)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(goal_id, date)
+        DO UPDATE SET actual_value = excluded.actual_value, target_value = excluded.target_value, met = excluded.met
+    """, (goal_id, date, actual_value, target_value, 1 if met else 0))
+    conn.commit()
+    conn.close()
+
+
+def get_goal_logs(goal_id: int, days: int = 7):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    cursor.execute("""
+        SELECT goal_id, date, actual_value, target_value, met
+        FROM goal_logs WHERE goal_id = ? AND date >= ?
+        ORDER BY date
+    """, (goal_id, cutoff))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def get_all_goal_logs_range(start_date: str, end_date: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT gl.goal_id, gl.date, gl.actual_value, gl.target_value, gl.met,
+               g.goal_type, g.label, g.target_unit, g.direction
+        FROM goal_logs gl
+        JOIN goals g ON g.id = gl.goal_id
+        WHERE gl.date >= ? AND gl.date <= ?
+        ORDER BY gl.date
+    """, (start_date, end_date))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+# ==========================================================
+# ================= LIMIT EVENTS ===========================
+# ==========================================================
+
+def log_limit_event(app_name: str, event_type: str, old_value: int = None, new_value: int = None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now()
+    cursor.execute("""
+        INSERT INTO limit_events (app_name, event_type, old_value, new_value, timestamp, date)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (app_name, event_type, old_value, new_value, now.isoformat(), now.strftime("%Y-%m-%d")))
+    conn.commit()
+    conn.close()
+
+
+def get_limit_events_range(start_date: str, end_date: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT app_name, event_type, old_value, new_value, timestamp, date
+        FROM limit_events
+        WHERE date >= ? AND date <= ?
+        ORDER BY timestamp
+    """, (start_date, end_date))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def get_limit_events_summary(start_date: str, end_date: str):
+    """Returns per-app summary of limit hits and edits in a date range."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT app_name, event_type, COUNT(*) as cnt
+        FROM limit_events
+        WHERE date >= ? AND date <= ?
+        GROUP BY app_name, event_type
+    """, (start_date, end_date))
+    rows = cursor.fetchall()
+    conn.close()
+    summary = {}
+    for app_name, event_type, cnt in rows:
+        if app_name not in summary:
+            summary[app_name] = {"hits": 0, "edits": 0}
+        if event_type == "hit":
+            summary[app_name]["hits"] = cnt
+        elif event_type == "edit":
+            summary[app_name]["edits"] = cnt
+    return summary
 
 def set_setting(key: str, value: str):
     conn = get_connection()

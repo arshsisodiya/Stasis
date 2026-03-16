@@ -455,8 +455,6 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
   const borderColor = st.key === "running" ? "rgba(74,222,128,0.2)" : st.key === "degraded" || st.key === "paused" ? "rgba(251,191,36,0.14)" : C.border;
 
   const recentCmds = config?.recent_commands || [];
-  const lastCmd = recentCmds[0];
-  const lastCmdText = lastCmd ? `Last command received: ${timeAgo(lastCmd.timestamp)}` : "No commands yet";
 
   const togglePermission = async (key, val) => {
     // Specialized logic for webcam
@@ -489,7 +487,7 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
       } else {
         push(d.error || "Update failed", "error");
       }
-    } catch (e) { push("Network error", "error"); }
+    } catch { push("Network error", "error"); }
     setUpdatingPerms(p => ({ ...p, [key]: false }));
   };
 
@@ -528,7 +526,7 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
               push(`Installation failed: ${pd.message}`, "error");
               setInstalling(false);
             }
-          } catch (e) {
+          } catch {
             clearInterval(pollInterval);
             setInstalling(false);
           }
@@ -537,7 +535,7 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
         push("Failed to start installation", "error");
         setInstalling(false);
       }
-    } catch (e) { 
+    } catch { 
       push("Installation failed — check connection", "error"); 
       setInstalling(false);
     }
@@ -780,7 +778,7 @@ function TelegramSection({ push }) {
 // GENERAL SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 function GeneralSection({ push }) {
-  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true };
+  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false, weekly_report_verbosity: "standard" };
   const [s, setS] = useState({ ...DEFAULTS });
   const [saved, setSaved] = useState({ ...DEFAULTS });
   const [confirmReset, setConfirmReset] = useState(false);
@@ -812,10 +810,13 @@ function GeneralSection({ push }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          notifications: s.notifications,
           file_logging_enabled: s.file_logging_enabled,
           file_logging_essential_only: s.file_logging_essential_only,
           show_yesterday_comparison: s.show_yesterday_comparison,
-          hardware_acceleration: s.hardware_acceleration
+          hardware_acceleration: s.hardware_acceleration,
+          weekly_report_telegram: s.weekly_report_telegram,
+          weekly_report_verbosity: s.weekly_report_verbosity
         })
       });
       setSaved({ ...s });
@@ -960,6 +961,26 @@ function GeneralSection({ push }) {
         <SettingRow borderless label="Browser tab tracking" desc="Track active website titles in supported browsers" control={<Toggle on={s.browser_tracking} onChange={handleBrowserToggle} loading={togglingBrowser} />} />
       </Card>
 
+      <Card>
+        <SectionLabel>Weekly Reports</SectionLabel>
+        <SettingRow label="Send weekly report via Telegram" desc="Receive a detailed weekly usage summary every Sunday via your Telegram bot" control={<Toggle on={s.weekly_report_telegram} onChange={v => set("weekly_report_telegram", v)} />} />
+        <SettingRow borderless label="Report verbosity" desc="Controls how compact or detailed weekly insights and Telegram summaries are" control={
+          <div style={{ position: "relative" }}>
+            <select className="sp-select" value={s.weekly_report_verbosity} onChange={e => set("weekly_report_verbosity", e.target.value)}
+              style={{
+                appearance: "none", background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`,
+                borderRadius: 10, color: C.text, padding: "7px 36px 7px 14px", fontSize: 12,
+                fontFamily: "'DM Sans',sans-serif", cursor: "pointer", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)", minWidth: 120
+              }}>
+              <option value="compact">Compact</option>
+              <option value="standard">Standard</option>
+              <option value="detailed">Detailed</option>
+            </select>
+            <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 10, color: C.textMuted }}>▾</span>
+          </div>
+        } />
+      </Card>
+
       {/* Cleanup Confirmation Modal */}
       {showCleanupConfirm && (
         <WarningModal
@@ -1011,6 +1032,260 @@ function GeneralSection({ push }) {
         </div>
       )}
     </div >
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEVELOPER SECTION
+// ═══════════════════════════════════════════════════════════════════════════════
+function DeveloperSection({ push }) {
+  const [testingNotifications, setTestingNotifications] = useState(false);
+  const [testingGoalNotification, setTestingGoalNotification] = useState(false);
+  const [testingAppLimitNotification, setTestingAppLimitNotification] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [notifCfg, setNotifCfg] = useState({
+    notifications_enable_goal_events: true,
+    notifications_enable_limit_events: true,
+    notifications_enable_test_events: true,
+    notifications_enable_digest_events: true,
+    notifications_quiet_hours_enabled: false,
+    notifications_quiet_start: "22:00",
+    notifications_quiet_end: "07:00",
+    notifications_context_quiet_mode_enabled: true,
+    notifications_daily_digest_time: "21:00",
+  });
+  const [savingNotifCfg, setSavingNotifCfg] = useState(false);
+
+  const loadNotifCfg = useCallback(async () => {
+    try {
+      const d = await fetch(`${BASE_URL}/api/settings`).then(r => r.json());
+      setNotifCfg(p => ({ ...p, ...d }));
+    } catch { }
+  }, []);
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const d = await fetch(`${BASE_URL}/api/settings/notifications/history?limit=20`).then(r => r.json());
+      setHistory(Array.isArray(d?.items) ? d.items : []);
+    } catch {
+      setHistory([]);
+    }
+    setLoadingHistory(false);
+  }, []);
+
+  useEffect(() => {
+    fetchHistory();
+    loadNotifCfg();
+    const iv = setInterval(fetchHistory, 5000);
+    return () => clearInterval(iv);
+  }, [fetchHistory, loadNotifCfg]);
+
+  const saveNotifCfg = async (patch) => {
+    const next = { ...notifCfg, ...patch };
+    setNotifCfg(next);
+    setSavingNotifCfg(true);
+    try {
+      await fetch(`${BASE_URL}/api/settings/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+    } catch {
+      push("Failed to save notification controls", "error");
+      loadNotifCfg();
+    }
+    setSavingNotifCfg(false);
+  };
+
+  const runTest = async (endpoint, loadingSetter, successLabel, failureLabel) => {
+    loadingSetter(true);
+    try {
+      const r = await fetch(`${BASE_URL}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const d = await r.json();
+      if (r.ok && d.status === "sent") {
+        push(`${successLabel} (${d.method || "backend"})`, "success");
+      } else {
+        push(d.reason || d.message || failureLabel, "error");
+      }
+    } catch {
+      push(failureLabel, "error");
+    }
+    loadingSetter(false);
+    fetchHistory();
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Card>
+        <SectionLabel>Delivery Controls</SectionLabel>
+        <SettingRow
+          label="Goal notifications"
+          desc="Send alerts when goal thresholds are reached"
+          control={<Toggle on={notifCfg.notifications_enable_goal_events} onChange={v => saveNotifCfg({ notifications_enable_goal_events: v })} />}
+        />
+        <SettingRow
+          label="App-limit notifications"
+          desc="Send alerts when an app reaches its configured limit"
+          control={<Toggle on={notifCfg.notifications_enable_limit_events} onChange={v => saveNotifCfg({ notifications_enable_limit_events: v })} />}
+        />
+        <SettingRow
+          label="Test notifications"
+          desc="Allow manual developer test notifications"
+          control={<Toggle on={notifCfg.notifications_enable_test_events} onChange={v => saveNotifCfg({ notifications_enable_test_events: v })} />}
+        />
+        <SettingRow
+          label="Daily digest notifications"
+          desc="Send one end-of-day summary with screen time, top distraction, productivity ratio, and best streak"
+          control={<Toggle on={notifCfg.notifications_enable_digest_events} onChange={v => saveNotifCfg({ notifications_enable_digest_events: v })} />}
+        />
+        <SettingRow
+          label="Quiet hours"
+          desc="Suppress all notifications during the selected time window"
+          control={<Toggle on={notifCfg.notifications_quiet_hours_enabled} onChange={v => saveNotifCfg({ notifications_quiet_hours_enabled: v })} />}
+        />
+        <SettingRow
+          label="Context-aware quiet mode"
+          desc="Suppress low-priority alerts when fullscreen, gaming, presenting, or focus session context is active"
+          control={<Toggle on={notifCfg.notifications_context_quiet_mode_enabled} onChange={v => saveNotifCfg({ notifications_context_quiet_mode_enabled: v })} />}
+        />
+        <SettingRow
+          borderless
+          label="Quiet hours window"
+          desc="Format: HH:MM (24h)"
+          control={(
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                value={notifCfg.notifications_quiet_start || "22:00"}
+                onChange={e => setNotifCfg(p => ({ ...p, notifications_quiet_start: e.target.value }))}
+                onBlur={() => saveNotifCfg({ notifications_quiet_start: notifCfg.notifications_quiet_start || "22:00" })}
+                style={{ width: 70, padding: "6px 8px", borderRadius: 8, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.05)", color: C.text, fontSize: 12 }}
+              />
+              <span style={{ fontSize: 11, color: C.textMuted }}>to</span>
+              <input
+                value={notifCfg.notifications_quiet_end || "07:00"}
+                onChange={e => setNotifCfg(p => ({ ...p, notifications_quiet_end: e.target.value }))}
+                onBlur={() => saveNotifCfg({ notifications_quiet_end: notifCfg.notifications_quiet_end || "07:00" })}
+                style={{ width: 70, padding: "6px 8px", borderRadius: 8, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.05)", color: C.text, fontSize: 12 }}
+              />
+            </div>
+          )}
+        />
+        <SettingRow
+          borderless
+          label="Daily digest time"
+          desc="One summary notification at this time each day (HH:MM, 24h)"
+          control={(
+            <input
+              value={notifCfg.notifications_daily_digest_time || "21:00"}
+              onChange={e => setNotifCfg(p => ({ ...p, notifications_daily_digest_time: e.target.value }))}
+              onBlur={() => saveNotifCfg({ notifications_daily_digest_time: notifCfg.notifications_daily_digest_time || "21:00" })}
+              style={{ width: 70, padding: "6px 8px", borderRadius: 8, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.05)", color: C.text, fontSize: 12 }}
+            />
+          )}
+        />
+        {savingNotifCfg && <div style={{ marginTop: 8, fontSize: 11, color: C.textMuted }}>Saving notification controls...</div>}
+      </Card>
+
+      <Card>
+        <SectionLabel>Notification Test Tools</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <Btn
+            size="sm"
+            loading={testingNotifications}
+            onClick={() => runTest(
+              "/api/settings/notifications/test",
+              setTestingNotifications,
+              "General test notification sent",
+              "General notification test failed"
+            )}
+          >
+            Send General Test
+          </Btn>
+          <Btn
+            size="sm"
+            loading={testingGoalNotification}
+            onClick={() => runTest(
+              "/api/settings/notifications/test-goal",
+              setTestingGoalNotification,
+              "Goal-threshold notification sent",
+              "Goal-threshold notification test failed"
+            )}
+          >
+            Send Goal Test
+          </Btn>
+          <Btn
+            size="sm"
+            loading={testingAppLimitNotification}
+            onClick={() => runTest(
+              "/api/settings/notifications/test-limit",
+              setTestingAppLimitNotification,
+              "App-limit notification sent",
+              "App-limit notification test failed"
+            )}
+          >
+            Send App Limit Test
+          </Btn>
+        </div>
+        <div style={{ marginTop: 10, fontSize: 11, color: C.textMuted }}>
+          These controls trigger notification endpoints instantly without waiting for real limit/goal thresholds.
+        </div>
+      </Card>
+
+      <Card>
+        <SectionLabel>Notification History (Last 20)</SectionLabel>
+        {loadingHistory ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Skel h={34} />
+            <Skel h={34} />
+            <Skel h={34} />
+          </div>
+        ) : history.length === 0 ? (
+          <div style={{
+            fontSize: 12,
+            color: C.textMuted,
+            border: `1px dashed ${C.borderMed}`,
+            borderRadius: 12,
+            padding: "12px 14px"
+          }}>
+            No notification events yet.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {history.map((item, idx) => (
+              <div key={`${item.timestamp}-${idx}`} style={{
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                background: "rgba(255,255,255,0.03)",
+                padding: "10px 12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10
+              }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 12, color: C.textSub, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {item.title}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {item.message}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 10, color: C.green, fontWeight: 600 }}>{item.method || "unknown"}</div>
+                  <div style={{ fontSize: 10, color: C.blue, marginTop: 2, textTransform: "uppercase" }}>{item.event_type || "general"}</div>
+                  <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>{item.source || "runtime"}</div>
+                  <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>{timeAgo(item.timestamp) || item.timestamp}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -1338,7 +1613,7 @@ function SecuritySection({ push }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ABOUT SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
-function AboutSection({ push }) {
+function AboutSection() {
   const [tab, setTab] = useState("about");
   const [updateState, setUpdateState] = useState(null);
 
@@ -1465,6 +1740,7 @@ const NAV_ITEMS = [
   { id: "security", icon: "🔐", label: "Security", sub: "Access & encryption" },
   { id: "updates", icon: "🚀", label: "Updates", sub: "Version & changelog" },
   { id: "about", icon: "ℹ️", label: "About", sub: "Privacy & licenses" },
+  { id: "developer", icon: "🛠️", label: "Developer", sub: "Diagnostics & logs" },
 ];
 
 function SideNav({ active, onChange, tgStatus, tgConfig, updateState }) {
@@ -1476,7 +1752,7 @@ function SideNav({ active, onChange, tgStatus, tgConfig, updateState }) {
         const isAct = active === id;
         const badge = id === "telegram" && tgSt && tgSt.key !== "running" && tgSt.key !== "disabled";
         const updateBadge = id === "updates" && hasUpdate;
-        const showDivider = idx === 3; // divider before Updates+About
+        const showDivider = idx === 3; // divider before Updates+About+Developer
         return (
           <div key={id}>
             {showDivider && <div style={{ height: 1, background: C.border, margin: "8px 4px", borderRadius: 1 }} />}
@@ -1543,6 +1819,9 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
   const [tgStatus, setTgStatus] = useState(null);
   const [tgConfig, setTgConfig] = useState(null);
   const [updateState, setUpdateState] = useState(null);
+  const [mountedSections, setMountedSections] = useState({ [initialSection]: true });
+  const [activePanelHeight, setActivePanelHeight] = useState(0);
+  const panelRefs = useRef({});
   const { toasts, push } = useToast();
 
   useEffect(() => { const t = setTimeout(() => setMounted(true), 40); return () => clearTimeout(t); }, []);
@@ -1566,12 +1845,40 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
 
   useEffect(() => { const h = e => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [onClose]);
 
+  useEffect(() => {
+    setMountedSections(prev => (prev[section] ? prev : { ...prev, [section]: true }));
+  }, [section]);
+
+  useEffect(() => {
+    const el = panelRefs.current[section];
+    if (!el) return;
+
+    const updateHeight = () => {
+      const h = Math.ceil(el.scrollHeight || 0);
+      if (h > 0) setActivePanelHeight(h);
+    };
+
+    updateHeight();
+    let ro;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(updateHeight);
+      ro.observe(el);
+    }
+    window.addEventListener("resize", updateHeight);
+
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener("resize", updateHeight);
+    };
+  }, [section, mountedSections]);
+
   const meta = {
     general: { label: "General", sub: "App behaviour and tracking" },
     telegram: { label: "Telegram Integration", sub: "Remote control via Telegram bot" },
     security: { label: "Security", sub: "Access control and encryption" },
     updates: { label: "Updates", sub: "Version history and changelog" },
     about: { label: "About & Privacy", sub: "Version, licenses and data policy" },
+    developer: { label: "Developer", sub: "Notification diagnostics and history" },
   };
 
   return (
@@ -1618,28 +1925,42 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
             <div style={{ width: 200, flexShrink: 0, padding: "16px 12px", borderRight: `1px solid ${C.border}`, background: "rgba(255,255,255,0.008)", overflowY: "auto" }}>
               <SideNav active={section} onChange={setSection} tgStatus={tgStatus} tgConfig={tgConfig} updateState={updateState} />
             </div>
-            {/* Single stable scroll container — no remount on tab switch */}
+            {/* Keep mounted panels for smooth switching; height tracks active panel to avoid blank tail scroll. */}
             <div className="sp-scroll" style={{ flex: 1, overflowY: "auto", padding: "24px 28px", position: "relative" }}>
-              {Object.keys(meta).map(id => (
-                <div key={id} style={{
-                  position: id === section ? "relative" : "absolute",
-                  top: 0, left: 0, right: 0,
-                  opacity: id === section ? 1 : 0,
-                  pointerEvents: id === section ? "auto" : "none",
-                  transition: "opacity 0.22s ease",
-                  visibility: id === section ? "visible" : "hidden",
-                }}>
-                  <div style={{ marginBottom: 24, paddingBottom: 18, borderBottom: `1px solid ${C.border}` }}>
-                    <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 21, color: C.text, fontWeight: 400, lineHeight: 1.1 }}>{meta[id]?.label}</div>
-                    <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5, lineHeight: 1.4 }}>{meta[id]?.sub}</div>
-                  </div>
-                  {id === "general" && <GeneralSection push={push} />}
-                  {id === "telegram" && <TelegramSection push={push} />}
-                  {id === "security" && <SecuritySection push={push} />}
-                  {id === "updates" && <UpdateSection push={push} />}
-                  {id === "about" && <AboutSection push={push} />}
-                </div>
-              ))}
+              <div style={{ position: "relative", minHeight: Math.max(activePanelHeight, 320), transition: "min-height 0.2s ease" }}>
+                {Object.keys(meta).map(id => {
+                  if (!mountedSections[id]) return null;
+                  const isActive = id === section;
+                  return (
+                    <div
+                      key={id}
+                      ref={el => { panelRefs.current[id] = el; }}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        opacity: isActive ? 1 : 0,
+                        transform: isActive ? "translateY(0)" : "translateY(6px)",
+                        pointerEvents: isActive ? "auto" : "none",
+                        visibility: isActive ? "visible" : "hidden",
+                        transition: "opacity 0.18s ease, transform 0.18s ease",
+                      }}
+                    >
+                      <div style={{ marginBottom: 24, paddingBottom: 18, borderBottom: `1px solid ${C.border}` }}>
+                        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 21, color: C.text, fontWeight: 400, lineHeight: 1.1 }}>{meta[id]?.label}</div>
+                        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5, lineHeight: 1.4 }}>{meta[id]?.sub}</div>
+                      </div>
+                      {id === "general" && <GeneralSection push={push} />}
+                      {id === "developer" && <DeveloperSection push={push} />}
+                      {id === "telegram" && <TelegramSection push={push} />}
+                      {id === "security" && <SecuritySection push={push} />}
+                      {id === "updates" && <UpdateSection push={push} />}
+                      {id === "about" && <AboutSection push={push} />}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>

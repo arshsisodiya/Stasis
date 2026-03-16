@@ -30,7 +30,8 @@
 12. [App Limits & Blocking](#-app-limits--blocking)
 13. [Focus Scoring](#-focus-scoring)
 14. [Data Retention & Privacy](#-data-retention--privacy)
-15. [Ethical & Legal Notice](#-ethical--legal-notice)
+15. [Privacy Policy](#-privacy-policy)
+16. [Ethical & Legal Notice](#-ethical--legal-notice)
 
 ---
 
@@ -40,8 +41,10 @@
 
 - **Real-time screen-time tracking** — knows which app has focus, for how long, and how actively you were using it (keystrokes + mouse clicks).
 - **Productivity & focus scoring** — a configurable weighted formula rates your day from 0–100, considering deep-work streaks, engagement, and switch penalties.
+- **Weekly report studio** — compare weeks, inspect hourly productivity heatmaps, track goals impact, and export/share weekly summaries.
 - **App limit enforcement** — set daily time budgets per application; Stasis automatically terminates processes once limits are exceeded, with optional temporary unblocks.
 - **Telegram remote control** — receive boot notifications, take screenshots, lock/shut down your PC, and pull activity logs from anywhere in the world via a private Telegram Bot.
+- **Goals + notifications** — define daily targets, track streaks, and receive actionable Windows notifications with snooze/extend actions for limits.
 - **Optional file system monitoring** — track file creations, modifications, and deletions across all drives.
 - **Automatic self-updates** — checks GitHub Releases for new versions and installs them silently.
 
@@ -83,11 +86,14 @@ All data is stored locally in a SQLite database at `%LOCALAPPDATA%\Stasis\data\s
 | Feature | Details |
 |---|---|
 | **Daily Dashboard** | Per-app screen time, category breakdown, hourly bar chart, and top-app badge. |
+| **Weekly Reports** | Mon-Sun reports with trend cards, app/category insights, goals progress, and week-over-week deltas. |
+| **Hourly Activity Heatmap** | 7x24 weekly heatmap showing intensity and productivity mix per hour. |
 | **60-Day Heatmap** | Calendar view colour-coded by relative usage intensity and productivity percentage. |
 | **Session Timeline** | Chronological list of every focus window with timestamps, durations, and categories. |
 | **Focus Score (0–100)** | Weighted formula: deep-work seconds + flow bonus (≥20-min streaks) + engagement score − switch penalty − idle penalty. |
 | **Productivity %** | Percentage of active time spent in `productive`-category apps, weighted by keystroke intensity. |
 | **14-Day Weekly Trend** | Line chart of daily screen time and productivity over the past two weeks. |
+| **Goals Correlation** | Weekly insight layer showing productivity on goal-met vs non-met days with drift alerts. |
 | **Website Statistics** | Top domains visited, ranked by time spent, filterable by browser. |
 | **Sparklines** | Lightweight 7–30-day mini charts for screen time, focus, keystrokes, and clicks. |
 
@@ -131,7 +137,7 @@ Stasis uses a **dual-process architecture**: a Python telemetry engine (compiled
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  React 19 Frontend  (Vite)                               │   │
 │  │  WellbeingDashboard → Overview / Activity / Apps /       │   │
-│  │                        Limits / Settings tabs             │   │
+│  │                        Insights (Goals, Limits, Reports)  │   │
 │  └─────────────────────┬────────────────────────────────────┘   │
 │                         │  HTTP  localhost:7432                  │
 └─────────────────────────┼───────────────────────────────────────┘
@@ -371,12 +377,39 @@ The Python backend exposes a local REST API on **`http://127.0.0.1:7432`**. All 
 
 | Method | Endpoint | Body | Description |
 |---|---|---|---|
-| GET | `/api/settings` | — | Returns `file_logging_enabled`, `essential_only`, `show_yesterday_comparison`, `hardware_acceleration` |
+| GET | `/api/settings` | — | Returns tracking, UI, notifications, and weekly-report preference state |
 | POST | `/api/settings/update` | `{key: value, ...}` | Update one or more settings; notifies FileMonitor of changes instantly |
+| POST | `/api/settings/notifications/test` | — | Send a general Windows notification test |
+| POST | `/api/settings/notifications/test-goal` | — | Send a goal-threshold notification test |
+| POST | `/api/settings/notifications/test-limit` | — | Send an app-limit notification test with actions |
+| GET | `/api/settings/notifications/history` | `?limit=20` | Recent in-app notification history |
+| GET | `/api/settings/notifications/action/<action>` | query-based | Trigger action handlers (`open-goals`, `snooze-limit`, `extend-limit`, etc.) |
 | POST | `/api/settings/data-retention` | `{"days": N}` | Set auto-delete threshold (0 = forever) |
 | POST | `/api/settings/data-retention/cleanup` | — | Trigger immediate cleanup of expired records |
 | POST | `/api/settings/browser-tracking` | `{"enabled": bool}` | Toggle URL tracking inside browsers |
 | POST | `/api/settings/idle-detection` | `{"enabled": bool}` | Toggle idle-time subtraction |
+
+### Goals
+
+| Method | Endpoint | Query/Body | Description |
+|---|---|---|---|
+| GET | `/api/goals` | — | List configured goals |
+| POST | `/api/goals` | goal payload | Create a new goal |
+| PUT | `/api/goals/<goal_id>` | partial goal payload | Update target, label, or active state |
+| DELETE | `/api/goals/<goal_id>` | — | Delete a goal |
+| GET | `/api/goals/progress` | `?date=YYYY-MM-DD` | Daily goal performance snapshot |
+| GET | `/api/goals/history` | `?days=30` | Goal trend/history rollup |
+
+### Weekly Reports
+
+| Method | Endpoint | Query/Body | Description |
+|---|---|---|---|
+| GET | `/api/weekly-report` | `?week_of=YYYY-MM-DD&verbosity=compact|standard|detailed` | Full weekly report payload |
+| GET | `/api/weekly-report/compare` | `?week_a=YYYY-MM-DD&week_b=YYYY-MM-DD` | Two-week compact comparison with deltas |
+| GET | `/api/weekly-report/available-weeks` | — | Available Monday-start week options |
+| POST | `/api/weekly-report/send-telegram` | `{"week_of":"YYYY-MM-DD"}` | Send rendered weekly report to Telegram |
+| GET | `/api/hourly-activity` | `?week_of=YYYY-MM-DD` | Weekly hourly activity grid used by heatmap |
+| GET | `/api/limit-events` | `?start=YYYY-MM-DD&end=YYYY-MM-DD` | Limit-hit/edit event history |
 
 ### App Limits & Blocking
 
@@ -386,6 +419,7 @@ The Python backend exposes a local REST API on **`http://127.0.0.1:7432`**. All 
 | POST | `/limits/set` | `{"app_name": "...", "daily_limit_seconds": N}` | Create or update a daily limit |
 | POST | `/limits/toggle` | `{"app_name": "..."}` | Toggle enable/disable for a limit |
 | POST | `/limits/unblock` | `{"app_name": "...", "minutes": N}` | Temporarily unblock app for N minutes |
+| POST | `/limits/reblock` | `{"app_name": "..."}` | Immediately force an app back into blocked state |
 | POST | `/limits/delete` | `{"app_name": "..."}` | Remove a limit entirely |
 | GET | `/limits/blocked` | — | Currently blocked apps with `{app_name, blocked_at}` |
 
@@ -647,11 +681,20 @@ All raw values are returned alongside the score so the UI can display a detailed
 
 ## 🔒 Data Retention & Privacy
 
-- **All data is local.** The SQLite database lives at `%LOCALAPPDATA%\Stasis\data\stasis.db`. No analytics, crash reports, or telemetry are sent anywhere.
+- **Local-first by default.** The SQLite database lives at `%LOCALAPPDATA%\Stasis\data\stasis.db`.
+- **Data leaves your device only when you use network features** such as Telegram remote commands/messages and update checks/downloads.
 - **Telegram credentials are encrypted** with Fernet symmetric encryption (AES-128-CBC for confidentiality, HMAC-SHA256 for authentication). The key is stored at `%LOCALAPPDATA%\Stasis\secret.key`.
 - **API server is local-only.** Flask binds to `127.0.0.1:7432` — no external access.
 - **Auto-delete.** Configure a retention period in Settings → Data Retention. The background worker purges records older than the threshold every 6 hours.
 - **Manual clear.** Settings → Danger Zone → **Clear All Activity Data** or **Factory Reset** wipe the database entirely (with confirmation dialogs).
+
+---
+
+## 📜 Privacy Policy
+
+- Full policy (repo): `docs/privacy-policy.md`
+- Published docs page: https://arshsisodiya.github.io/Stasis/privacy-policy/
+- In-app: Settings → About & Privacy → Privacy
 
 ---
 

@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef, useCallback, useReducer } from "react";
+import { useState, useEffect, useRef, useCallback, useReducer, memo, useMemo } from "react";
 import SettingsPage from "./pages/SettingsPage";
 import OverviewPage from "./pages/OverviewPage";
 import AppsPage from "./pages/AppsPage";
 import ActivityPage from "./pages/ActivityPage";
 import LimitsPage from "./pages/LimitsPage";
+import GoalsPage from "./pages/GoalsPage";
+import WeeklyReportPage from "./pages/WeeklyReportPage";
 import DaySummary from "./pages/DaySummary";
 import { Skeleton, SkeletonCard, TabPanel, AppIcon } from "./shared/components";
-import { localYMD, yesterday, fmtTime, fmtTimeFull } from "./shared/utils";
-import { useCountUp, useLiveClock } from "./shared/hooks";
+import { localYMD, fmtTime, fmtTimeFull } from "./shared/utils";
+import { useLiveClock, useVisibilityPolling } from "./shared/hooks";
 
 // ─── useReducer — atomic state for all dashboard data ─────────────────────────
 const initialDashState = {
@@ -52,37 +54,35 @@ function NoiseOverlay() {
   return (
     <div aria-hidden="true" style={{
       position: "fixed", inset: 0, zIndex: 3, pointerEvents: "none", opacity: 0.03,
-      backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
+      backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
       backgroundRepeat: "repeat", backgroundSize: "180px 180px",
     }} />
   );
 }
+const MemoNoiseOverlay = memo(NoiseOverlay);
 
 // ─── ANIMATED TAB PANEL ───────────────────────────────────────────────────────
-function AnimatedTabPanel({ active, children }) {
-  const [rendered, setRendered] = useState(active);
-  const wasActive = useRef(active);
+function AnimatedTabPanel({ active, preload = false, children }) {
+  const [everActive, setEverActive] = useState(active);
 
   useEffect(() => {
-    if (active) {
-      setRendered(true);
-      wasActive.current = true;
-    } else {
-      // keep rendered briefly so fade-out can play; then unmount
-      const t = setTimeout(() => { setRendered(false); wasActive.current = false; }, 320);
-      return () => clearTimeout(t);
-    }
+    if (active) setEverActive(true);
   }, [active]);
 
-  if (!rendered) return null;
+  useEffect(() => {
+    if (preload) setEverActive(true);
+  }, [preload]);
+
+  if (!everActive) return null;
 
   return (
     <div style={{
+      position: active ? "relative" : "absolute",
+      inset: active ? "auto" : 0,
       opacity: active ? 1 : 0,
-      transform: active ? "translateY(0)" : "translateY(8px)",
-      transition: active
-        ? "opacity 0.32s ease, transform 0.32s cubic-bezier(0.16,1,0.3,1)"
-        : "opacity 0.18s ease, transform 0.18s ease",
+      transform: active ? "translateY(0)" : "translateY(6px)",
+      pointerEvents: active ? "auto" : "none",
+      transition: "opacity 0.24s ease, transform 0.24s cubic-bezier(0.16,1,0.3,1)",
       willChange: "opacity, transform",
     }}>
       {children}
@@ -124,7 +124,7 @@ export function Sparkline({ values = [], color = "#4ade80", width = 72, height =
 }
 
 // ─── DATE NAVIGATOR ───────────────────────────────────────────────────────────
-function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
+const DateNavigator = memo(function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
   const today = localYMD();
   const dateSet = new Set(availableDates);
   const sorted = [...availableDates].sort();
@@ -155,15 +155,15 @@ function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 5,
-      background: "rgba(15,18,30,0.6)", border: "1px solid rgba(255,255,255,0.07)",
-      borderRadius: 16, padding: "8px 8px", backdropFilter: "blur(20px)", width: "100%",
+      background: "rgba(15,18,30,0.95)", border: "1px solid rgba(255,255,255,0.07)",
+      borderRadius: 16, padding: "8px 8px", width: "100%",
     }}>
       <button onClick={prev} disabled={!canP} style={{
         width: 26, height: 26, borderRadius: 7, border: "none", fontSize: 15, flexShrink: 0,
         background: canP ? "rgba(255,255,255,0.06)" : "transparent",
         color: canP ? "#64748b" : "rgba(255,255,255,0.1)",
         cursor: canP ? "pointer" : "not-allowed",
-        display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s",
+        display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s, color 0.15s",
       }}>‹</button>
 
       <div style={{ display: "flex", gap: 2, overflowX: "auto", flex: 1, scrollbarWidth: "none", justifyContent: "space-evenly" }}>
@@ -180,7 +180,7 @@ function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
                 border: isSel ? "1px solid rgba(74,222,128,0.4)" : isT ? "1px solid rgba(255,255,255,0.1)" : "1px solid transparent",
                 background: isSel ? "rgba(74,222,128,0.12)" : "transparent",
                 cursor: has ? "pointer" : "default",
-                opacity: has ? 1 : 0.3, transition: "all 0.2s",
+                opacity: has ? 1 : 0.3, transition: "background 0.2s, border-color 0.2s, opacity 0.2s",
               }}>
               <span style={{ fontSize: 8, color: isSel ? "#4ade80" : "#475569", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.04em" }}>
                 {p.toLocaleDateString("en-US", { weekday: "short" })}
@@ -205,32 +205,30 @@ function DateNavigator({ selectedDate, onChange, availableDates, heatmap }) {
         background: canN ? "rgba(255,255,255,0.06)" : "transparent",
         color: canN ? "#64748b" : "rgba(255,255,255,0.1)",
         cursor: canN ? "pointer" : "not-allowed",
-        display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s",
+        display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s, color 0.15s",
       }}>›</button>
 
       {/* "Today ↩" jump — only shown when browsing history */}
       {isHistorical && dateSet.has(today) && (
-        <button onClick={() => onChange(today)} style={{
+        <button className="hover-green-outline" onClick={() => onChange(today)} style={{
           flexShrink: 0, padding: "4px 10px", borderRadius: 7,
           border: "1px solid rgba(74,222,128,0.28)", background: "rgba(74,222,128,0.07)",
           color: "#4ade80", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
           textTransform: "uppercase", cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
-          whiteSpace: "nowrap", transition: "all 0.2s",
-        }}
-          onMouseEnter={e => { e.currentTarget.style.background = "rgba(74,222,128,0.14)"; e.currentTarget.style.borderColor = "rgba(74,222,128,0.45)"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "rgba(74,222,128,0.07)"; e.currentTarget.style.borderColor = "rgba(74,222,128,0.28)"; }}>
+          whiteSpace: "nowrap", transition: "background 0.2s, border-color 0.2s",
+        }}>
           Today ↩
         </button>
       )}
     </div>
   );
-}
+});
 
 // ─── EMPTY STATE ──────────────────────────────────────────────────────────────
 function EmptyState() {
   return (
     <div style={{ minHeight: "100vh", background: "#080b14", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans',sans-serif" }}>
-      <NoiseOverlay />
+      <MemoNoiseOverlay />
       <div style={{ textAlign: "center", maxWidth: 420, padding: 24 }}>
         <div style={{ fontSize: 64, marginBottom: 24, animation: "float 3s ease-in-out infinite" }}>🌱</div>
         <h2 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 28, color: "#f8fafc", marginBottom: 12, fontWeight: 400 }}>No data yet</h2>
@@ -268,6 +266,8 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
   const { data, stats, prevStats, prevWellbeing, hourly, focusData, limits, trackedSeconds, loading, noData, mounted } = dashState;
 
   const [activeTab, setActiveTab] = useState("overview");
+  const [activeInsightTab, setActiveInsightTab] = useState("goals");
+  const [prewarmTabs, setPrewarmTabs] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [selectedDate, setSelectedDate] = useState(localYMD());
   const [availableDates, setAvailableDates] = useState([]);
@@ -280,6 +280,112 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
   const scrollRef = useRef(null);
   const { elapsed, isToday } = useLiveClock(selectedDate);
 
+  const handleDeepLink = useCallback(async (urlLike) => {
+    if (!urlLike) return;
+    let parsed;
+    try {
+      parsed = new URL(urlLike);
+    } catch {
+      return;
+    }
+
+    const isStasis = parsed.protocol.toLowerCase() === "stasis:";
+    if (!isStasis) return;
+
+    const action = (parsed.searchParams.get("action") || "").toLowerCase();
+    if (action === "open-limits") {
+      setActiveTab("insights");
+      setActiveInsightTab("limits");
+      return;
+    }
+    if (action === "open-goals") {
+      setActiveTab("insights");
+      setActiveInsightTab("goals");
+      return;
+    }
+    if (action === "open-review-day") {
+      setActiveTab("activity");
+      return;
+    }
+    if (action === "snooze-limit") {
+      const minutes = parsed.searchParams.get("minutes") || "60";
+      try {
+        await fetch(`${BASE}/api/settings/notifications/action/snooze-limit?minutes=${encodeURIComponent(minutes)}`);
+      } catch { }
+      return;
+    }
+    if (action === "extend-limit") {
+      const app = parsed.searchParams.get("app") || "";
+      const minutes = parsed.searchParams.get("minutes") || "10";
+      if (!app) return;
+      try {
+        await fetch(
+          `${BASE}/api/settings/notifications/action/extend-limit?app=${encodeURIComponent(app)}&minutes=${encodeURIComponent(minutes)}`
+        );
+      } catch { }
+      return;
+    }
+    if (action === "keep-blocked") {
+      const app = parsed.searchParams.get("app") || "";
+      if (!app) return;
+      try {
+        await fetch(`${BASE}/api/settings/notifications/action/keep-blocked?app=${encodeURIComponent(app)}`);
+      } catch { }
+      return;
+    }
+  }, [BASE]);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const section = (params.get("section") || "").toLowerCase();
+      if (section === "limits") {
+        setActiveTab("insights");
+        setActiveInsightTab("limits");
+      } else if (section === "goals") {
+        setActiveTab("insights");
+        setActiveInsightTab("goals");
+      } else if (section === "activity") {
+        setActiveTab("activity");
+      }
+    } catch { }
+  }, []);
+
+  useEffect(() => {
+    const onDeepLink = (event) => {
+      const url = event?.detail?.url;
+      handleDeepLink(url);
+    };
+    window.addEventListener("stasis:deep-link", onDeepLink);
+    return () => window.removeEventListener("stasis:deep-link", onDeepLink);
+  }, [handleDeepLink]);
+
+  useEffect(() => {
+    if (loading || prewarmTabs) return;
+
+    let cancelled = false;
+    let timeoutId = null;
+    let idleId = null;
+
+    const warm = () => {
+      if (!cancelled) setPrewarmTabs(true);
+    };
+
+    if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(warm, { timeout: 1200 });
+    } else {
+      timeoutId = setTimeout(warm, 450);
+    }
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      if (idleId && typeof window !== "undefined" && typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(idleId);
+      }
+    };
+  }, [loading, prewarmTabs]);
+
   // Scroll to top on date change
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
@@ -287,7 +393,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
   // Keyboard shortcuts
   useEffect(() => {
-    const TABS = ["overview", "apps", "activity", "limits"];
+    const TABS = ["overview", "apps", "activity", "insights"];
     const handler = e => {
       const n = parseInt(e.key);
       if (n >= 1 && n <= TABS.length && !e.ctrlKey && !e.metaKey && !e.altKey
@@ -300,10 +406,15 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
   // Version + settings
   useEffect(() => {
-    fetch(`${BASE}/api/update/status`).then(r => r.json())
-      .then(d => { if (d?.current_version) setAppVersion(d.current_version); }).catch(() => { });
-    fetch(`${BASE}/api/settings`).then(r => r.json())
-      .then(d => { if (d?.show_yesterday_comparison !== undefined) setShowYesterdayComparison(d.show_yesterday_comparison); }).catch(() => { });
+    fetch(`${BASE}/api/init-bundle`).then(r => r.json())
+      .then(d => {
+        if (d?.updateStatus?.current_version) setAppVersion(d.updateStatus.current_version);
+        if (d?.settings?.show_yesterday_comparison !== undefined) setShowYesterdayComparison(d.settings.show_yesterday_comparison);
+        if (d?.availableDates) setAvailableDates(d.availableDates);
+        if (d?.heatmap) setHeatmapData(d.heatmap);
+        if (d?.sparkSeries) setSparkData(d.sparkSeries);
+        if (d?.ignoredApps) setIgnoredApps(new Set((Array.isArray(d.ignoredApps) ? d.ignoredApps : []).map(a => a.toLowerCase())));
+      }).catch(() => { });
   }, [BASE, showSettings]);
 
   const cache = useRef(initialData ? { [localYMD()]: { ...initialData, fetchedAt: Date.now() } } : {});
@@ -320,21 +431,19 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
   const fetchDate = useCallback(async (date) => {
     if (inflight.current[date]) return inflight.current[date];
-    const yd = yesterday(date);
-    const promise = Promise.all([
-      fetch(`${BASE}/api/wellbeing?date=${date}`).then(r => r.json()),
-      fetch(`${BASE}/api/daily-stats?date=${date}`).then(r => r.json()),
-      fetch(`${BASE}/api/hourly?date=${date}`).then(r => r.json()),
-      fetch(`${BASE}/api/focus?date=${date}`).then(r => r.json()),
-      fetch(`${BASE}/api/daily-stats?date=${yd}`).then(r => r.json()).catch(() => []),
-      fetch(`${BASE}/limits/all`).then(r => r.json()).catch(() => []),
-      fetch(`${BASE}/api/wellbeing?date=${yd}`).then(r => r.json()).catch(() => null),
-    ]).then(([wb, ds, hr, fc, prev, lim, prevWb]) => {
-      const entry = { wb, ds, hr, fc, prev, lim, prevWb, fetchedAt: Date.now() };
-      cache.current[date] = entry;
-      delete inflight.current[date];
-      return entry;
-    }).catch(err => { delete inflight.current[date]; throw err; });
+    const promise = fetch(`${BASE}/api/dashboard-bundle?date=${date}`)
+      .then(r => r.json())
+      .then(bundle => {
+        const entry = {
+          wb: bundle.wb, ds: bundle.ds, hr: bundle.hr, fc: bundle.fc,
+          prev: bundle.prev, lim: bundle.lim, prevWb: bundle.prevWb,
+          fetchedAt: Date.now(),
+        };
+        cache.current[date] = entry;
+        delete inflight.current[date];
+        return entry;
+      })
+      .catch(err => { delete inflight.current[date]; throw err; });
     inflight.current[date] = promise;
     return promise;
   }, [BASE]);
@@ -346,15 +455,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
     });
   }, [fetchDate]);
 
-  useEffect(() => {
-    fetch(`${BASE}/api/available-dates`).then(r => r.json()).then(d => setAvailableDates(d)).catch(() => setAvailableDates([localYMD()]));
-    fetch(`${BASE}/api/heatmap`).then(r => r.json()).then(d => setHeatmapData(d)).catch(() => { });
-    // Dedicated sparkline endpoint — fetches 7-day focus, keystrokes, clicks etc.
-    fetch(`${BASE}/api/spark-series?days=7`).then(r => r.json()).then(d => setSparkData(d)).catch(() => { });
-    fetch(`${BASE}/api/ignored-apps`).then(r => r.json()).then(d => {
-      setIgnoredApps(new Set((Array.isArray(d) ? d : []).map(a => a.toLowerCase())));
-    }).catch(() => { });
-  }, []);
+  // init-bundle above handles available-dates, heatmap, spark-series, and ignored-apps
 
   useEffect(() => {
     const today = localYMD();
@@ -375,26 +476,31 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
     }
   }, [selectedDate, availableDates]);
 
-  // Live refresh today
-  useEffect(() => {
+  // Live refresh today, throttled while the window is hidden.
+  useVisibilityPolling(async () => {
     const today = localYMD();
     if (selectedDate !== today) return;
-    const iv = setInterval(async () => {
-      try {
-        delete cache.current[today];
-        const entry = await fetchDate(today);
-        if (selectedDate === today) applyData(entry);
-      } catch (err) {
-        if (err instanceof TypeError && onDisconnect) onDisconnect();
-      }
-    }, 60_000);
-    return () => clearInterval(iv);
-  }, [selectedDate, fetchDate, applyData]);
+    try {
+      delete cache.current[today];
+      const entry = await fetchDate(today);
+      if (selectedDate === today) applyData(entry);
+    } catch (err) {
+      if (err instanceof TypeError && onDisconnect) onDisconnect();
+    }
+  }, {
+    enabled: selectedDate === localYMD(),
+    visibleIntervalMs: 60_000,
+    hiddenIntervalMs: 180_000,
+    immediate: false,
+  });
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const peakHour = hourly.reduce((pi, v, i) => v > hourly[pi] ? i : pi, 0);
   const countKey = `${selectedDate}-${activeTab}`;
   const enrichedData = data ? { ...data, focusScore: focusData?.score ?? 0, deepWorkSeconds: focusData?.deepWorkSeconds ?? 0 } : null;
+  const historicalDiffDays = !isToday
+    ? Math.round((new Date(localYMD() + "T12:00:00") - new Date(selectedDate + "T12:00:00")) / 86400000)
+    : 0;
 
   // 7-day sparkline series — all metrics sourced from /api/spark-series
   const sparkSeries = (() => {
@@ -411,8 +517,14 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
     { id: "overview", label: "Overview" },
     { id: "apps", label: "Apps" },
     { id: "activity", label: "Activity" },
-    { id: "limits", label: "🛡️ Limits", accent: true },
+    { id: "insights", label: "✨ Insights", accent: true },
   ];
+
+  const INSIGHT_TABS = useMemo(() => ([
+    { id: "goals", label: "Goals" },
+    { id: "limits", label: "Limits" },
+    { id: "reports", label: "Reports" },
+  ]), []);
 
   if (loading) return null;
   if (noData) return <EmptyState />;
@@ -424,7 +536,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
       position: "relative", overflow: "hidden",
       animation: "db-enter 0.5s cubic-bezier(0.16,1,0.3,1) both",
     }}>
-      <NoiseOverlay />
+      <MemoNoiseOverlay />
 
       <style>{`
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -456,6 +568,10 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
         .db-scroll-wrapper::-webkit-scrollbar{width:4px;}
         .db-scroll-wrapper::-webkit-scrollbar-track{background:transparent;}
         .db-scroll-wrapper::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:4px;}
+        @media(prefers-reduced-motion:reduce){
+          .orb-float,.orb-float-2{animation:none!important;}
+          .metric-card,.tab-btn{animation:none!important;transition:none!important;}
+        }
         @media(max-width:900px){.grid-4{grid-template-columns:1fr 1fr!important;}.grid-4-sm{grid-template-columns:1fr 1fr!important;}}
         @media(max-width:600px){
           .grid-4{grid-template-columns:1fr!important;}
@@ -472,7 +588,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
         borderRadius: "50%", pointerEvents: "none", zIndex: 0, transition: "background 1.4s ease",
         background: !isToday
           ? "radial-gradient(circle,rgba(99,102,241,0.1) 0%,transparent 70%)"
-          : activeTab === "limits"
+          : (activeTab === "insights" && activeInsightTab === "limits")
             ? "radial-gradient(circle,rgba(251,191,36,0.1) 0%,transparent 70%)"
             : activeTab === "apps"
               ? "radial-gradient(circle,rgba(96,165,250,0.12) 0%,transparent 70%)"
@@ -485,7 +601,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
           ? "radial-gradient(circle,rgba(79,70,229,0.08) 0%,transparent 70%)"
           : activeTab === "activity"
             ? "radial-gradient(circle,rgba(167,139,250,0.1) 0%,transparent 70%)"
-            : activeTab === "limits"
+            : (activeTab === "insights" && activeInsightTab === "limits")
               ? "radial-gradient(circle,rgba(248,113,113,0.09) 0%,transparent 70%)"
               : "radial-gradient(circle,rgba(96,165,250,0.1) 0%,transparent 70%)",
       }} />
@@ -551,14 +667,12 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
                     </button>
                   ))}
                 </div>
-                <button onClick={() => setShowSettings("drawer")} title="Menu" style={{
+                <button className="hover-surface" onClick={() => setShowSettings("drawer")} title="Menu" style={{
                   width: 36, height: 36, borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)",
                   background: "rgba(255,255,255,0.04)", cursor: "pointer",
                   display: "flex", flexDirection: "column", alignItems: "center",
                   justifyContent: "center", gap: 4, padding: 0, flexShrink: 0, transition: "all 0.2s ease",
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.07)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.14)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"; }}>
+                }}>
                   {[18, 14, 18].map((w, i) => (
                     <span key={i} style={{ display: "block", borderRadius: 2, background: "#64748b", width: w, height: 2, transition: "all 0.2s" }} />
                   ))}
@@ -569,10 +683,21 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
             {/* Context line */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 12, color: "#475569" }}>
-                {activeTab === "limits" ? "App time limits & blocking"
+                {activeTab === "insights" && activeInsightTab === "limits" ? "App time limits & blocking"
+                  : activeTab === "insights" && activeInsightTab === "goals" ? "Personal goals & daily targets"
+                  : activeTab === "insights" && activeInsightTab === "reports" ? "Weekly usage summary & insights"
                   : new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
               </span>
-              {isToday && activeTab !== "limits" && (
+              {!isToday && activeTab !== "insights" && (
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11,
+                  color: "#818cf8", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)",
+                  borderRadius: 8, padding: "3px 10px", fontWeight: 500,
+                }}>
+                  {historicalDiffDays === 1 ? "yesterday" : `${historicalDiffDays} days ago`}
+                </span>
+              )}
+              {isToday && activeTab !== "insights" && (
                 <span style={{
                   display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11,
                   color: "#4ade80", background: "rgba(74,222,128,0.07)", border: "1px solid rgba(74,222,128,0.18)",
@@ -593,8 +718,36 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               )}
             </div>
 
+            {activeTab === "insights" && (
+              <div style={{ display: "inline-flex", gap: 4, alignItems: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 4, width: "fit-content" }}>
+                {INSIGHT_TABS.map(t => {
+                  const isActive = activeInsightTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setActiveInsightTab(t.id)}
+                      style={{
+                        border: "1px solid transparent",
+                        background: isActive ? "rgba(96,165,250,0.14)" : "transparent",
+                        color: isActive ? "#93c5fd" : "#64748b",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        borderColor: isActive ? "rgba(96,165,250,0.35)" : "transparent",
+                        borderRadius: 8,
+                        padding: "6px 12px",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Date navigator + DaySummary */}
-            {activeTab !== "limits" && (
+            {activeTab !== "insights" && (
               <div className="date-bar-row" style={{ display: "flex", gap: 12, alignItems: "stretch", width: "100%" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <DateNavigator selectedDate={selectedDate} onChange={setSelectedDate} availableDates={availableDates} heatmap={heatmapData} />
@@ -612,48 +765,63 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
           </div>
 
           {/* ── TAB CONTENT with fluid transitions ── */}
-          <AnimatedTabPanel active={activeTab === "overview"}>
-            <OverviewPage
-              data={enrichedData}
-              stats={stats}
-              prevStats={prevStats}
-              prevWellbeing={prevWellbeing}
-              showComparison={showYesterdayComparison}
-              limits={limits}
-              hourly={hourly}
-              peakHour={peakHour}
-              countKey={countKey}
-              selectedDate={selectedDate}
-              onGoToLimits={() => setActiveTab("limits")}
-              onGoToday={() => setSelectedDate(localYMD())}
-              sparkSeries={sparkSeries}
-              BASE={BASE}
-            />
-          </AnimatedTabPanel>
+          <div style={{ position: "relative", minHeight: 420 }}>
+            <AnimatedTabPanel active={activeTab === "overview"}>
+              <OverviewPage
+                data={enrichedData}
+                stats={stats}
+                prevStats={prevStats}
+                prevWellbeing={prevWellbeing}
+                showComparison={showYesterdayComparison}
+                limits={limits}
+                hourly={hourly}
+                peakHour={peakHour}
+                countKey={countKey}
+                selectedDate={selectedDate}
+                onGoToLimits={() => { setActiveTab("insights"); setActiveInsightTab("limits"); }}
+                sparkSeries={sparkSeries}
+                BASE={BASE}
+              />
+            </AnimatedTabPanel>
 
-          <AnimatedTabPanel active={activeTab === "apps"}>
-            <AppsPage BASE={BASE} stats={stats} prevStats={prevStats} selectedDate={selectedDate} ignoredApps={ignoredApps} />
-          </AnimatedTabPanel>
+            <AnimatedTabPanel active={activeTab === "apps"} preload={prewarmTabs}>
+              <AppsPage
+                isActive={activeTab === "apps"}
+                BASE={BASE}
+                stats={stats}
+                prevStats={prevStats}
+                selectedDate={selectedDate}
+                ignoredApps={ignoredApps}
+              />
+            </AnimatedTabPanel>
 
-          <AnimatedTabPanel active={activeTab === "activity"}>
-            <ActivityPage
-              BASE={BASE} selectedDate={selectedDate}
-              data={data || { totalScreenTime: 0, totalSessions: 0, totalKeystrokes: 0, totalClicks: 0 }}
-              stats={stats} prevStats={prevStats} prevWellbeing={prevWellbeing}
-              showComparison={showYesterdayComparison} hourly={hourly} peakHour={peakHour} countKey={countKey}
-            />
-          </AnimatedTabPanel>
+            <AnimatedTabPanel active={activeTab === "activity"} preload={prewarmTabs}>
+              <ActivityPage
+                BASE={BASE} selectedDate={selectedDate}
+                data={data || { totalScreenTime: 0, totalSessions: 0, totalKeystrokes: 0, totalClicks: 0 }}
+                stats={stats} prevStats={prevStats} prevWellbeing={prevWellbeing}
+                showComparison={showYesterdayComparison} hourly={hourly} peakHour={peakHour} countKey={countKey}
+              />
+            </AnimatedTabPanel>
 
-          <AnimatedTabPanel active={activeTab === "limits"}>
-            <LimitsPage BASE={BASE} stats={stats} />
-          </AnimatedTabPanel>
+            <AnimatedTabPanel active={activeTab === "insights"} preload={prewarmTabs}>
+              {activeInsightTab === "goals" && (
+                <GoalsPage selectedDate={selectedDate} />
+              )}
+              {activeInsightTab === "limits" && (
+                <LimitsPage isActive={activeTab === "insights" && activeInsightTab === "limits"} BASE={BASE} stats={stats} />
+              )}
+              {activeInsightTab === "reports" && (
+                <WeeklyReportPage />
+              )}
+            </AnimatedTabPanel>
+          </div>
 
           {/* Footer */}
           <div style={{ textAlign: "center", marginTop: 48, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <a href="https://github.com/arshsisodiya/Stasis" target="_blank" rel="noopener noreferrer"
+            <a className="hover-fade" href="https://github.com/arshsisodiya/Stasis" target="_blank" rel="noopener noreferrer"
               style={{ letterSpacing: "0.04em", opacity: 0.35, textDecoration: "none", color: "#475569", transition: "opacity 0.15s ease, transform 0.15s ease", cursor: "pointer", fontVariantNumeric: "tabular-nums" }}
-              onMouseEnter={e => { e.currentTarget.style.opacity = "0.7"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-              onMouseLeave={e => { e.currentTarget.style.opacity = "0.35"; e.currentTarget.style.transform = "translateY(0)"; }}>
+              >
               Stasis{appVersion ? ` v${appVersion}` : ""} · © {new Date().getFullYear()} Arsh Sisodiya
             </a>
           </div>
@@ -665,13 +833,13 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
         <>
           <div onClick={() => setShowSettings(null)} style={{
             position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,0.55)",
-            backdropFilter: "blur(6px)", animation: "drawer-fade-in 0.22s ease",
+            backdropFilter: "blur(var(--glass-blur))", animation: "drawer-fade-in 0.22s ease",
           }} />
           <div style={{
             position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 160, width: 280,
             background: "rgba(8,11,20,0.97)", borderLeft: "1px solid rgba(255,255,255,0.07)",
             display: "flex", flexDirection: "column",
-            boxShadow: "-24px 0 80px rgba(15,18,34,0.7)",
+            boxShadow: "var(--shadow-soft)",
             animation: "drawer-slide-in 0.28s cubic-bezier(0.34,1.1,0.64,1)",
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 20px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -695,13 +863,11 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
                 { icon: "ℹ️", label: "About & Privacy", sub: "About, licenses, policy", section: "about" },
                 { icon: "🚀", label: "Updates", sub: "Version & changelog", section: "updates" },
               ].map(({ icon, label, sub, section }) => (
-                <button key={section} onClick={() => setShowSettings(section)} style={{
+                <button key={section} className="hover-surface" onClick={() => setShowSettings(section)} style={{
                   display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
                   borderRadius: 12, border: "none", cursor: "pointer", textAlign: "left", width: "100%",
                   background: "transparent", color: "#475569", transition: "all 0.15s ease",
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "#f8fafc"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#475569"; }}>
+                }}>
                   <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>{icon}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 500, fontFamily: "'DM Sans',sans-serif" }}>{label}</div>

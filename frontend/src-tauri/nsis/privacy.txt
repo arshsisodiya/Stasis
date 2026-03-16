@@ -1,52 +1,113 @@
-STASIS – DIGITAL WELLBEING FOR WINDOWS
+STASIS - DIGITAL WELLBEING FOR WINDOWS
 PRIVACY POLICY
 
-Last Updated: January 2026
+Last Updated: March 16, 2026
 
-This Privacy Policy describes how Stasis collects, uses, and protects your information.
+This Privacy Policy explains what Stasis collects, where it is stored, when data leaves your device, and how you can control or delete it.
 
-1. INFORMATION WE COLLECT
-Stasis may collect:
-- Application usage statistics
-- System uptime information
-- Configuration settings
-- Optional Telegram integration data (if enabled)
+1) SUMMARY
+Stasis is designed to work primarily on-device. Most data is stored locally in a SQLite database on your Windows PC.
 
-Stasis DOES NOT collect:
-- Personal files
+Data leaves your device only when you enable or use internet features such as Telegram remote control and update checks.
+
+2) DATA WE COLLECT
+Depending on enabled settings and how you use the app, Stasis may collect:
+
+A. Activity and productivity data (local)
+- App/process name (for example: code.exe)
+- Executable path
+- Process ID
+- Window title
+- Active time and idle time
+- Mouse click count
+- Keystroke count (count only, not key content)
+- Browser URL for supported browsers when browser tracking is enabled
+
+B. Analytics and settings data (local)
+- Daily stats and category summaries
+- App limits and blocked-app status
+- Feature toggles and preferences
+- Data retention configuration
+
+C. Optional file activity data (local, only if enabled)
+- File event type (created, modified, deleted, moved)
+- File path
+
+D. Optional Telegram integration data
+- Bot token and chat ID (stored encrypted at rest)
+- Recent bot command history (last commands metadata)
+- Media generated on demand by your command (for example screenshot/webcam capture) before upload to Telegram
+
+E. Local application logs
+- Diagnostic logs for reliability and troubleshooting
+
+3) WHAT WE DO NOT COLLECT
+Stasis does not intentionally collect or transmit:
 - Passwords
-- Browsing history
-- Keystrokes
-- Sensitive personal information
+- Keystroke content (only aggregate counts are recorded)
+- File contents (only file event metadata/path if file logging is enabled)
 
-2. HOW INFORMATION IS USED
-Collected information is used strictly to:
-- Provide digital wellbeing insights
-- Enable blocking features
-- Generate reports
-- Improve performance and reliability
+4) HOW WE USE DATA
+We use collected data to:
+- Show screen-time and focus analytics
+- Enforce app limits and blocking rules
+- Run requested remote actions through Telegram (if enabled)
+- Provide diagnostics and improve reliability
 
-3. DATA STORAGE
-All data is stored locally on your device unless you explicitly enable cloud or remote features.
+5) WHEN DATA LEAVES YOUR DEVICE
+Stasis may make network requests in these cases:
 
-4. DATA SHARING
-Stasis does not sell, rent, or share personal data with third parties.
+A. Telegram integration (optional, user-enabled)
+- Calls Telegram Bot API to validate token, poll commands, and send requested messages/media/files.
+- Data sent depends on commands you use (for example status text, screenshot, webcam image/video, selected logs).
 
-5. SECURITY
-Reasonable technical safeguards are implemented to protect stored data from unauthorized access.
+B. Update checks and updates
+- Checks latest release metadata from GitHub API.
+- Downloads installer/update package from GitHub release assets when you choose to update.
 
-6. TELEGRAM INTEGRATION
-If Telegram integration is enabled:
-- Bot token and chat ID are encrypted before storage.
-- Messages are sent only to configured accounts.
+C. Connectivity checks
+- May perform a basic internet reachability check.
 
-7. USER CONTROL
-You may:
-- Disable features at any time
-- Clear collected data from within the application
-- Uninstall the software to remove local data
+Outside of these scenarios, Stasis is intended to run locally without sending analytics or advertising telemetry.
 
-8. POLICY CHANGES
-This Privacy Policy may be updated from time to time. Continued use of the Software indicates acceptance of updated terms.
+6) DATA STORAGE AND RETENTION
+- Primary storage: local SQLite database on your device.
+- Credentials: Telegram bot token/chat ID are encrypted before storage.
+- Retention: you can configure automatic deletion (retention days) or keep data until you clear it.
+- Manual deletion: you can clear activity data/reset from app settings and can uninstall the app.
 
-If you do not agree with this Privacy Policy, please do not install or use the Software.
+7) DATA SHARING
+Stasis does not sell your personal data.
+
+Stasis does not share your data with third parties for advertising purposes.
+
+Data is shared with service providers only when required for features you enable, such as Telegram (for bot messaging) and GitHub (for update checks/downloads).
+
+8) SECURITY
+We use reasonable technical measures, including local credential encryption for Telegram secrets and local-only backend binding for app control endpoints.
+
+No method of storage or transmission is 100% secure.
+
+9) YOUR CHOICES AND CONTROLS
+You can:
+- Disable browser tracking
+- Disable file logging
+- Disable Telegram integration
+- Adjust retention duration
+- Clear data from the app
+- Uninstall Stasis
+
+10) CHILDREN'S PRIVACY
+Stasis is not directed to children under 13. If you believe data from a child was collected unintentionally, contact us to request removal support.
+
+11) INTERNATIONAL DATA TRANSFERS
+If you use Telegram or GitHub update services, related data may be processed on servers outside your country according to those providers' infrastructure and policies.
+
+12) CHANGES TO THIS POLICY
+We may update this Privacy Policy. We will update the "Last Updated" date when changes are made.
+
+13) CONTACT
+For privacy questions or requests, contact:
+Email: [ADD YOUR SUPPORT EMAIL]
+
+If you do not agree with this Privacy Policy, do not use the software.

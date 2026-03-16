@@ -1897,29 +1897,20 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
             <div style={{ width: 200, flexShrink: 0, padding: "16px 12px", borderRight: `1px solid ${C.border}`, background: "rgba(255,255,255,0.008)", overflowY: "auto" }}>
               <SideNav active={section} onChange={setSection} tgStatus={tgStatus} tgConfig={tgConfig} updateState={updateState} />
             </div>
-            {/* Single stable scroll container — no remount on tab switch */}
+            {/* Scroll only active section content to avoid hidden tabs inflating scroll height. */}
             <div className="sp-scroll" style={{ flex: 1, overflowY: "auto", padding: "24px 28px", position: "relative" }}>
-              {Object.keys(meta).map(id => (
-                <div key={id} style={{
-                  position: id === section ? "relative" : "absolute",
-                  top: 0, left: 0, right: 0,
-                  opacity: id === section ? 1 : 0,
-                  pointerEvents: id === section ? "auto" : "none",
-                  transition: "opacity 0.22s ease",
-                  visibility: id === section ? "visible" : "hidden",
-                }}>
-                  <div style={{ marginBottom: 24, paddingBottom: 18, borderBottom: `1px solid ${C.border}` }}>
-                    <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 21, color: C.text, fontWeight: 400, lineHeight: 1.1 }}>{meta[id]?.label}</div>
-                    <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5, lineHeight: 1.4 }}>{meta[id]?.sub}</div>
-                  </div>
-                  {id === "general" && <GeneralSection push={push} />}
-                  {id === "developer" && <DeveloperSection push={push} />}
-                  {id === "telegram" && <TelegramSection push={push} />}
-                  {id === "security" && <SecuritySection push={push} />}
-                  {id === "updates" && <UpdateSection push={push} />}
-                  {id === "about" && <AboutSection push={push} />}
+              <div style={{ opacity: 1, transition: "opacity 0.22s ease" }}>
+                <div style={{ marginBottom: 24, paddingBottom: 18, borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 21, color: C.text, fontWeight: 400, lineHeight: 1.1 }}>{meta[section]?.label}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5, lineHeight: 1.4 }}>{meta[section]?.sub}</div>
                 </div>
-              ))}
+                {section === "general" && <GeneralSection push={push} />}
+                {section === "developer" && <DeveloperSection push={push} />}
+                {section === "telegram" && <TelegramSection push={push} />}
+                {section === "security" && <SecuritySection push={push} />}
+                {section === "updates" && <UpdateSection push={push} />}
+                {section === "about" && <AboutSection push={push} />}
+              </div>
             </div>
           </div>
         </div>

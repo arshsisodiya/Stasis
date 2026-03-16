@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'src-tauri/target/**']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
@@ -23,6 +23,16 @@ export default defineConfig([
       },
     },
     rules: {
+      // Keep core hooks checks, but disable compiler-specific rules for this codebase.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/purity': 'off',
+      'react-hooks/immutability': 'off',
+      'react-hooks/use-memo': 'off',
+      'react-hooks/static-components': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/exhaustive-deps': 'warn',
+      'no-empty': ['error', { allowEmptyCatch: true }],
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },

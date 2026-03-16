@@ -560,7 +560,6 @@ export default function LoadingScreen({
   // ── Derived display values ──────────────────────────────────────────────────
   const isError = phase === "error";
   const isReady = phase === "ready";
-  const dotColor = isError ? C.red : isReady ? C.green : C.green;
   const statusColor = isError ? C.red : isReady ? C.green : C.textMuted;
 
   const statusText = isError

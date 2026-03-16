@@ -424,7 +424,7 @@ export default function GoalsPage({ selectedDate }) {
       });
       showT(value ? "Goals will show on Overview" : "Goals hidden on Overview", "success");
     } catch {
-      setShowGoalsInOverview(prev => !value);
+      setShowGoalsInOverview(() => !value);
       window.dispatchEvent(new CustomEvent(OVERVIEW_GOALS_VISIBILITY_EVENT, { detail: { value: !value } }));
       showT("Could not update overview goal setting", "warn");
     }

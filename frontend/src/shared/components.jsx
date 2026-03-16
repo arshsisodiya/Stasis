@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { CATEGORY_COLORS, KNOWN_APP_EMOJIS, CATEGORY_EMOJIS } from "./constants";
-import { fmtTime, trendPct, resolveAppIcon, localYMD } from "./utils";
+import { fmtTime, resolveAppIcon, localYMD } from "./utils";
 
 // ─── SKELETON ─────────────────────────────────────────────────────────────────
 export function Skeleton({ w = "100%", h = 20, r = 8 }) {

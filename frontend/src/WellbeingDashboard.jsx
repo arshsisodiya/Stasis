@@ -8,8 +8,8 @@ import GoalsPage from "./pages/GoalsPage";
 import WeeklyReportPage from "./pages/WeeklyReportPage";
 import DaySummary from "./pages/DaySummary";
 import { Skeleton, SkeletonCard, TabPanel, AppIcon } from "./shared/components";
-import { localYMD, yesterday, fmtTime, fmtTimeFull } from "./shared/utils";
-import { useCountUp, useLiveClock, useVisibilityPolling } from "./shared/hooks";
+import { localYMD, fmtTime, fmtTimeFull } from "./shared/utils";
+import { useLiveClock, useVisibilityPolling } from "./shared/hooks";
 
 // ─── useReducer — atomic state for all dashboard data ─────────────────────────
 const initialDashState = {

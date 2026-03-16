@@ -24,13 +24,8 @@ export default function ActivityPage({
   BASE,
   selectedDate,
   data,
-  stats,
-  prevStats,
   prevWellbeing,
   showComparison,
-  hourly,
-  peakHour,
-  countKey,
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>

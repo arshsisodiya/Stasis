@@ -4,7 +4,7 @@ import { fmtTime, trendPct } from "../shared/utils";
 import { AppIcon, CategoryChip, TrendBadge, SectionCard } from "../shared/components";
 
 // ─── APP ROW ─────────────────────────────────────────────────────────────────
-const AppRow = memo(function AppRow({ app, active, maxActive, main, sub, index, prevActive }) {
+const AppRow = memo(function AppRow({ app, active, maxActive, main, sub, prevActive }) {
   const pct = maxActive > 0 ? (active / maxActive) * 100 : 0;
   const col = CATEGORY_COLORS[main] || CATEGORY_COLORS.other;
   const [hov, setHov] = useState(false);
@@ -47,7 +47,7 @@ const AppRow = memo(function AppRow({ app, active, maxActive, main, sub, index, 
 const _siteStatsCache = {};
 
 // ─── BROWSER ROW ───────────────────────────────────────────────────────────────
-const BrowserRow = memo(function BrowserRow({ browsers, maxActive, index, BASE, selectedDate, prevActive }) {
+const BrowserRow = memo(function BrowserRow({ browsers, maxActive, BASE, selectedDate, prevActive }) {
   const [expanded, setExpanded] = useState(false);
   const [sites, setSites] = useState(null);
   const [loadingSites, setLoadingSites] = useState(false);
@@ -181,11 +181,9 @@ const BrowserRow = memo(function BrowserRow({ browsers, maxActive, index, BASE, 
 // ─── APPS PAGE ────────────────────────────────────────────────────────────────
 export default function AppsPage({ BASE, stats, prevStats, selectedDate, ignoredApps, isActive = true }) {
   const [appFilter, setAppFilter] = useState("all");
-  const [prevFilter, setPrevFilter] = useState("all");
   const [visibleCount, setVisibleCount] = useState(120);
 
   const handleFilterChange = (cat) => {
-    setPrevFilter(appFilter);
     setAppFilter(cat);
   };
 

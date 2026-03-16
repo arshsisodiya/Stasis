@@ -455,8 +455,6 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
   const borderColor = st.key === "running" ? "rgba(74,222,128,0.2)" : st.key === "degraded" || st.key === "paused" ? "rgba(251,191,36,0.14)" : C.border;
 
   const recentCmds = config?.recent_commands || [];
-  const lastCmd = recentCmds[0];
-  const lastCmdText = lastCmd ? `Last command received: ${timeAgo(lastCmd.timestamp)}` : "No commands yet";
 
   const togglePermission = async (key, val) => {
     // Specialized logic for webcam
@@ -489,7 +487,7 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
       } else {
         push(d.error || "Update failed", "error");
       }
-    } catch (e) { push("Network error", "error"); }
+    } catch { push("Network error", "error"); }
     setUpdatingPerms(p => ({ ...p, [key]: false }));
   };
 
@@ -528,7 +526,7 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
               push(`Installation failed: ${pd.message}`, "error");
               setInstalling(false);
             }
-          } catch (e) {
+          } catch {
             clearInterval(pollInterval);
             setInstalling(false);
           }
@@ -537,7 +535,7 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
         push("Failed to start installation", "error");
         setInstalling(false);
       }
-    } catch (e) { 
+    } catch { 
       push("Installation failed — check connection", "error"); 
       setInstalling(false);
     }
@@ -1615,7 +1613,7 @@ function SecuritySection({ push }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ABOUT SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
-function AboutSection({ push }) {
+function AboutSection() {
   const [tab, setTab] = useState("about");
   const [updateState, setUpdateState] = useState(null);
 

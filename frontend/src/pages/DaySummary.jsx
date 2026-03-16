@@ -1,4 +1,3 @@
-import { fmtTime } from "../shared/utils";
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 
 // ─── SHARED STYLES ────────────────────────────────────────────────────────────
@@ -435,7 +434,6 @@ function generateInsights(data, stats, hourly, prevWellbeing, focusData) {
 
     const totalSeconds = data.totalScreenTime || 0;
     const prodPct = data.productivityPercent || 0;
-    const nb = s => s.replace(/(\d+)\s*([apmAPMhminutesteconds]+)/g, "$1\u00A0$2");
     const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
     // ── 1. Yesterday delta ──
@@ -619,14 +617,22 @@ function generateInsights(data, stats, hourly, prevWellbeing, focusData) {
 export default function DaySummary({ data, stats, hourly, prevWellbeing, focusData, dateKey }) {
     // dateKey — pass the selected date string (e.g. "2025-01-15") from parent
     // so all animated children remount and re-animate when the date changes
-    if (!data || data.totalScreenTime === 0) return null;
+    const hasData = !!data && data.totalScreenTime > 0;
 
     const [insights, setInsights] = useState([]);
+    const screenMinutes = Math.floor((data?.totalScreenTime || 0) / 60);
+    const idleMinutes = Math.floor((data?.totalIdleTime || 0) / 60);
 
     useEffect(() => {
+        if (!hasData) {
+            setInsights([]);
+            return;
+        }
         setInsights(generateInsights(data, stats, hourly, prevWellbeing, focusData));
     }, [
+        hasData,
         data?.productivityPercent,
+        data?.totalScreenTime,
         stats?.length,
         prevWellbeing?.productivityPercent,
         focusData?.score,
@@ -635,9 +641,11 @@ export default function DaySummary({ data, stats, hourly, prevWellbeing, focusDa
     ]);
 
     const nudge = useMemo(
-        () => getNudge(data.totalScreenTime, data.totalIdleTime),
-        [Math.floor((data.totalScreenTime || 0) / 60), Math.floor((data.totalIdleTime || 0) / 60)]
+        () => (hasData ? getNudge(data.totalScreenTime, data.totalIdleTime) : null),
+        [hasData, screenMinutes, idleMinutes, data?.totalScreenTime, data?.totalIdleTime]
     );
+
+    if (!hasData) return null;
 
     return (
         <>

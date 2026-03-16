@@ -58,25 +58,6 @@ const CATEGORY_COLORS = {
   system: "#22d3ee",
 };
 
-function reportToText(report) {
-  if (!report) return "";
-  const s = report.summary || {};
-  const lines = [
-    `Weekly Report (${report.period?.start} -> ${report.period?.end})`,
-    "", `Screen Time: ${fmtTime(s.total_screen_time || 0)}`,
-    `Avg / Day: ${fmtTime(s.avg_daily || 0)}`,
-    `Productivity: ${Math.round(s.productivity_pct || 0)}%`,
-    `Focus Score: ${Math.round(s.avg_focus_score || 0)}`,
-    "", "Top Apps:",
-    ...(report.top_apps || []).slice(0, 8).map((a, i) => `${i + 1}. ${(a.app_name || "").replace(".exe", "")} - ${fmtTime(a.total_seconds || 0)}`),
-    "", "Category Breakdown:",
-    ...(report.category_breakdown || []).map((c) => `- ${c.category}: ${fmtTime(c.total_seconds || 0)}`),
-    "", "Insights:",
-    ...(report.insights || []).map((i) => `- ${i}`),
-  ];
-  return lines.join("\n");
-}
-
 function reportToCsv(report) {
   if (!report) return "";
   const rows = [["date", "total_seconds", "productive_pct"]];
@@ -283,7 +264,7 @@ function deriveHourlyInsights(grid, dates) {
   // Per-day peak
   const dayPeaks = {};
   // Weekday vs weekend splits
-  let wdSecs = 0, weSecs = 0, wdProdSecs = 0, weProdSecs = 0;
+  let wdSecs = 0, weSecs = 0;
 
   for (const row of grid) {
     const h = row.hour;
@@ -298,8 +279,8 @@ function deriveHourlyInsights(grid, dates) {
     // date is YYYY-MM-DD — day-of-week from dates array
     const dateIdx = dates.indexOf(row.date);
     const isWeekend = dateIdx >= 5;
-    if (isWeekend) { weSecs += s; weProdSecs += ps; }
-    else           { wdSecs += s; wdProdSecs += ps; }
+    if (isWeekend) { weSecs += s; }
+    else           { wdSecs += s; }
   }
 
   // 1. Peak week-hour (most total screen time)
@@ -395,7 +376,7 @@ function deriveHourlyInsights(grid, dates) {
   return insights;
 }
 
-function HourlyHeatmap({ data, weekStart, dailyBreakdown = [] }) {
+function HourlyHeatmap({ data, weekStart }) {
   const [tooltip, setTooltip] = useState(null);
   const containerRef = useRef(null);
 
@@ -843,7 +824,7 @@ function InsightCard({ text, index }) {
 }
 
 // ── Top app row ──
-function TopApp({ app, seconds, pct, maxSec, rank, trend, deltaPct }) {
+function TopApp({ app, seconds, maxSec, rank, trend, deltaPct }) {
   const rankColor = rank === 1 ? "#fbbf24" : rank <= 3 ? "#a78bfa" : "#475569";
   const trendColor = trend === "up" ? "#f87171" : trend === "down" ? "#4ade80" : trend === "new" ? "#22d3ee" : "#64748b";
   const trendText = trend === "up" ? `↑${Math.abs(deltaPct || 0)}%` : trend === "down" ? `↓${Math.abs(deltaPct || 0)}%` : trend === "new" ? "new" : "—";

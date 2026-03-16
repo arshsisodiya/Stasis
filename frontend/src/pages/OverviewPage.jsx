@@ -166,8 +166,6 @@ function BestTimeInsight({ hourly, peakHour }) {
   const peak = fmt12h(peakHour);
 
   // Contextual label
-  const hour = window.start;
-  const period = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
   const label = `Your sharpest window is ${start}–${end}`;
 
   return (
@@ -334,7 +332,6 @@ function QuickGoalModal({ open, initial, onClose, onSave }) {
 export default function OverviewPage({
   data,
   stats,
-  prevStats,
   prevWellbeing,
   showComparison,
   limits,

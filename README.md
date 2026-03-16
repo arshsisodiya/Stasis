@@ -303,8 +303,8 @@ From PowerShell in the project root:
 |---|---|
 | **1** | Syncs the version string into `tauri.conf.json`, `package.json`, and `Cargo.toml` |
 | **2** | Generates `file_version_info.txt` for Windows EXE metadata |
-| **3** | Runs PyInstaller using `stasis-backend.spec` → `dist/stasis-backend.exe` |
-| **4** | Copies the backend EXE to `frontend/src-tauri/bin/` |
+| **3** | Runs PyInstaller using `stasis-backend.spec` → `dist/stasis-backend/` (onedir) |
+| **4** | Copies the backend directory to `frontend/src-tauri/bin/stasis-backend/` |
 | **5** | Runs `npm install` inside `frontend/` |
 | **6** | Runs `npm run tauri:build` (Vite + Rust + NSIS bundling) |
 
@@ -312,7 +312,7 @@ From PowerShell in the project root:
 
 ```
 dist/
-  stasis-backend-v<version>.exe          # Standalone backend (≈100 MB)
+  stasis-backend-v<version>.zip          # Standalone backend directory (zipped)
 frontend/src-tauri/target/release/bundle/
   nsis/
     Stasis-<version>-setup.exe           # Full installer

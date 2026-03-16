@@ -259,7 +259,7 @@ fn start_backend(app: &AppHandle) {
     // Resolve the bundled backend EXE path relative to the Resources dir
     let resource_path = app
         .path()
-        .resolve("bin/stasis-backend.exe", tauri::path::BaseDirectory::Resource)
+        .resolve("bin/stasis-backend/stasis-backend.exe", tauri::path::BaseDirectory::Resource)
         .expect("Failed to resolve backend EXE path");
 
     #[cfg(not(debug_assertions))]

@@ -85,7 +85,7 @@ jobs:
           draft: false
           prerelease: ${{ contains(env.APP_VERSION, '-beta') || contains(env.APP_VERSION, '-alpha') || contains(env.APP_VERSION, '-rc') }}
           files: |
-            dist/stasis-backend-v*.exe
+            dist/stasis-backend-v*.zip
             frontend/src-tauri/target/release/bundle/nsis/*.exe
             frontend/src-tauri/target/release/bundle/nsis/*.msi
             frontend/src-tauri/target/release/bundle/zip/*.zip

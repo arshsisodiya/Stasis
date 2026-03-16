@@ -99,8 +99,8 @@ The `build.ps1` script automates the entire release pipeline.
 |---|---|
 | **Version sync** | Updates the version string in `tauri.conf.json`, `package.json`, and `Cargo.toml` |
 | **Win32 metadata** | Generates `file_version_info.txt` so the compiled EXE has correct version metadata in Windows Explorer |
-| **PyInstaller** | Runs `pyinstaller stasis-backend.spec` → `dist/stasis-backend.exe` |
-| **Copy sidecar** | Moves backend EXE to `frontend/src-tauri/bin/` so Tauri bundles it |
+| **PyInstaller** | Runs `pyinstaller stasis-backend.spec` → `dist/stasis-backend/` (onedir) |
+| **Copy sidecar** | Copies backend directory to `frontend/src-tauri/bin/stasis-backend/` so Tauri bundles it |
 | **npm install** | Installs frontend dependencies (skipped if `node_modules` is up to date) |
 | **Tauri build** | Runs `npm run tauri:build` inside `frontend/` — compiles Vite + Rust + generates NSIS installer |
 
@@ -108,7 +108,7 @@ The `build.ps1` script automates the entire release pipeline.
 
 ```
 dist/
-  stasis-backend-v1.2.3.exe                          ← Standalone backend (~100 MB)
+  stasis-backend-v1.2.3.zip                         ← Standalone backend directory (zipped)
 frontend/src-tauri/target/release/bundle/
   nsis/
     Stasis-1.2.3-setup.exe                            ← Full NSIS installer
@@ -124,10 +124,10 @@ Key settings in the spec file:
 | Setting | Value | Reason |
 |---|---|---|
 | `console = False` | Windowed mode | No terminal window pops up |
-| `upx = True` | Compress with UPX | Reduces EXE size (requires UPX in PATH) |
+| `upx = True` | Compress with UPX | Reduces binary sizes (requires UPX in PATH) |
 | `hidden_imports` | flask, psutil, win32api, … | Ensure PyInstaller bundles all dynamic imports |
 | `excludes` | unittest, matplotlib, scipy, pandas, … | Strips unused heavy libraries |
-| `datas` | `app_categories.json`, `ignored_apps.json` | Bundle config JSONs into the EXE |
+| `datas` | `app_categories.json`, `ignored_apps.json` | Bundle config JSONs into the output dir |
 
 ---
 

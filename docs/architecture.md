@@ -40,7 +40,7 @@ Stasis uses a **dual-process architecture**: a compiled Python telemetry engine 
 
 ## Python backend
 
-The backend is a single compiled `.exe` (PyInstaller) that spawns several daemon threads on startup.
+The backend is a compiled directory (PyInstaller `--onedir`) that spawns several daemon threads on startup.
 
 ### Entry point (`src/main.py`)
 
@@ -177,7 +177,7 @@ frontend/src-tauri/target/release/bundle/
 
 ## Process communication
 
-The Tauri shell launches `stasis-backend.exe` as a **sidecar process** (configured in `tauri.conf.json`). The React frontend communicates with the backend exclusively via HTTP requests to `http://127.0.0.1:7432`. There are no Tauri IPC commands used for data retrieval — the HTTP API is the single source of truth.
+The Tauri shell launches `stasis-backend.exe` (from `bin/stasis-backend/`) as a **sidecar process** (configured in `tauri.conf.json`). The React frontend communicates with the backend exclusively via HTTP requests to `http://127.0.0.1:7432`. There are no Tauri IPC commands used for data retrieval — the HTTP API is the single source of truth.
 
 This design means the Python backend can be run and tested independently of the Tauri shell.
 

@@ -47,9 +47,9 @@
                                                               "silent":  true
                                                           }
                                },
-                   "resources":  {
-                                     "bin/stasis-backend.exe":  "bin/stasis-backend.exe"
-                                 },
+                   "resources":  [
+                                     "bin/stasis-backend/**/*"
+                                 ],
                    "icon":  [
                                 "icons/32x32.png",
                                 "icons/128x128.png",

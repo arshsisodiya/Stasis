@@ -20,8 +20,9 @@ $ProjectRoot = $PSScriptRoot
 $FrontendDir = Join-Path $ProjectRoot "frontend"
 $BinDir = Join-Path $ProjectRoot "frontend\src-tauri\bin"
 $SpecFile = Join-Path $ProjectRoot "stasis-backend.spec"
-$BackendExe = Join-Path $BinDir "stasis-backend.exe"
-$DistExe = Join-Path $ProjectRoot "dist\stasis-backend.exe"
+$BackendDir = Join-Path $BinDir "stasis-backend"
+$DistDir = Join-Path $ProjectRoot "dist\stasis-backend"
+$DistExe = Join-Path $DistDir "stasis-backend.exe"
 
 $TauriConf = Join-Path $FrontendDir "src-tauri\tauri.conf.json"
 $PkgJson = Join-Path $FrontendDir "package.json"
@@ -196,16 +197,19 @@ if (-not (Test-Path $DistExe)) {
     exit 1
 }
 
-Write-Host "  Copying EXE to src-tauri/bin/ ..." -ForegroundColor Yellow
-Copy-Item -Force $DistExe $BackendExe
+Write-Host "  Copying backend directory to src-tauri/bin/ ..." -ForegroundColor Yellow
+if (Test-Path $BackendDir) {
+    Remove-Item -Recurse -Force $BackendDir
+}
+Copy-Item -Recurse -Force $DistDir $BackendDir
 
-$exeSize = [math]::Round((Get-Item $BackendExe).Length / 1MB, 1)
-Write-Host "  [OK] stasis-backend.exe copied ($exeSize MB)" -ForegroundColor Green
+$dirSizeMB = [math]::Round((Get-ChildItem $BackendDir -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB, 1)
+Write-Host "  [OK] stasis-backend dir copied ($dirSizeMB MB)" -ForegroundColor Green
 
-$VersionedExeName = "stasis-backend-v$Version.exe"
-$VersionedExePath = Join-Path $ProjectRoot "dist\$VersionedExeName"
-Rename-Item -Path $DistExe -NewName $VersionedExeName -Force
-Write-Host "  [OK] Standalone backend saved as dist\$VersionedExeName" -ForegroundColor Green
+$VersionedZipName = "stasis-backend-v$Version.zip"
+$VersionedZipPath = Join-Path $ProjectRoot "dist\$VersionedZipName"
+Compress-Archive -Path $DistDir -DestinationPath $VersionedZipPath -Force
+Write-Host "  [OK] Standalone backend saved as dist\$VersionedZipName" -ForegroundColor Green
 
 # -------------------------------------------------------
 # 3. npm install (if needed)
@@ -257,8 +261,9 @@ else {
     Write-Host "  Bundle directory not found. Check Tauri build output above." -ForegroundColor Yellow
 }
 
-if (Test-Path $VersionedExePath) {
-    Write-Host "    $VersionedExePath  ($exeSize MB)" -ForegroundColor Green
+if (Test-Path $VersionedZipPath) {
+    $zipSizeMB = [math]::Round((Get-Item $VersionedZipPath).Length / 1MB, 1)
+    Write-Host "    $VersionedZipPath  ($zipSizeMB MB)" -ForegroundColor Green
 }
 
 # Cleanup

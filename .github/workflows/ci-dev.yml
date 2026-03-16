@@ -54,7 +54,7 @@ jobs:
       - name: Smoke test health and core API
         shell: pwsh
         run: |
-          python - <<'PY'
+          @'
           from src.database.database import init_db
           from src.api.api_server import create_app
 
@@ -70,7 +70,7 @@ jobs:
           assert dates.status_code == 200, f"/api/available-dates failed: {dates.status_code}"
 
           print('Backend smoke checks passed.')
-          PY
+          '@ | python -
 
       - name: Run backend tests if present
         shell: pwsh

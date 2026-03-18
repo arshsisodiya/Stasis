@@ -7,8 +7,46 @@ import win32api
 import logging
 import json
 import ctypes
+import re
+
+from packaging.version import InvalidVersion, Version
 
 API_URL = "https://api.github.com/repos/arshsisodiya/Stasis/releases/latest"
+
+
+def normalize_version_for_comparison(version_str):
+    if not version_str:
+        return Version("0.0.0")
+
+    candidate = str(version_str).strip().lstrip("vV")
+
+    try:
+        return Version(candidate)
+    except InvalidVersion:
+        pass
+
+    stable_candidate = re.sub(r"[-_.]?(stable|final|release)$", "", candidate, flags=re.IGNORECASE)
+    if stable_candidate != candidate:
+        try:
+            return Version(stable_candidate)
+        except InvalidVersion:
+            pass
+
+    prerelease_patterns = [
+        (r"^(\d+(?:\.\d+)*?)[-_.]?(alpha|a)(\d+)?$", "a"),
+        (r"^(\d+(?:\.\d+)*?)[-_.]?(beta|b)(\d+)?$", "b"),
+        (r"^(\d+(?:\.\d+)*?)[-_.]?(rc|pre|preview)(\d+)?$", "rc"),
+    ]
+    for pattern, pep440_suffix in prerelease_patterns:
+        match = re.match(pattern, candidate, flags=re.IGNORECASE)
+        if not match:
+            continue
+
+        base_version, _, serial = match.groups()
+        serial = serial or "0"
+        return Version(f"{base_version}{pep440_suffix}{serial}")
+
+    raise InvalidVersion(f"Invalid version: '{version_str}'")
 
 def get_current_version(logger=None):
     try:
@@ -92,7 +130,6 @@ class UpdateManager:
 
     def _check_for_update(self):
         import requests
-        from packaging import version
         self.status = "checking"
         self.error = None
         try:
@@ -101,11 +138,13 @@ class UpdateManager:
             response.raise_for_status()
 
             data = response.json()
-            # Strip both 'v' and '-' characters if they exist before parsing
-            tag_name = data["tag_name"].lstrip("v")
+            tag_name = data["tag_name"].lstrip("vV")
             self.latest_version = tag_name
 
-            if version.parse(self.latest_version) > version.parse(self.current_version):
+            latest_version = normalize_version_for_comparison(self.latest_version)
+            current_version = normalize_version_for_comparison(self.current_version)
+
+            if latest_version > current_version:
                 for asset in data["assets"]:
                     asset_name = asset["name"]
                     if asset_name.startswith("Stasis_") and asset_name.endswith(".exe"):

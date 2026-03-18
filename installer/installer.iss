@@ -71,7 +71,7 @@ Parameters: "/create /f /sc onlogon /tn ""{#TaskName}"" /tr """"{app}\{#AppExeNa
 Flags: runhidden
 
 Filename: "{app}\{#AppExeName}"; \
-Flags: nowait runascurrentuser
+Flags: nowait runascurrentuser skipifsilent
 
 
 ; =============================
@@ -100,6 +100,37 @@ RunOnceId: "DeleteStasisTask"
 
 var
   DeleteData: Boolean;
+
+function InitializeSetup(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := True;
+
+  ; Inno supports /SILENT and /VERYSILENT natively.
+  ; Add /S compatibility for external packaging automation.
+  if CmdLineParamExists('/S') and
+     (not CmdLineParamExists('/SILENT')) and
+     (not CmdLineParamExists('/VERYSILENT')) and
+     (not CmdLineParamExists('/S_HANDLED')) then
+  begin
+    if Exec(
+      ExpandConstant('{srcexe}'),
+      '/VERYSILENT /SUPPRESSMSGBOXES /S_HANDLED ' + GetCmdTail,
+      '',
+      SW_HIDE,
+      ewNoWait,
+      ResultCode
+    ) then
+    begin
+      Result := False;
+      Exit;
+    end;
+
+    MsgBox('Failed to restart installer in silent mode.', mbError, MB_OK);
+    Result := False;
+  end;
+end;
 
 procedure InitializeUninstallProgressForm;
 var

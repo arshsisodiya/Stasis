@@ -294,6 +294,22 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_limit_events_date ON limit_events(date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_limit_events_app ON limit_events(app_name)")
 
+    # ===============================
+    # APP SESSIONS (Startup/Shutdown)
+    # ===============================
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS app_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        start_time TEXT NOT NULL,
+        end_time TEXT,
+        system_boot_time TEXT,
+        duration_seconds INTEGER,
+        status TEXT DEFAULT 'active'
+    )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_start ON app_sessions(start_time)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_status ON app_sessions(status)")
+
     conn.commit()
     conn.close()
 
@@ -872,3 +888,87 @@ def get_setting(key: str, default=None):
         return default
 
     return row[0]
+
+
+# ==========================================================
+# ================= SESSION FUNCTIONS ======================
+# ==========================================================
+
+def start_app_session():
+    """
+    Records a new application session start.
+    Returns the session_id.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    now = datetime.now().isoformat()
+    boot_time = None
+    try:
+        import psutil
+        boot_time = datetime.fromtimestamp(psutil.boot_time()).isoformat()
+    except Exception:
+        pass
+
+    cursor.execute("""
+        INSERT INTO app_sessions (start_time, system_boot_time, status)
+        VALUES (?, ?, 'active')
+    """, (now, boot_time))
+
+    session_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return session_id
+
+
+def end_app_session(session_id: int, status: str = 'graceful'):
+    """
+    Closes an application session.
+    Calculates duration and updates status.
+    """
+    if not session_id:
+        return None
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    now = datetime.now()
+    now_iso = now.isoformat()
+
+    # Fetch start time to calculate duration
+    cursor.execute("SELECT start_time FROM app_sessions WHERE id = ?", (session_id,))
+    row = cursor.fetchone()
+
+    duration = None
+    if row:
+        start_time = datetime.fromisoformat(row[0])
+        duration = int((now - start_time).total_seconds())
+
+    cursor.execute("""
+        UPDATE app_sessions
+        SET end_time = ?,
+            duration_seconds = ?,
+            status = ?
+        WHERE id = ?
+    """, (now_iso, duration, status, session_id))
+
+    conn.commit()
+    conn.close()
+    return duration
+
+
+def resolve_stale_sessions():
+    """
+    On startup, find any 'active' sessions from previous runs and mark as 'unexpected'.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE app_sessions
+        SET status = 'unexpected'
+        WHERE status = 'active'
+    """)
+
+    conn.commit()
+    conn.close()

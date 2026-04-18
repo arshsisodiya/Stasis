@@ -102,6 +102,32 @@ class TelegramService:
             self.thread.join(timeout=5)
             self.thread = None
 
+    def send_shutdown_notification(self, duration_seconds: int = None, status: str = "graceful"):
+        """
+        Sends a shutdown summary message to Telegram.
+        """
+        try:
+            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            duration_text = "N/A"
+            if duration_seconds is not None:
+                hours, remainder = divmod(duration_seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                duration_text = f"{hours}h {minutes}m {seconds}s"
+
+            status_emoji = "✅" if status == "graceful" else "⚠️" if status == "system_shutdown" else "❌"
+            
+            message = (
+                f"<b>{status_emoji} Stasis Shutdown Reported</b>\n\n"
+                f"<b>Type:</b> {status.replace('_', ' ').title()}\n"
+                f"<b>Session Duration:</b> {duration_text}\n"
+                f"<b>Time:</b> {time_str}"
+            )
+
+            self.api.send_message(message, parse_mode="HTML")
+            self.logger.info("Shutdown notification sent to Telegram.")
+        except Exception:
+            self.logger.exception("Failed to send shutdown notification to Telegram.")
+
     def restart(self, token: str, chat_id: str):
         try:
             message_id = self.api.send_message(

@@ -10,7 +10,7 @@ from src.core.app_controller import AppController
 from src.core.file_monitor import file_monitor_controller
 from src.core.single_instance import ensure_single_instance
 from src.core.startup import add_to_startup, ensure_notification_identity
-from src.database.database import init_db
+from src.database.database import init_db, start_app_session, end_app_session, resolve_stale_sessions
 from src.services.blocking_service import BlockingService
 from src.services.update_manager import UpdateManager
 from src.utils.logger import setup_logger
@@ -63,9 +63,17 @@ def main():
     api_server = None
     blocking_service = None
     threads = []
+    current_session_id = None
+    shutdown_status = 'graceful'
 
     def handle_signal(signum, frame):
+        nonlocal shutdown_status
         logger.info(f"Signal {signum} received. Initiating graceful shutdown...")
+        
+        # If SIGTERM is received, it often indicates a system shutdown or service termination
+        if signum == signal.SIGTERM:
+            shutdown_status = 'system_shutdown'
+            
         trigger_shutdown()
         if api_server: api_server.stop()
         if blocking_service: blocking_service.stop()
@@ -89,6 +97,9 @@ def main():
             logger.exception("API server crashed unexpectedly")
 
     init_db()
+    resolve_stale_sessions()
+    current_session_id = start_app_session()
+    logger.info(f"Application session started (ID: {current_session_id})")
 
     # Pre-warm settings cache so the first get() doesn't hit the DB
     from src.core.settings_cache import settings_cache
@@ -158,6 +169,21 @@ def main():
     for t in threads:
         t.join(timeout=3)
     
+    # Finalize session logging
+    if current_session_id:
+        try:
+            duration = end_app_session(current_session_id, status=shutdown_status)
+            logger.info(f"Session {current_session_id} finalized as {shutdown_status}. Duration: {duration}s")
+            
+            # Send Telegram shutdown notification if enabled
+            if app_controller.telegram_service and app_controller.is_telegram_running():
+                app_controller.telegram_service.send_shutdown_notification(
+                    duration_seconds=duration,
+                    status=shutdown_status
+                )
+        except Exception:
+            logger.exception("Failed to finalize application session")
+
     logger.info("Stasis has shut down gracefully.")
 
 

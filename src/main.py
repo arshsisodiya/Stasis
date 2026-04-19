@@ -176,10 +176,11 @@ def main():
             duration = end_app_session(current_session_id, status=shutdown_status)
             logger.info(f"Session {current_session_id} finalized as {shutdown_status}. Duration: {duration}s")
             
-            # If this is a system shutdown, also log it in system_lifecycle
-            if shutdown_status == 'system_shutdown':
-                log_system_shutdown()
-                logger.info("System shutdown event logged in lifecycle table.")
+            # Always log the shutdown time in system_lifecycle to record 'Last Seen'
+            # But only mark 'completed' if it's a real system shutdown
+            is_actual = (shutdown_status == 'system_shutdown')
+            log_system_shutdown(is_actual_shutdown=is_actual)
+            logger.info(f"System lifecycle updated (Actual Shutdown: {is_actual})")
             
             # Send Telegram shutdown notification if enabled
             if app_controller.telegram_service and app_controller.is_telegram_running():

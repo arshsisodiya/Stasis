@@ -925,7 +925,8 @@ def start_app_session():
     boot_time = None
     try:
         import psutil
-        boot_time = datetime.fromtimestamp(psutil.boot_time()).isoformat()
+        # Round to nearest second to avoid precision jitter
+        boot_time = datetime.fromtimestamp(int(psutil.boot_time())).isoformat()
     except Exception:
         pass
 
@@ -1006,7 +1007,8 @@ def log_system_boot():
         import socket
         import platform
 
-        boot_time_raw = psutil.boot_time()
+        # Round to nearest second to avoid microsecond precision jitter between calls
+        boot_time_raw = int(psutil.boot_time())
         boot_time_iso = datetime.fromtimestamp(boot_time_raw).isoformat()
 
         conn = get_connection()
@@ -1039,25 +1041,35 @@ def log_system_boot():
         print(f"Error logging system boot: {e}")
 
 
-def log_system_shutdown():
+def log_system_shutdown(is_actual_shutdown: bool = False):
     """
     Records the system shutdown time for the current boot session.
+    If is_actual_shutdown is True, marks the session as 'completed'.
     """
     try:
         import psutil
-        boot_time_raw = psutil.boot_time()
+        # Round to nearest second to match the boot-time entry
+        boot_time_raw = int(psutil.boot_time())
         boot_time_iso = datetime.fromtimestamp(boot_time_raw).isoformat()
         now_iso = datetime.now().isoformat()
 
         conn = get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
-            UPDATE system_lifecycle
-            SET shutdown_time = ?,
-                status = 'completed'
-            WHERE boot_time = ? AND status = 'active'
-        """, (now_iso, boot_time_iso))
+        if is_actual_shutdown:
+            cursor.execute("""
+                UPDATE system_lifecycle
+                SET shutdown_time = ?,
+                    status = 'completed'
+                WHERE boot_time = ?
+            """, (now_iso, boot_time_iso))
+        else:
+            # Just update the last seen time without completing the session
+            cursor.execute("""
+                UPDATE system_lifecycle
+                SET shutdown_time = ?
+                WHERE boot_time = ?
+            """, (now_iso, boot_time_iso))
 
         conn.commit()
         conn.close()

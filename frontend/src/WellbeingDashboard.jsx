@@ -231,19 +231,10 @@ function EmptyState() {
       <MemoNoiseOverlay />
       <div style={{ textAlign: "center", maxWidth: 420, padding: 24 }}>
         <div style={{ fontSize: 64, marginBottom: 24, animation: "float 3s ease-in-out infinite" }}>🌱</div>
-        <h2 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 28, color: "#f8fafc", marginBottom: 12, fontWeight: 400 }}>No data yet</h2>
+        <h2 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 28, color: "#f8fafc", marginBottom: 12, fontWeight: 400 }}>No activity recorded</h2>
         <p style={{ color: "#475569", fontSize: 14, lineHeight: 1.7, marginBottom: 24 }}>
-          The tracker hasn't recorded any activity yet. Make sure <strong style={{ color: "#64748b" }}>main.py</strong> is running and <strong style={{ color: "#64748b" }}>api_server.py</strong> is active on port 7432.
+          Stasis hasn't received any activity data yet. Please ensure the background service is running.
         </p>
-        <div style={{ background: "rgba(74,222,128,0.06)", border: "1px solid rgba(74,222,128,0.15)", borderRadius: 16, padding: "16px 20px", textAlign: "left" }}>
-          <div style={{ fontSize: 11, color: "#4ade80", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Quick start</div>
-          {["python main.py", "python api_server.py", "npm run dev"].map(cmd => (
-            <div key={cmd} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <span style={{ color: "#475569", fontSize: 12 }}>$</span>
-              <code style={{ fontSize: 12, color: "#64748b", fontFamily: "monospace" }}>{cmd}</code>
-            </div>
-          ))}
-        </div>
         <button onClick={() => window.location.reload()} style={{
           marginTop: 20, padding: "10px 24px", borderRadius: 12, border: "1px solid rgba(74,222,128,0.25)",
           background: "rgba(74,222,128,0.08)", color: "#4ade80", cursor: "pointer", fontSize: 13,

@@ -563,7 +563,7 @@ export default function LoadingScreen({
   const statusColor = isError ? C.red : isReady ? C.green : C.textMuted;
 
   const statusText = isError
-    ? "Backend unreachable — check that api_server.py is running"
+    ? "Service connection failed — please restart the app"
     : phase === "checking_update"
       ? "Checking for Stasis updates…"
       : isReady
@@ -818,20 +818,20 @@ export default function LoadingScreen({
         </div>
 
         {/* ── BOTTOM HINT ── */}
-        <div style={{
-          position: "absolute",
-          bottom: 28,
-          fontSize: 10,
-          color: C.textGhost,
-          letterSpacing: "0.06em",
-          textAlign: "center",
-          fontFamily: "'JetBrains Mono',monospace",
-          animation: "ls-fade-in 0.5s ease 1.2s both",
-        }}>
-          {isError
-            ? "Run python api_server.py to start the backend"
-            : "Waiting for api_server.py on port 7432"}
-        </div>
+        {isError && (
+          <div style={{
+            position: "absolute",
+            bottom: 28,
+            fontSize: 10,
+            color: C.red,
+            letterSpacing: "0.06em",
+            textAlign: "center",
+            fontFamily: "'JetBrains Mono',monospace",
+            animation: "ls-fade-in 0.5s ease 0.2s both",
+          }}>
+            Please restart the app
+          </div>
+        )}
       </div>
 
       {showUpdateDialog && updateInfo && (

@@ -15,6 +15,43 @@ except ImportError:
 from io import BytesIO
 from PIL import Image
 
+from PIL import Image
+
+def extract_uwp_asset_icon(exe_path: str, size: int) -> str | None:
+    """
+    Tries to find the highest quality UWP logo in the Assets folder of a package.
+    """
+    try:
+        pkg_dir = os.path.dirname(exe_path)
+        assets_dir = os.path.join(pkg_dir, "Assets")
+        if not os.path.exists(assets_dir):
+            # Try one level up (sometimes EXEs are in a subfolder)
+            assets_dir = os.path.join(os.path.dirname(pkg_dir), "Assets")
+            if not os.path.exists(assets_dir):
+                return None
+        
+        # Priority patterns for logos
+        patterns = [
+            f"*Square44x44Logo.targetsize-{size}*.png",
+            "*Square44x44Logo.scale-200.png",
+            "*Square44x44Logo*.png",
+            "*Logo.scale-200.png",
+            "*StoreLogo.png",
+            "*.png"
+        ]
+        
+        for p in patterns:
+            matches = glob.glob(os.path.join(assets_dir, p))
+            if matches:
+                # Pick the largest file or best match
+                matches.sort(key=os.path.getsize, reverse=True)
+                with open(matches[0], "rb") as f:
+                    return base64.b64encode(f.read()).decode("utf-8")
+                    
+    except Exception as e:
+        print(f"[icon_extractor] UWP asset extraction failed: {e}")
+    return None
+
 def extract_icon_as_base64(exe_path, size=32):
     """
     Extracts the icon from an executable and returns it as a base64 encoded PNG.
@@ -24,6 +61,12 @@ def extract_icon_as_base64(exe_path, size=32):
         return None
 
     try:
+        # Special handling for UWP (Windows Store) apps which often have icons in an Assets folder
+        if "WindowsApps" in exe_path:
+            uwp_icon = extract_uwp_asset_icon(exe_path, size)
+            if uwp_icon:
+                return uwp_icon
+
         icon_handle = None
         
         # Method 1: Standard ExtractIconEx (best for traditional desktop apps)

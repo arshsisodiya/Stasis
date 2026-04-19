@@ -10,7 +10,7 @@ from src.core.app_controller import AppController
 from src.core.file_monitor import file_monitor_controller
 from src.core.single_instance import ensure_single_instance
 from src.core.startup import add_to_startup, ensure_notification_identity
-from src.database.database import init_db, start_app_session, end_app_session, resolve_stale_sessions
+from src.database.database import init_db, start_app_session, end_app_session, resolve_stale_sessions, log_system_boot, log_system_shutdown
 from src.services.blocking_service import BlockingService
 from src.services.update_manager import UpdateManager
 from src.utils.logger import setup_logger
@@ -97,6 +97,7 @@ def main():
             logger.exception("API server crashed unexpectedly")
 
     init_db()
+    log_system_boot()
     resolve_stale_sessions()
     current_session_id = start_app_session()
     logger.info(f"Application session started (ID: {current_session_id})")
@@ -174,6 +175,11 @@ def main():
         try:
             duration = end_app_session(current_session_id, status=shutdown_status)
             logger.info(f"Session {current_session_id} finalized as {shutdown_status}. Duration: {duration}s")
+            
+            # If this is a system shutdown, also log it in system_lifecycle
+            if shutdown_status == 'system_shutdown':
+                log_system_shutdown()
+                logger.info("System shutdown event logged in lifecycle table.")
             
             # Send Telegram shutdown notification if enabled
             if app_controller.telegram_service and app_controller.is_telegram_running():

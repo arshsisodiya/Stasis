@@ -310,6 +310,25 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_start ON app_sessions(start_time)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_status ON app_sessions(status)")
 
+    # ===============================
+    # SYSTEM LIFECYCLE (OS Boot/Shutdown)
+    # ===============================
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS system_lifecycle (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        boot_time TEXT NOT NULL,
+        shutdown_time TEXT,
+        hostname TEXT,
+        os_name TEXT,
+        os_version TEXT,
+        total_ram_gb REAL,
+        cpu_cores INTEGER,
+        ip_address TEXT,
+        status TEXT DEFAULT 'active'
+    )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_boot ON system_lifecycle(boot_time)")
+
     conn.commit()
     conn.close()
 
@@ -972,3 +991,75 @@ def resolve_stale_sessions():
 
     conn.commit()
     conn.close()
+
+
+# ==========================================================
+# ================= SYSTEM LIFECYCLE =======================
+# ==========================================================
+
+def log_system_boot():
+    """
+    Captures system metadata and records a boot event if not already present.
+    """
+    try:
+        import psutil
+        import socket
+        import platform
+
+        boot_time_raw = psutil.boot_time()
+        boot_time_iso = datetime.fromtimestamp(boot_time_raw).isoformat()
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Check if this boot is already logged
+        cursor.execute("SELECT id FROM system_lifecycle WHERE boot_time = ?", (boot_time_iso,))
+        if cursor.fetchone():
+            conn.close()
+            return
+
+        # Gather system metadata
+        hostname = socket.gethostname()
+        os_name = platform.system()
+        os_version = platform.version()
+        cpu_cores = psutil.cpu_count()
+        memory = psutil.virtual_memory()
+        total_ram_gb = round(memory.total / (1024 ** 3), 2)
+        ip_address = socket.gethostbyname(hostname)
+
+        cursor.execute("""
+            INSERT INTO system_lifecycle 
+            (boot_time, hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+        """, (boot_time_iso, hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address))
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error logging system boot: {e}")
+
+
+def log_system_shutdown():
+    """
+    Records the system shutdown time for the current boot session.
+    """
+    try:
+        import psutil
+        boot_time_raw = psutil.boot_time()
+        boot_time_iso = datetime.fromtimestamp(boot_time_raw).isoformat()
+        now_iso = datetime.now().isoformat()
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE system_lifecycle
+            SET shutdown_time = ?,
+                status = 'completed'
+            WHERE boot_time = ? AND status = 'active'
+        """, (now_iso, boot_time_iso))
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error logging system shutdown: {e}")

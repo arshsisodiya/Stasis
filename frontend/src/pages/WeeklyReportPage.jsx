@@ -921,10 +921,40 @@ function DeltaPill({ label, value, sign, color }) {
   );
 }
 
+// ── Session Cache Helpers ──
+const CACHE_KEY = "stasis_report_cache";
+const getSessionCache = () => {
+  try {
+    const data = window.sessionStorage.getItem(CACHE_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch { return {}; }
+};
+const setSessionCache = (cache) => {
+  try {
+    window.sessionStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch {}
+};
+
 export default function WeeklyReportPage() {
-  const [report, setReport] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [weekMonday, setWeekMonday] = useState(() => weekBounds(localYMD()).start);
+  // 1. Initial coordinates
+  const initialMonday = weekBounds(localYMD()).start;
+  const [weekMonday, setWeekMonday] = useState(initialMonday);
+  const [verbosity, setVerbosity] = useState("standard");
+
+  // 2. Synchronous Cache Check for Initial Render (Zero Flicker)
+  const [report, setReport] = useState(() => {
+    const cache = getSessionCache();
+    return cache[`${initialMonday}_standard`]?.report || null;
+  });
+  const [hourlyData, setHourlyData] = useState(() => {
+    const cache = getSessionCache();
+    return cache[`${initialMonday}_standard`]?.hourlyData || null;
+  });
+  const [loading, setLoading] = useState(() => {
+    const cache = getSessionCache();
+    return !cache[`${initialMonday}_standard`];
+  });
+
   const [sending, setSending] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -938,8 +968,6 @@ export default function WeeklyReportPage() {
   });
   const [compareData, setCompareData] = useState(null);
   const [compareLoading, setCompareLoading] = useState(false);
-  const [verbosity, setVerbosity] = useState("standard");
-  const [hourlyData, setHourlyData] = useState(null); // 7×24 grid from backend
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
   const reportRef = useRef(null);
@@ -975,28 +1003,61 @@ export default function WeeklyReportPage() {
       .catch(() => {});
   }, []);
 
-  const fetchReport = useCallback(async () => {
-    setLoading(true);
-    setHourlyData(null);
+  const fetchReport = useCallback(async (force = false) => {
+    const cacheKey = `${weekMonday}_${verbosity}`;
+    const cache = getSessionCache();
+    const cached = cache[cacheKey];
+    const now = Date.now();
+
+    // Cache TTL: Past weeks are cached for the entire session.
+    // Current week is cached for 60 seconds on the frontend to allow for updates.
+    const isCurrentWeek = weekMonday === currentWeekMonday;
+    const ttl = isCurrentWeek ? 60 * 1000 : Infinity;
+
+    if (!force && cached && (now - cached.timestamp < ttl)) {
+      setReport(cached.report);
+      setHourlyData(cached.hourlyData);
+      setLoading(false);
+      return;
+    }
+
+    // Only show full loading if we have no cached data for this specific week/verbosity
+    if (!cached) {
+      setLoading(true);
+      setHourlyData(null);
+    }
+
+    let fetchedReport = null;
+    let fetchedHourly = null;
+
     try {
       const r = await fetch(`${BASE}/api/weekly-report?week_of=${weekMonday}&verbosity=${verbosity}`);
       const j = await r.json();
-      setReport(j.error ? null : j);
-    } catch { setReport(null); }
+      fetchedReport = j.error ? null : j;
+    } catch { fetchedReport = null; }
 
-    // Fetch hourly activity grid — endpoint: /api/hourly-activity?week_of=YYYY-MM-DD
-    // Expected response: { grid: [ {date, hour, total_seconds, productive_pct}... ] }
-    // Falls back gracefully to null if endpoint doesn't exist yet
     try {
       const hr = await fetch(`${BASE}/api/hourly-activity?week_of=${weekMonday}`);
       if (hr.ok) {
         const hj = await hr.json();
-        setHourlyData(hj.error ? null : hj);
+        fetchedHourly = hj.error ? null : hj;
       }
-    } catch { /* endpoint not yet available — heatmap will be hidden */ }
+    } catch { /* heatmap fallback */ }
+
+    setReport(fetchedReport);
+    setHourlyData(fetchedHourly);
+    
+    // Store in persistent session cache
+    const updatedCache = getSessionCache();
+    updatedCache[cacheKey] = {
+      report: fetchedReport,
+      hourlyData: fetchedHourly,
+      timestamp: Date.now()
+    };
+    setSessionCache(updatedCache);
 
     setLoading(false);
-  }, [weekMonday, verbosity]);
+  }, [weekMonday, verbosity, isCurrentWeek, currentWeekMonday]);
 
   useEffect(() => { fetchReport(); }, [fetchReport]);
 

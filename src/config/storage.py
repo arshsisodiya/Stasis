@@ -24,5 +24,10 @@ def get_icons_dir():
     os.makedirs(path, exist_ok=True)
     return path
 
+def get_reports_cache_dir():
+    path = os.path.join(get_base_dir(), "reports_cache")
+    os.makedirs(path, exist_ok=True)
+    return path
+
 def get_config_path():
     return os.path.join(get_base_dir(), "config.json")

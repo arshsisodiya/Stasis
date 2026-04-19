@@ -10,7 +10,9 @@ from datetime import datetime, timedelta
 import math
 import time
 import os
+import json
 from src.utils.logger import setup_logger
+from src.config.storage import get_reports_cache_dir
 
 logger = setup_logger()
 
@@ -20,6 +22,39 @@ def _normalize_verbosity(value):
     if v in ("compact", "standard", "detailed"):
         return v
     return "standard"
+
+
+def _get_cache_path(week_of, verbosity):
+    filename = f"report_{week_of}_{verbosity}.json"
+    return os.path.join(get_reports_cache_dir(), filename)
+
+
+def _load_cache(week_of, verbosity, ttl_minutes=None):
+    path = _get_cache_path(week_of, verbosity)
+    if not os.path.exists(path):
+        return None
+    
+    if ttl_minutes:
+        mtime = os.path.getmtime(path)
+        age_seconds = time.time() - mtime
+        if age_seconds > (ttl_minutes * 60):
+            return None
+            
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load cache {path}: {e}")
+        return None
+
+
+def _save_cache(week_of, verbosity, data):
+    path = _get_cache_path(week_of, verbosity)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Failed to save cache {path}: {e}")
 
 
 def _range_app_totals(conn, start_date, end_date):
@@ -151,6 +186,20 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True):
     verbosity = _normalize_verbosity(verbosity or SettingsManager.get("weekly_report_verbosity") or "standard")
     monday, sunday = _week_bounds(week_of)
     monday_date = datetime.strptime(monday, "%Y-%m-%d").date()
+
+    # --- CACHE CHECK ---
+    # Only use TTL for current week or future weeks. Past weeks are static.
+    now = datetime.now().date()
+    # Sunday is the end of the week. If current date > sunday, the week is finalized.
+    sunday_date = datetime.strptime(sunday, "%Y-%m-%d").date()
+    is_current_week = now <= sunday_date
+    
+    # 10 minute TTL for the week that is still in progress
+    ttl = 10 if is_current_week else None
+    cached_data = _load_cache(monday, verbosity, ttl_minutes=ttl)
+    if cached_data:
+        return cached_data
+
     prev_monday = (monday_date - timedelta(days=7)).isoformat()
     prev_sunday = (monday_date - timedelta(days=1)).isoformat()
     conn = get_connection()
@@ -350,7 +399,7 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True):
             insights = insights[:6]
             category_insights = category_insights[:2]
 
-        return {
+        report_data = {
             "period": {"start": monday, "end": sunday},
             "summary": {
                 "total_screen_time": total_screen,
@@ -411,6 +460,10 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True):
             "what_changed": changed,
             "insights": insights,
         }
+        
+        # --- SAVE TO CACHE ---
+        _save_cache(monday, verbosity, report_data)
+        return report_data
     finally:
         conn.close()
 

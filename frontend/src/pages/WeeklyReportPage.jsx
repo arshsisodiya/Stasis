@@ -1057,7 +1057,7 @@ export default function WeeklyReportPage() {
     setSessionCache(updatedCache);
 
     setLoading(false);
-  }, [weekMonday, verbosity, isCurrentWeek, currentWeekMonday]);
+  }, [weekMonday, verbosity, currentWeekMonday]);
 
   useEffect(() => { fetchReport(); }, [fetchReport]);
 

@@ -465,7 +465,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
       const t = setTimeout(() => prefetchNeighbors(selectedDate, availableDates), 800);
       return () => clearTimeout(t);
     }
-  }, [selectedDate, availableDates]);
+  }, [selectedDate, availableDates, applyData, data, fetchDate, onDisconnect, prefetchNeighbors]);
 
   // Live refresh today, throttled while the window is hidden.
   useVisibilityPolling(async () => {

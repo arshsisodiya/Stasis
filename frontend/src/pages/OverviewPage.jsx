@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { fmtTime, fmtAppName } from "../shared/utils";
+import { fmtTime } from "../shared/utils";
 import { localYMD } from "../shared/utils";
 import { SectionCard } from "../shared/components";
 import ScreenTimeCard from "./ScreenTimeCard";

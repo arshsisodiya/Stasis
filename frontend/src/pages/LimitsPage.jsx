@@ -990,7 +990,6 @@ export default function LimitsPage({ BASE, stats, isActive = true }) {
       setOffline(true);
     }
     setLoadingL(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [BASE]);
 
   useVisibilityPolling(fetchAll, {

@@ -777,8 +777,9 @@ function TelegramSection({ push }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // GENERAL SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
+const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false, weekly_report_verbosity: "standard" };
+
 function GeneralSection({ push }) {
-  const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false, weekly_report_verbosity: "standard" };
   const [s, setS] = useState({ ...DEFAULTS });
   const [saved, setSaved] = useState({ ...DEFAULTS });
   const [confirmReset, setConfirmReset] = useState(false);
@@ -799,7 +800,7 @@ function GeneralSection({ push }) {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, []); // DEFAULTS is now static outside the component
 
   const isDirty = JSON.stringify(s) !== JSON.stringify(saved);
   const set = (k, v) => setS(p => ({ ...p, [k]: v }));

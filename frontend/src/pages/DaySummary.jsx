@@ -620,8 +620,6 @@ export default function DaySummary({ data, stats, hourly, prevWellbeing, focusDa
     const hasData = !!data && data.totalScreenTime > 0;
 
     const [insights, setInsights] = useState([]);
-    const screenMinutes = Math.floor((data?.totalScreenTime || 0) / 60);
-    const idleMinutes = Math.floor((data?.totalIdleTime || 0) / 60);
 
     useEffect(() => {
         if (!hasData) {
@@ -631,18 +629,17 @@ export default function DaySummary({ data, stats, hourly, prevWellbeing, focusDa
         setInsights(generateInsights(data, stats, hourly, prevWellbeing, focusData));
     }, [
         hasData,
-        data?.productivityPercent,
-        data?.totalScreenTime,
-        stats?.length,
-        prevWellbeing?.productivityPercent,
-        focusData?.score,
-        hourly?.length,
+        data,
+        stats,
+        hourly,
+        prevWellbeing,
+        focusData,
         dateKey,
     ]);
 
     const nudge = useMemo(
         () => (hasData ? getNudge(data.totalScreenTime, data.totalIdleTime) : null),
-        [hasData, screenMinutes, idleMinutes, data?.totalScreenTime, data?.totalIdleTime]
+        [hasData, data?.totalScreenTime, data?.totalIdleTime]
     );
 
     if (!hasData) return null;

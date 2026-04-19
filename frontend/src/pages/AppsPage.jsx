@@ -1,4 +1,4 @@
-import { useState, useEffect, memo } from "react";
+import { useState, useEffect, memo, useCallback } from "react";
 import { CATEGORY_COLORS, BROWSER_EXES } from "../shared/constants";
 import { fmtTime, trendPct, fmtAppName } from "../shared/utils";
 import { AppIcon, CategoryChip, TrendBadge, SectionCard } from "../shared/components";
@@ -58,7 +58,7 @@ const BrowserRow = memo(function BrowserRow({ browsers, maxActive, BASE, selecte
   const col = CATEGORY_COLORS.neutral;
   const trend = trendPct(totalActive, prevActive);
 
-  const fetchSites = () => {
+  const fetchSites = useCallback(() => {
     const cacheKey = `${selectedDate}:${browsers[0].app}`;
     if (_siteStatsCache[cacheKey]) {
       setSites(_siteStatsCache[cacheKey]);
@@ -74,12 +74,12 @@ const BrowserRow = memo(function BrowserRow({ browsers, maxActive, BASE, selecte
         setLoadingSites(false);
       })
       .catch(() => { setSites([]); setLoadingSites(false); });
-  };
+  }, [selectedDate, browsers, BASE]);
 
   // Re-fetch when date changes while expanded
   useEffect(() => {
     if (expanded) fetchSites();
-  }, [selectedDate]);
+  }, [selectedDate, expanded, fetchSites]);
 
   const handleExpand = () => {
     const next = !expanded;

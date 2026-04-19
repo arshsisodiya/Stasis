@@ -175,12 +175,22 @@ def main():
         uptime_duration = log_system_shutdown(is_actual_shutdown=is_actual)
         logger.info(f"System lifecycle updated. Total Uptime: {uptime_duration}s (Actual Shutdown: {is_actual})")
         
-        # Send Telegram shutdown notification if enabled
+        # Send Telegram shutdown notification and daily digest if enabled
         if app_controller.telegram_service and app_controller.is_telegram_running():
+            # 1. Basic shutdown summary
             app_controller.telegram_service.send_shutdown_notification(
                 duration_seconds=uptime_duration,
                 status=shutdown_status
             )
+            
+            # 2. Daily productivity digest (if it's the end of the day or shutdown)
+            try:
+                if blocking_service:
+                    digest_data = blocking_service.get_daily_digest_data()
+                    if digest_data:
+                        app_controller.telegram_service.send_daily_digest(digest_data)
+            except Exception:
+                logger.warning("Failed to send daily digest during shutdown teardown")
     except Exception:
         logger.exception("Failed to finalize system lifecycle session")
 

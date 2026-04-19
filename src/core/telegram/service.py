@@ -161,6 +161,59 @@ class TelegramService:
                 )
             except Exception:
                 pass
+    def send_daily_digest(self, data: dict):
+        """
+        Formats and sends a daily productivity digest as a rich HTML message.
+        """
+        try:
+            if not data:
+                return
+
+            def fmt(sec):
+                sec = int(max(0, round(sec)))
+                h = sec // 3600
+                m = (sec % 3600) // 60
+                if h > 0:
+                    return f"{h}h {m}m"
+                return f"{m}m"
+
+            date_val = data.get("date", datetime.now().date().isoformat())
+            total_active = data.get("total_active", 0)
+            goal_secs = data.get("goal_seconds")
+            top_dist = data.get("top_distraction")
+            top_5 = data.get("top_apps", [])
+            ratio = data.get("productive_ratio", 0)
+            streak = data.get("best_streak", 0)
+
+            title = f"<b>📊 Daily Digest — {date_val}</b>"
+            
+            goal_part = ""
+            if goal_secs:
+                delta = total_active - goal_secs
+                status = "🔴" if delta > 0 else "🟢"
+                goal_part = f"\n{status} <b>Goal:</b> {fmt(goal_secs)} ({'+' if delta > 0 else ''}{fmt(delta)})"
+
+            summary = (
+                f"{title}\n\n"
+                f"⏱ <b>Screen Time:</b> {fmt(total_active)}{goal_part}\n"
+                f"🔥 <b>Productivity:</b> {ratio}%\n"
+                f"🏆 <b>Best Streak:</b> {fmt(streak)}"
+            )
+
+            if top_dist:
+                summary += f"\n\n🚫 <b>Top Distraction:</b>\n• {top_dist['app_name'].replace('.exe', '')} ({fmt(top_dist['seconds'])})"
+
+            if top_5:
+                summary += "\n\n📱 <b>Top 5 Apps:</b>"
+                for i, app in enumerate(top_5, 1):
+                    name = app['app_name'].replace('.exe', '')
+                    summary += f"\n{i}. {name} — {fmt(app['seconds'])}"
+
+            self.api.send_message(summary, parse_mode="HTML")
+            self.logger.info("Daily digest sent to Telegram.")
+        except Exception:
+            self.logger.exception("Failed to send daily digest to Telegram.")
+
     def is_running(self):
         if not self.thread:
             return False

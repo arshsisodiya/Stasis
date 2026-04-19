@@ -409,51 +409,100 @@ class BlockingService:
         if sent:
             SettingsManager.set("notifications_digest_last_sent_date", date)
 
+    def get_daily_digest_data(self, date: str = None) -> dict | None:
+        """
+        Returns structured data for the daily digest.
+        """
+        from src.database.database import get_connection
+        if not date:
+            date = datetime.now().date().isoformat()
+
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT app_name, main_category, COALESCE(SUM(active_seconds), 0)
+                FROM daily_stats
+                WHERE date = ?
+                GROUP BY app_name, main_category
+                """,
+                (date,),
+            )
+            rows = cursor.fetchall()
+            if not rows:
+                return None
+
+            total_active = 0.0
+            productive = 0.0
+            distract_by_app: dict[str, float] = {}
+            all_apps: dict[str, float] = {}
+
+            for app_name, main_category, seconds in rows:
+                if is_ignored(app_name):
+                    continue
+                secs = float(seconds or 0)
+                total_active += secs
+                all_apps[app_name] = all_apps.get(app_name, 0.0) + secs
+                if main_category == "productive":
+                    productive += secs
+                if main_category == "unproductive":
+                    distract_by_app[app_name] = distract_by_app.get(app_name, 0.0) + secs
+
+            if total_active <= 0:
+                return None
+
+            # Get daily goal
+            cursor.execute(
+                """
+                SELECT target_value
+                FROM goals
+                WHERE is_active = 1
+                  AND goal_type = 'daily_screen_time'
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 1
+                """
+            )
+            goal_row = cursor.fetchone()
+            goal_secs = float(goal_row[0]) if goal_row and goal_row[0] is not None else None
+
+            # Top distraction
+            top_distraction = None
+            if distract_by_app:
+                dist_app, dist_secs = max(distract_by_app.items(), key=lambda x: x[1])
+                top_distraction = {"app_name": dist_app, "seconds": dist_secs}
+
+            # Top 5 apps
+            top_5 = sorted(all_apps.items(), key=lambda x: x[1], reverse=True)[:5]
+            top_5_apps = [{"app_name": name, "seconds": secs} for name, secs in top_5]
+
+            productive_ratio = round((productive / total_active) * 100, 1)
+            best_streak = self._compute_best_productive_streak(cursor, date)
+
+            return {
+                "date": date,
+                "total_active": total_active,
+                "goal_seconds": goal_secs,
+                "top_distraction": top_distraction,
+                "top_apps": top_5_apps,
+                "productive_ratio": productive_ratio,
+                "best_streak": best_streak
+            }
+        finally:
+            conn.close()
+
     def _build_daily_digest_summary(self, cursor, date: str) -> str | None:
-        cursor.execute(
-            """
-            SELECT app_name, main_category, COALESCE(SUM(active_seconds), 0)
-            FROM daily_stats
-            WHERE date = ?
-            GROUP BY app_name, main_category
-            """,
-            (date,),
-        )
-        rows = cursor.fetchall()
-        if not rows:
+        # Note: cursor is passed but we don't strictly need it if we call get_daily_digest_data
+        # but to keep it consistent with the existing loop pattern we'll just use the data.
+        data = self.get_daily_digest_data(date)
+        if not data:
             return None
 
-        total_active = 0.0
-        productive = 0.0
-        distract_by_app: dict[str, float] = {}
-
-        for app_name, main_category, seconds in rows:
-            if is_ignored(app_name):
-                continue
-            secs = float(seconds or 0)
-            total_active += secs
-            if main_category == "productive":
-                productive += secs
-            if main_category == "unproductive":
-                distract_by_app[app_name] = distract_by_app.get(app_name, 0.0) + secs
-
-        if total_active <= 0:
-            return None
-
-        cursor.execute(
-            """
-            SELECT target_value
-            FROM goals
-            WHERE is_active = 1
-              AND goal_type = 'daily_screen_time'
-            ORDER BY updated_at DESC, id DESC
-            LIMIT 1
-            """
-        )
-        goal_row = cursor.fetchone()
+        total_active = data["total_active"]
+        goal_secs = data["goal_seconds"]
+        
         screen_part = f"Screen {self._fmt_secs(total_active)}"
-        if goal_row and goal_row[0] is not None:
-            goal_secs = float(goal_row[0])
+        if goal_secs is not None:
             delta = total_active - goal_secs
             if delta <= 0:
                 screen_part = f"Screen {self._fmt_secs(total_active)} vs goal {self._fmt_secs(goal_secs)}"
@@ -463,19 +512,16 @@ class BlockingService:
                     f"(+{self._fmt_secs(delta)})"
                 )
 
-        top_distracting = "None"
-        if distract_by_app:
-            top_app = max(distract_by_app.items(), key=lambda x: x[1])
-            top_distracting = f"{top_app[0].replace('.exe', '')} ({self._fmt_secs(top_app[1])})"
-
-        productive_ratio = round((productive / total_active) * 100, 1)
-        best_streak = self._compute_best_productive_streak(cursor, date)
+        top_dist_str = "None"
+        if data["top_distraction"]:
+            td = data["top_distraction"]
+            top_dist_str = f"{td['app_name'].replace('.exe', '')} ({self._fmt_secs(td['seconds'])})"
 
         return (
             f"{screen_part}. "
-            f"Top distraction: {top_distracting}. "
-            f"Productive ratio: {productive_ratio}%. "
-            f"Best streak: {self._fmt_secs(best_streak)}."
+            f"Top distraction: {top_dist_str}. "
+            f"Productive ratio: {data['productive_ratio']}%. "
+            f"Best streak: {self._fmt_secs(data['best_streak'])}."
         )
 
     @staticmethod

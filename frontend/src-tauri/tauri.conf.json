@@ -20,6 +20,19 @@
                                     "fullscreen":  false,
                                     "decorations":  true,
                                     "transparent":  false
+                                },
+                                {
+                                    "label":  "widget",
+                                    "title":  "Stasis Widget",
+                                    "width":  280,
+                                    "height":  48,
+                                    "resizable":  false,
+                                    "fullscreen":  false,
+                                    "decorations":  false,
+                                    "transparent":  true,
+                                    "always_on_top":  true,
+                                    "skip_taskbar":  true,
+                                    "visible":  false
                                 }
                             ],
                 "security":  {

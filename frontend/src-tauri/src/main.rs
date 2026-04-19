@@ -95,6 +95,55 @@ fn handle_backend_only_action(url: &str) -> bool {
     false
 }
 
+#[tauri::command]
+fn toggle_widget(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("widget") {
+        if window.is_visible().unwrap_or(false) {
+            let _ = window.hide();
+        } else {
+            position_widget(&window);
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    } else {
+        match tauri::WebviewWindowBuilder::new(
+            &app,
+            "widget",
+            tauri::WebviewUrl::App("index.html".into()),
+        )
+        .title("Stasis Widget")
+        .inner_size(280.0, 48.0)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .build() {
+            Ok(window) => {
+                position_widget(&window);
+                let _ = window.show();
+            }
+            Err(e) => eprintln!("Failed to create widget window: {}", e),
+        }
+    }
+}
+
+fn position_widget(window: &tauri::WebviewWindow) {
+    if let Ok(Some(monitor)) = window.primary_monitor() {
+        let size = monitor.size();
+        let scale_factor = monitor.scale_factor();
+        
+        // Target: Bottom Right, above taskbar
+        // Typical Windows taskbar is ~48px. 
+        // We'll place it 60px from bottom, 20px from right.
+        let window_size = window.outer_size().unwrap_or(tauri::PhysicalSize { width: 280, height: 48 });
+        
+        let x = size.width - window_size.width - (20.0 * scale_factor) as u32;
+        let y = size.height - window_size.height - (60.0 * scale_factor) as u32;
+        
+        let _ = window.set_position(tauri::PhysicalPosition { x: x as i32, y: y as i32 });
+    }
+}
+
 fn main() {
     // Check if hardware acceleration should be disabled
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
@@ -125,10 +174,11 @@ fn main() {
 
             // -------- Tray Menu --------
             let open = MenuItem::with_id(app, "open", "Open Stasis", true, None::<&str>)?;
+            let widget = MenuItem::with_id(app, "widget", "Toggle Widget", true, None::<&str>)?;
             let close = MenuItem::with_id(app, "close", "Close Window", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Stasis", true, None::<&str>)?;
 
-            let menu = Menu::with_items(app, &[&open, &close, &quit])?;
+            let menu = Menu::with_items(app, &[&open, &widget, &close, &quit])?;
 
             let icon = app
                 .default_window_icon()
@@ -160,6 +210,10 @@ fn main() {
                                 .decorations(true)
                                 .build();
                             }
+                        }
+
+                        "widget" => {
+                            toggle_widget(app.clone());
                         }
 
                         "close" => {
@@ -242,6 +296,7 @@ fn main() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![toggle_widget])
 
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

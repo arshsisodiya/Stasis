@@ -1,6 +1,10 @@
-import { useState } from 'react';
 import WellbeingDashboard from './WellbeingDashboard';
 import LoadingScreen from './pages/LoadingScreen';
+import TaskbarWidget from './shared/TaskbarWidget';
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useEffect, useState } from 'react';
+
+const BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:7432";
 
 /**
  * Transition flow:
@@ -15,6 +19,15 @@ import LoadingScreen from './pages/LoadingScreen';
 export default function App() {
   const [stage, setStage] = useState("idle");
   const [initialData, setInitialData] = useState(null);
+  const [windowLabel, setWindowLabel] = useState("");
+
+  useEffect(() => {
+    if (window.__TAURI_INTERNALS__) {
+      setWindowLabel(getCurrentWindow().label);
+    } else {
+      setWindowLabel("main");
+    }
+  }, []);
 
   const handleReady = (prefetchedData) => {
     // Dashboard mounts right now with real data already available
@@ -23,6 +36,10 @@ export default function App() {
     // Remove LoadingScreen after its ls-outro finishes (700 ms)
     setTimeout(() => setStage("done"), 750);
   };
+
+  if (windowLabel === "widget") {
+    return <TaskbarWidget BASE={BASE} />;
+  }
 
   return (
     <>

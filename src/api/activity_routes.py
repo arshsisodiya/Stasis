@@ -7,6 +7,7 @@ from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date
 from src.database.database import get_connection
 from src.config.category_manager import get_category
 from src.config.ignored_apps_manager import is_ignored
+from src.core.activity_logger import get_active_window_info, get_current_session_duration
 
 
 def _week_bounds(date_str=None):
@@ -17,6 +18,55 @@ def _week_bounds(date_str=None):
     monday = date_value - timedelta(days=date_value.weekday())
     sunday = monday + timedelta(days=6)
     return monday.isoformat(), sunday.isoformat()
+
+
+# =====================================
+# Live Status
+# =====================================
+
+@wellbeing_bp.route("/api/live-status")
+def live_status():
+    selected_date = get_selected_date()
+    info = get_active_window_info()
+    session_duration = int(get_current_session_duration())
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Today's totals (sum of all non-ignored apps)
+        cursor.execute("""
+            SELECT SUM(active_seconds)
+            FROM daily_stats
+            WHERE date = ?
+        """, (selected_date,))
+        
+        # We should ideally filter ignored apps in the query, but for live status 
+        # a simple sum is usually fine since ignored apps are likely not in daily_stats 
+        # (they are skipped by the logger).
+        today_seconds = safe(cursor.fetchone()[0])
+
+        # Top App
+        cursor.execute("""
+            SELECT app_name, SUM(active_seconds) as total
+            FROM daily_stats
+            WHERE date = ?
+            GROUP BY app_name
+            ORDER BY total DESC
+            LIMIT 1
+        """, (selected_date,))
+        row = cursor.fetchone()
+        top_app = row[0] if row else "N/A"
+
+        return jsonify({
+            "active": info,
+            "session_seconds": session_duration,
+            "today_seconds": today_seconds + session_duration,
+            "top_app": top_app
+        })
+
+    finally:
+        conn.close()
 
 
 # =====================================

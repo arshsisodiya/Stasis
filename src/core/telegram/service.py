@@ -8,6 +8,7 @@ from src.core.telegram.api import TelegramAPI
 from src.core.telegram.command_handler import CommandHandler
 from src.core.telegram.listener import TelegramListener
 from src.utils.logger import setup_logger
+from src.utils.time_utils import format_duration
 
 class TelegramService:
     def __init__(self, token: str, chat_id: str):
@@ -41,8 +42,7 @@ class TelegramService:
 
             boot_time = datetime.fromtimestamp(psutil.boot_time())
             uptime_delta = datetime.now() - boot_time
-            hours, remainder = divmod(int(uptime_delta.total_seconds()), 3600)
-            minutes, _ = divmod(remainder, 60)
+            uptime_text = format_duration(uptime_delta.total_seconds())
 
             local_ip = socket.gethostbyname(socket.gethostname())
 
@@ -50,7 +50,7 @@ class TelegramService:
                 "<b>System Status</b>\n\n"
                 f"<b>Device:</b> {hostname}\n"
                 f"<b>OS:</b> {os_name} {os_release}\n"
-                f"<b>Uptime:</b> {hours}h {minutes}m\n\n"
+                f"<b>Uptime:</b> {uptime_text}\n\n"
                 f"<b>CPU:</b> {cpu_usage}% ({cpu_cores} cores)\n"
                 f"<b>RAM:</b> {used_ram_percent}% of {total_ram_gb} GB\n\n"
                 f"<b>IP:</b> {local_ip}\n"
@@ -110,9 +110,7 @@ class TelegramService:
             time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             duration_text = "N/A"
             if duration_seconds is not None:
-                hours, remainder = divmod(duration_seconds, 3600)
-                minutes, seconds = divmod(remainder, 60)
-                duration_text = f"{hours}h {minutes}m {seconds}s"
+                duration_text = format_duration(duration_seconds, include_seconds=True)
 
             status_emoji = "✅" if status == "graceful" else "⚠️" if status == "system_shutdown" else "❌"
             
@@ -169,14 +167,6 @@ class TelegramService:
             if not data:
                 return
 
-            def fmt(sec):
-                sec = int(max(0, round(sec)))
-                h = sec // 3600
-                m = (sec % 3600) // 60
-                if h > 0:
-                    return f"{h}h {m}m"
-                return f"{m}m"
-
             date_val = data.get("date", datetime.now().date().isoformat())
             total_active = data.get("total_active", 0)
             goal_secs = data.get("goal_seconds")
@@ -191,23 +181,23 @@ class TelegramService:
             if goal_secs:
                 delta = total_active - goal_secs
                 status = "🔴" if delta > 0 else "🟢"
-                goal_part = f"\n{status} <b>Goal:</b> {fmt(goal_secs)} ({'+' if delta > 0 else ''}{fmt(delta)})"
+                goal_part = f"\n{status} <b>Goal:</b> {format_duration(goal_secs)} ({'+' if delta > 0 else ''}{format_duration(delta)})"
 
             summary = (
                 f"{title}\n\n"
-                f"⏱ <b>Screen Time:</b> {fmt(total_active)}{goal_part}\n"
+                f"⏱ <b>Screen Time:</b> {format_duration(total_active)}{goal_part}\n"
                 f"🔥 <b>Productivity:</b> {ratio}%\n"
-                f"🏆 <b>Best Streak:</b> {fmt(streak)}"
+                f"🏆 <b>Best Streak:</b> {format_duration(streak)}"
             )
 
             if top_dist:
-                summary += f"\n\n🚫 <b>Top Distraction:</b>\n• {top_dist['app_name'].replace('.exe', '')} ({fmt(top_dist['seconds'])})"
+                summary += f"\n\n🚫 <b>Top Distraction:</b>\n• {top_dist['app_name'].replace('.exe', '')} ({format_duration(top_dist['seconds'])})"
 
             if top_5:
                 summary += "\n\n📱 <b>Top 5 Apps:</b>"
                 for i, app in enumerate(top_5, 1):
                     name = app['app_name'].replace('.exe', '')
-                    summary += f"\n{i}. {name} — {fmt(app['seconds'])}"
+                    summary += f"\n{i}. {name} — {format_duration(app['seconds'])}"
 
             self.api.send_message(summary, parse_mode="HTML")
             self.logger.info("Daily digest sent to Telegram.")

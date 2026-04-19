@@ -8,6 +8,7 @@ from src.core.desktop_notifications import desktop_notifier
 from src.config.ignored_apps_manager import is_ignored
 from src.config.settings_manager import SettingsManager
 from src.config.category_manager import get_category
+from src.utils.time_utils import format_duration
 
 LIMIT_CHECK_INTERVAL = 15
 PROCESS_CHECK_INTERVAL = 2
@@ -185,13 +186,11 @@ class BlockingService:
                                 except Exception:
                                     pass
                                 over_by = max(0, int(usage - daily_limit))
-                                over_mins = int(round(over_by / 60))
                                 desktop_notifier.notify(
-                                    title="App limit reached",
+                                    title=f"🔴 Limit Exceeded: {app_name}",
                                     message=(
-                                        f"{app_name}: {int(usage // 60)} min used "
-                                        f"(limit {int(daily_limit // 60)} min"
-                                        f"{', +' + str(over_mins) + ' min' if over_mins > 0 else ''})."
+                                        f"Used {format_duration(usage)} (limit {format_duration(daily_limit)}). "
+                                        f"You are {format_duration(over_by)} over."
                                     ),
                                     event_key=f"limit-hit:{today}:{app_name}",
                                     cooldown_seconds=60,
@@ -267,16 +266,25 @@ class BlockingService:
                 should_notify = True
             elif previous_state is not None and previous_state != threshold_reached:
                 should_notify = True
+            
             if not should_notify:
                 continue
 
-            goal_name = label or goal_type.replace("_", " ").title()
+            # Mapping technical goal type names to human-friendly labels
+            friendly_names = {
+                "daily_screen_time": "Screen Time",
+                "daily_productive_time": "Productive Time",
+                "daily_productivity_pct": "Productivity Score",
+                "daily_focus_score": "Focus Score"
+            }
+            goal_name = label or friendly_names.get(goal_type, goal_type.replace("_", " ").title())
             target_str = self._format_target(target_value, target_unit)
+            actual_str = self._format_target(actual, target_unit)
 
             if direction == "under" and threshold_reached:
                 desktop_notifier.notify(
-                    title="Screen-time goal threshold reached" if goal_type == "daily_screen_time" else "Goal threshold reached",
-                    message=f"{goal_name}: {self._format_target(actual, target_unit)} used (target {target_str}).",
+                    title=f"⚠️ {goal_name} Limit Reached",
+                    message=f"You've reached your {goal_name} target of {target_str}. Currently at {actual_str}.",
                     event_key=f"goal-threshold:{goal_id}:{date}",
                     cooldown_seconds=600,
                     event_type=desktop_notifier.EVENT_GOAL,
@@ -287,8 +295,8 @@ class BlockingService:
                 )
             elif direction != "under" and threshold_reached:
                 desktop_notifier.notify(
-                    title="Goal achieved",
-                    message=f"{goal_name}: reached {self._format_target(actual, target_unit)} (target {target_str}).",
+                    title=f"🎯 {goal_name} Achieved!",
+                    message=f"Excellent! You reached your {goal_name} goal of {target_str}. Currently: {actual_str}.",
                     event_key=f"goal-met:{goal_id}:{date}",
                     cooldown_seconds=600,
                     event_type=desktop_notifier.EVENT_GOAL,
@@ -371,8 +379,7 @@ class BlockingService:
     @staticmethod
     def _format_target(value: float, unit: str) -> str:
         if unit == "seconds":
-            mins = int(round(value / 60))
-            return f"{mins} min"
+            return format_duration(value)
         if unit == "percent":
             return f"{round(value, 1)}%"
         return str(round(value, 1))
@@ -497,41 +504,30 @@ class BlockingService:
         data = self.get_daily_digest_data(date)
         if not data:
             return None
-
+ 
         total_active = data["total_active"]
         goal_secs = data["goal_seconds"]
         
-        screen_part = f"Screen {self._fmt_secs(total_active)}"
+        screen_part = f"⏱ Screen: {format_duration(total_active)}"
         if goal_secs is not None:
             delta = total_active - goal_secs
-            if delta <= 0:
-                screen_part = f"Screen {self._fmt_secs(total_active)} vs goal {self._fmt_secs(goal_secs)}"
-            else:
-                screen_part = (
-                    f"Screen {self._fmt_secs(total_active)} vs goal {self._fmt_secs(goal_secs)} "
-                    f"(+{self._fmt_secs(delta)})"
-                )
-
+            status_emoji = "🔴" if delta > 0 else "🟢"
+            screen_part = (
+                f"{status_emoji} Screen: {format_duration(total_active)} "
+                f"({'+' if delta > 0 else ''}{format_duration(delta)} vs goal)"
+            )
+ 
         top_dist_str = "None"
         if data["top_distraction"]:
             td = data["top_distraction"]
-            top_dist_str = f"{td['app_name'].replace('.exe', '')} ({self._fmt_secs(td['seconds'])})"
-
+            top_dist_str = f"{td['app_name'].replace('.exe', '')} ({format_duration(td['seconds'])})"
+ 
         return (
-            f"{screen_part}. "
-            f"Top distraction: {top_dist_str}. "
-            f"Productive ratio: {data['productive_ratio']}%. "
-            f"Best streak: {self._fmt_secs(data['best_streak'])}."
+            f"{screen_part}. \n"
+            f"🚫 Top Distraction: {top_dist_str}. \n"
+            f"🔥 Productivity: {data['productive_ratio']}%. \n"
+            f"🏆 Best Streak: {format_duration(data['best_streak'])}."
         )
-
-    @staticmethod
-    def _fmt_secs(seconds: float) -> str:
-        total = int(max(0, round(seconds)))
-        h = total // 3600
-        m = (total % 3600) // 60
-        if h > 0:
-            return f"{h}h {m}m"
-        return f"{m}m"
 
     @staticmethod
     def _compute_best_productive_streak(cursor, date: str) -> float:

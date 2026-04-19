@@ -156,8 +156,8 @@ def test_notification():
 @wellbeing_bp.route("/api/settings/notifications/test-goal", methods=["POST"])
 def test_goal_threshold_notification():
     return _send_test_notification(
-        title="Screen-time goal threshold reached",
-        message="Test alert: your daily screen-time goal threshold was reached.",
+        title="🎯 Goal Achieved: Screen Time",
+        message="Excellent! You reached your Screen Time goal of 6h 0m. Currently: 6h 50m.",
         source="test-goal",
         actions=[("Open Goals", desktop_notifier.build_action_url("open-goals"))],
     )
@@ -166,8 +166,8 @@ def test_goal_threshold_notification():
 @wellbeing_bp.route("/api/settings/notifications/test-limit", methods=["POST"])
 def test_app_limit_notification():
     return _send_test_notification(
-        title="App limit reached",
-        message="Test alert: notepad++ reached its daily app time limit.",
+        title="🔴 Limit Exceeded: Notepad++",
+        message="Used 2h 30m (limit 1h 0m). You are 1h 30m over.",
         source="test-limit",
         actions=[
             ("Snooze 15m", desktop_notifier.build_action_url("snooze-limit", minutes=15)),

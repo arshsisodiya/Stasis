@@ -9,6 +9,10 @@ from src.config.settings_manager import SettingsManager
 from datetime import datetime, timedelta
 import math
 import time
+import os
+from src.utils.logger import setup_logger
+
+logger = setup_logger()
 
 
 def _normalize_verbosity(value):
@@ -68,6 +72,32 @@ def _fmt_time(sec):
     if h > 0:
         return f"{h}h {m}m"
     return f"{m}m"
+
+
+def _generate_sparkline(daily_breakdown):
+    """Generates an emoji-based sparkline for the week."""
+    if not daily_breakdown:
+        return ""
+    
+    # 🟦: < 2h, 🟩: < 4h, 🟨: < 6h, 🟧: < 8h, 🟥: 8h+
+    blocks = []
+    for day in daily_breakdown:
+        sec = day.get("total_seconds", 0)
+        h = sec / 3600
+        if h == 0: blocks.append("▫️")
+        elif h < 2: blocks.append("🟦")
+        elif h < 4: blocks.append("🟩")
+        elif h < 6: blocks.append("🟨")
+        elif h < 8: blocks.append("🟧")
+        else: blocks.append("🟥")
+    return "".join(blocks)
+
+
+def _generate_ascii_bar(pct, width=10):
+    """Generates a text-based progress bar."""
+    filled = int(round((pct / 100) * width))
+    empty = width - filled
+    return "█" * filled + "░" * empty
 
 
 def _weekly_trend_series(conn, week_of, weeks=6):
@@ -462,25 +492,48 @@ def _build_category_insights(current_totals, prev_totals):
     return insights[:3]
 
 
+    return insights[:3]
+
+
 def _report_to_telegram_html(report):
-    """Convert report dict to a readable Telegram HTML message."""
+    """Convert report dict to a premium readable Telegram HTML message."""
     p = report["period"]
     s = report["summary"]
+    
+    # Calculate a simple "Performance Score"
+    # Weighted: Productivity (40%), Goal Met Ratio (40%), Focus (20%)
+    goals = report.get("goals", [])
+    met_ratio = 0
+    if goals:
+        met_ratio = sum(g["days_met"] for g in goals) / sum(g["total_days"] for g in goals) if sum(g["total_days"] for g in goals) > 0 else 0
+    
+    score = int((s["productivity_pct"] * 0.4) + (met_ratio * 100 * 0.4) + (s["avg_focus_score"] * 0.2))
+    score_emoji = "⭐️" if score >= 85 else "✅" if score >= 70 else "⚖️" if score >= 50 else "⚠️"
 
     lines = [
-        f"<b>📊 Weekly Report</b>",
+        f"<b>📊 WEEKLY PERFORMANCE REPORT</b>",
         f"<i>{p['start']} → {p['end']}</i>",
+        f"────────────────────",
+        f"{score_emoji} <b>Overall Score: {score}/100</b>",
         "",
-        f"<b>Screen Time:</b> {_fmt_time(s['total_screen_time'])} total",
-        f"<b>Daily Average:</b> {_fmt_time(s['avg_daily'])}",
-        f"<b>Productivity:</b> {s['productivity_pct']}%",
-        f"<b>Active Days:</b> {s['active_days']}",
+        f"⏱ <b>{_fmt_time(s['total_screen_time'])}</b> on screen",
+        f"🔥 <b>{s['productivity_pct']}%</b> productivity",
+        f"🎯 <b>{s['avg_focus_score']}</b> focus score",
+        f"📅 <b>{s['active_days']}</b> active days",
         "",
-        "<b>Top Apps</b>",
+        "<b>📅 Daily Rhythm</b>",
+        f"{_generate_sparkline(report.get('daily_breakdown', []))}",
+        "<i>(Mon → Sun)</i>",
+        "",
+        "<b>📱 Top Applications</b>",
     ]
 
     for app in report["top_apps"][:5]:
-        lines.append(f"  • {app['app_name'].replace('.exe', '')} — {_fmt_time(app['total_seconds'])}")
+        name = app['app_name'].replace('.exe', '')
+        trend = "🔺" if app.get("trend") == "up" else "🔻" if app.get("trend") == "down" else "🔹"
+        bar = _generate_ascii_bar(app['pct'])
+        lines.append(f"• <b>{name}</b> {trend}")
+        lines.append(f"  {bar} {app['pct']}% ({_fmt_time(app['total_seconds'])})")
 
     lines.append("")
 
@@ -489,35 +542,32 @@ def _report_to_telegram_html(report):
     # Limits
     lim = report["limits"]
     if verbosity != "compact" and (lim["total_hits"] > 0 or lim["total_edits"] > 0):
-        lines.append("<b>App Limits</b>")
-        lines.append(f"  Limit hits: {lim['total_hits']}  |  Limit edits: {lim['total_edits']}")
-        for item in lim["per_app"][:5]:
-            parts = []
-            if item["hits"]:
-                parts.append(f"{item['hits']} hit{'s' if item['hits'] > 1 else ''}")
-            if item["edits"]:
-                parts.append(f"{item['edits']} edit{'s' if item['edits'] > 1 else ''}")
-            lines.append(f"  • {item['app_name'].replace('.exe', '')}: {', '.join(parts)}")
+        lines.append("<b>🚫 App Limits</b>")
+        lines.append(f"Hits: {lim['total_hits']} | Edits: {lim['total_edits']}")
+        for item in lim["per_app"][:3]:
+            lines.append(f"• {item['app_name'].replace('.exe', '')}: {item['hits']} hits")
         lines.append("")
 
     # Goals
     if verbosity != "compact" and report["goals"]:
-        lines.append("<b>Goals</b>")
+        lines.append("<b>🎯 Goals Summary</b>")
         for g in report["goals"]:
             emoji = "✅" if g["days_met"] == g["total_days"] and g["total_days"] > 0 else "⚠️"
-            lines.append(f"  {emoji} {g['label']}: {g['days_met']}/{g['total_days']} days met ({g['success_rate']}%)")
+            lines.append(f"{emoji} {g['label']}: {g['days_met']}/{g['total_days']} met ({g['success_rate']}%)")
         lines.append("")
 
     # Insights
     if report["insights"]:
-        lines.append("<b>💡 Insights</b>")
-        for insight in report["insights"][:3 if verbosity == "compact" else len(report["insights"])]:
-            lines.append(f"  • {insight}")
+        lines.append("<b>💡 Key Insights</b>")
+        for insight in report["insights"][:3 if verbosity == "compact" else 5]:
+            lines.append(f"• {insight}")
+    
+    if report.get("what_changed"):
+        lines.append("\n<b>🔄 What Changed</b>")
+        for change in report["what_changed"][:3]:
+            lines.append(f"• {change}")
 
     return "\n".join(lines)
-
-
-# ─── API ROUTES ───────────────────────────────────────────────────────────────
 
 @wellbeing_bp.route("/api/weekly-report")
 def api_weekly_report():
@@ -576,11 +626,841 @@ def api_weekly_report_available_weeks():
         conn.close()
 
 
+def _generate_report_html(report):
+    """Generates a standalone, premium HTML report with animated charts and modern dashboard design."""
+    import json
+    p = report["period"]
+    s = report["summary"]
+
+    # Prepare chart data
+    day_labels = [datetime.strptime(d["date"], "%Y-%m-%d").strftime("%a") for d in report["daily_breakdown"]]
+    screen_data = [round(d["total_seconds"] / 3600, 2) for d in report["daily_breakdown"]]
+    prod_data = [d["productive_pct"] for d in report["daily_breakdown"]]
+
+    top_apps_labels = [a["app_name"].replace(".exe", "") for a in report["top_apps"][:8]]
+    top_apps_data = [round(a["total_seconds"] / 3600, 2) for a in report["top_apps"][:8]]
+    top_apps_pct = [a["pct"] for a in report["top_apps"][:8]]
+
+    cat_labels = [c["category"].title() for c in report["category_breakdown"]]
+    cat_data = [round(c["total_seconds"] / 3600, 2) for c in report["category_breakdown"]]
+
+    # Trend series
+    trend_labels = [t["week_start"] for t in report.get("trends", [])]
+    trend_screen = [round(t["screen_time"] / 3600, 1) for t in report.get("trends", [])]
+    trend_prod = [t["productivity_pct"] for t in report.get("trends", [])]
+
+    # Goals
+    goals = report.get("goals", [])
+    goals_html = ""
+    for g in goals:
+        rate = g["success_rate"]
+        color = "#22c55e" if rate >= 80 else "#f59e0b" if rate >= 50 else "#f43f5e"
+        goals_html += f"""
+        <div class="goal-item">
+            <div class="goal-header">
+                <span class="goal-label">{g['label']}</span>
+                <span class="goal-rate" style="color:{color}">{rate}%</span>
+            </div>
+            <div class="goal-bar-bg"><div class="goal-bar-fill" style="width:{rate}%;background:{color}"></div></div>
+            <div class="goal-sub">{g['days_met']}/{g['total_days']} days met</div>
+        </div>"""
+
+    # Insights
+    insights_html = "".join([
+        f'<div class="insight-item" style="animation-delay:{i*0.08}s"><span class="insight-dot"></span>{ins}</div>'
+        for i, ins in enumerate(report.get("insights", [])[:6])
+    ])
+
+    # What changed
+    changed_html = "".join([
+        f'<div class="change-item" style="animation-delay:{i*0.1}s">{c}</div>'
+        for i, c in enumerate(report.get("what_changed", [])[:5])
+    ])
+
+    # Limit events
+    lim = report.get("limits", {})
+    limit_apps_html = ""
+    for item in lim.get("per_app", [])[:5]:
+        if item["hits"] > 0 or item["edits"] > 0:
+            limit_apps_html += f"""
+            <div class="limit-row">
+                <span class="limit-app">{item['app_name'].replace('.exe','')}</span>
+                <span class="limit-badge hits">{item['hits']} hits</span>
+                <span class="limit-badge edits">{item['edits']} edits</span>
+            </div>"""
+
+    # Performance score
+    met_ratio = 0
+    if goals:
+        total_days_g = sum(g["total_days"] for g in goals)
+        if total_days_g > 0:
+            met_ratio = sum(g["days_met"] for g in goals) / total_days_g
+    perf_score = int((s["productivity_pct"] * 0.4) + (met_ratio * 100 * 0.4) + (s["avg_focus_score"] * 0.2))
+    perf_grade = "S" if perf_score >= 90 else "A" if perf_score >= 80 else "B" if perf_score >= 65 else "C" if perf_score >= 50 else "D"
+    perf_color = "#22c55e" if perf_score >= 80 else "#f59e0b" if perf_score >= 60 else "#f43f5e"
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stasis Report · {p['start']}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
+        :root {{
+            --bg:        #080c14;
+            --surface:   #0d1320;
+            --card:      #111827;
+            --card2:     #161f30;
+            --border:    rgba(255,255,255,0.07);
+            --border2:   rgba(255,255,255,0.12);
+            --text:      #e2e8f0;
+            --muted:     #64748b;
+            --accent:    #3b82f6;
+            --accent2:   #6366f1;
+            --green:     #10b981;
+            --amber:     #f59e0b;
+            --red:       #ef4444;
+            --purple:    #a855f7;
+            --cyan:      #06b6d4;
+            --glow-blue: rgba(59,130,246,0.15);
+            --glow-green:rgba(16,185,129,0.12);
+            --font: 'DM Sans', sans-serif;
+            --mono: 'DM Mono', monospace;
+        }}
+
+        html {{ scroll-behavior: smooth; }}
+
+        body {{
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }}
+
+        /* ── Background grid ── */
+        body::before {{
+            content: '';
+            position: fixed; inset: 0;
+            background-image:
+                linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }}
+
+        /* ── Glow orbs ── */
+        .orb {{
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(120px);
+            pointer-events: none;
+            z-index: 0;
+            animation: orbFloat 12s ease-in-out infinite;
+        }}
+        .orb-1 {{ width:500px;height:500px;top:-100px;left:-100px;background:rgba(59,130,246,0.08); animation-delay:0s; }}
+        .orb-2 {{ width:400px;height:400px;bottom:-80px;right:-80px;background:rgba(99,102,241,0.07); animation-delay:-6s; }}
+        @keyframes orbFloat {{
+            0%,100% {{ transform: translate(0,0); }}
+            50%      {{ transform: translate(30px, 20px); }}
+        }}
+
+        /* ── Layout ── */
+        .page {{
+            position: relative; z-index: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 32px 24px 64px;
+        }}
+
+        /* ── Header ── */
+        .header {{
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 40px;
+            padding-bottom: 28px;
+            border-bottom: 1px solid var(--border);
+            animation: fadeDown 0.6s ease both;
+        }}
+        .header-left {{ display:flex; align-items:center; gap:16px; }}
+        .logo-mark {{
+            width:44px; height:44px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 12px;
+            display: flex; align-items:center; justify-content:center;
+            font-size:20px; flex-shrink:0;
+            box-shadow: 0 0 24px var(--glow-blue);
+        }}
+        .header h1 {{
+            font-size: clamp(1.4rem,3vw,2rem);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, #fff 30%, #94a3b8);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }}
+        .header-period {{
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--muted);
+            letter-spacing: 0.05em;
+        }}
+        .perf-badge {{
+            display: flex; align-items:center; gap:12px;
+            background: var(--card2);
+            border: 1px solid var(--border2);
+            border-radius: 16px;
+            padding: 12px 20px;
+        }}
+        .perf-grade {{
+            font-size: 2rem; font-weight: 700;
+            color: {perf_color};
+            line-height:1;
+            filter: drop-shadow(0 0 12px {perf_color});
+        }}
+        .perf-info {{ display:flex;flex-direction:column; gap:2px; }}
+        .perf-score {{ font-size:0.85rem; color:var(--muted); }}
+        .perf-score strong {{ color:var(--text); font-size:1.1rem; }}
+
+        /* ── Stat Grid ── */
+        .stats-row {{
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }}
+        @media(max-width:900px) {{ .stats-row {{ grid-template-columns: repeat(2,1fr); }} }}
+        @media(max-width:500px) {{ .stats-row {{ grid-template-columns: 1fr 1fr; }} }}
+
+        .stat-card {{
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px 22px;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.25s, border-color 0.25s, box-shadow 0.25s;
+            animation: fadeUp 0.5s ease both;
+        }}
+        .stat-card:hover {{
+            transform: translateY(-3px);
+            border-color: var(--border2);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }}
+        .stat-card::before {{
+            content: '';
+            position: absolute; top:0; left:0; right:0; height:2px;
+            border-radius:2px 2px 0 0;
+        }}
+        .stat-card.blue::before  {{ background: var(--accent); box-shadow:0 0 12px var(--accent); }}
+        .stat-card.green::before {{ background: var(--green);  box-shadow:0 0 12px var(--green); }}
+        .stat-card.amber::before {{ background: var(--amber);  box-shadow:0 0 12px var(--amber); }}
+        .stat-card.purple::before{{ background: var(--purple); box-shadow:0 0 12px var(--purple); }}
+        .stat-card.cyan::before  {{ background: var(--cyan);   box-shadow:0 0 12px var(--cyan); }}
+
+        .stat-icon {{ font-size:1.3rem; margin-bottom:10px; display:block; }}
+        .stat-value {{
+            font-size: clamp(1.6rem,3vw,2.2rem);
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            line-height: 1;
+            display: block;
+            margin-bottom: 6px;
+        }}
+        .stat-label {{
+            font-size: 0.72rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 500;
+        }}
+        .stat-sub {{
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+        }}
+
+        /* ── Main grid ── */
+        .main-grid {{
+            display: grid;
+            grid-template-columns: 1fr 1fr 360px;
+            gap: 20px;
+            margin-bottom: 20px;
+        }}
+        .main-grid .span-2 {{ grid-column: span 2; }}
+        @media(max-width:1100px) {{
+            .main-grid {{ grid-template-columns: 1fr 1fr; }}
+            .main-grid .span-2 {{ grid-column: span 2; }}
+            .main-grid .sidebar {{ grid-column: span 2; }}
+        }}
+        @media(max-width:700px) {{
+            .main-grid {{ grid-template-columns: 1fr; }}
+            .main-grid .span-2, .main-grid .sidebar {{ grid-column: span 1; }}
+        }}
+
+        .bottom-grid {{
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+        }}
+        @media(max-width:900px) {{ .bottom-grid {{ grid-template-columns:1fr 1fr; }} }}
+        @media(max-width:600px) {{ .bottom-grid {{ grid-template-columns:1fr; }} }}
+
+        /* ── Card ── */
+        .card {{
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 22px 24px;
+            animation: fadeUp 0.5s ease both;
+            transition: border-color 0.25s;
+        }}
+        .card:hover {{ border-color: var(--border2); }}
+        .card-header {{
+            display: flex; align-items:center; justify-content:space-between;
+            margin-bottom: 18px;
+        }}
+        .card-title {{
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            display: flex; align-items:center; gap:8px;
+        }}
+        .card-title-dot {{
+            width:6px; height:6px; border-radius:50%;
+        }}
+        .card-badge {{
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.05);
+            color: var(--muted);
+        }}
+        .chart-wrap {{ position:relative; }}
+
+        /* ── Insight items ── */
+        .insight-item {{
+            display: flex; align-items:flex-start; gap:10px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-size: 0.855rem;
+            line-height: 1.5;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid transparent;
+            margin-bottom: 8px;
+            animation: fadeRight 0.4s ease both;
+            transition: background 0.2s, border-color 0.2s;
+        }}
+        .insight-item:hover {{ background: rgba(59,130,246,0.06); border-color: rgba(59,130,246,0.15); }}
+        .insight-dot {{
+            width: 6px; height: 6px; border-radius:50%;
+            background: var(--accent);
+            margin-top:6px; flex-shrink:0;
+            box-shadow: 0 0 6px var(--accent);
+        }}
+
+        /* ── Change items ── */
+        .change-item {{
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 0.845rem;
+            line-height: 1.5;
+            border-left: 3px solid var(--purple);
+            background: rgba(168,85,247,0.05);
+            margin-bottom: 8px;
+            animation: fadeRight 0.4s ease both;
+        }}
+
+        /* ── Goal items ── */
+        .goal-item {{ margin-bottom:16px; }}
+        .goal-header {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }}
+        .goal-label {{ font-size:0.85rem; font-weight:500; }}
+        .goal-rate {{ font-size:0.85rem; font-weight:700; font-family:var(--mono); }}
+        .goal-bar-bg {{
+            height:5px; background:rgba(255,255,255,0.06); border-radius:99px; overflow:hidden;
+        }}
+        .goal-bar-fill {{
+            height:100%; border-radius:99px;
+            transition: width 1.2s cubic-bezier(0.16,1,0.3,1);
+        }}
+        .goal-sub {{ font-size:0.72rem; color:var(--muted); margin-top:4px; }}
+
+        /* ── Limit rows ── */
+        .limit-row {{
+            display:flex; align-items:center; gap:8px;
+            padding:8px 0;
+            border-bottom:1px solid var(--border);
+            font-size:0.85rem;
+        }}
+        .limit-row:last-child {{ border-bottom:none; }}
+        .limit-app {{ flex:1; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+        .limit-badge {{
+            font-family:var(--mono); font-size:0.7rem;
+            padding:2px 8px; border-radius:20px;
+            white-space:nowrap;
+        }}
+        .limit-badge.hits {{ background:rgba(239,68,68,0.12); color:var(--red); }}
+        .limit-badge.edits {{ background:rgba(245,158,11,0.12); color:var(--amber); }}
+
+        /* ── Mini sparkline row ── */
+        .sparkline-row {{
+            display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-top:4px;
+        }}
+        .spark-bar {{
+            border-radius:4px 4px 0 0;
+            min-height:4px;
+            transition: height 0.8s cubic-bezier(0.34,1.56,0.64,1);
+            position: relative;
+        }}
+        .spark-bar:hover .spark-tooltip {{
+            opacity:1; transform:translateY(0);
+        }}
+        .spark-tooltip {{
+            position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%) translateY(4px);
+            background:#1e293b; border:1px solid var(--border2); border-radius:6px;
+            font-size:0.7rem; padding:4px 8px; white-space:nowrap;
+            opacity:0; transition:opacity 0.15s, transform 0.15s;
+            pointer-events:none; z-index:10; color:var(--text);
+        }}
+        .day-labels {{
+            display:grid; grid-template-columns:repeat(7,1fr); gap:4px;
+            margin-top:4px;
+        }}
+        .day-label {{
+            text-align:center; font-size:0.65rem; color:var(--muted); font-family:var(--mono);
+        }}
+
+        /* ── Trend mini cards ── */
+        .trend-numbers {{
+            display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px;
+        }}
+        .trend-num {{
+            background:rgba(255,255,255,0.03); border:1px solid var(--border);
+            border-radius:10px; padding:10px 12px;
+        }}
+        .trend-num-val {{ font-size:1.1rem; font-weight:700; font-family:var(--mono); color:var(--text); }}
+        .trend-num-lab {{ font-size:0.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; margin-top:2px; }}
+
+        /* ── Animations ── */
+        @keyframes fadeUp   {{ from{{ opacity:0; transform:translateY(18px); }} to{{ opacity:1; transform:none; }} }}
+        @keyframes fadeDown {{ from{{ opacity:0; transform:translateY(-14px); }} to{{ opacity:1; transform:none; }} }}
+        @keyframes fadeRight{{ from{{ opacity:0; transform:translateX(-12px); }} to{{ opacity:1; transform:none; }} }}
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar {{ width:6px; height:6px; }}
+        ::-webkit-scrollbar-track {{ background:transparent; }}
+        ::-webkit-scrollbar-thumb {{ background:rgba(255,255,255,0.1); border-radius:3px; }}
+
+        /* ── Responsive typography ── */
+        @media(max-width:600px) {{
+            .page {{ padding:16px 14px 48px; }}
+            .header h1 {{ font-size:1.2rem; }}
+            .perf-badge {{ padding:10px 14px; }}
+            .card {{ padding:16px; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+
+    <div class="page">
+
+        <!-- ── Header ── -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo-mark">⚡</div>
+                <div>
+                    <h1>Stasis Weekly Report</h1>
+                    <div class="header-period">{p['start']} → {p['end']}</div>
+                </div>
+            </div>
+            <div class="perf-badge">
+                <div class="perf-grade">{perf_grade}</div>
+                <div class="perf-info">
+                    <div style="font-size:0.75rem;color:var(--muted);">Performance</div>
+                    <div class="perf-score"><strong>{perf_score}</strong>/100</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- ── KPI Stats ── -->
+        <div class="stats-row">
+            <div class="stat-card blue" style="animation-delay:0.05s">
+                <span class="stat-icon">⏱</span>
+                <span class="stat-value">{_fmt_time(s['total_screen_time'])}</span>
+                <span class="stat-label">Total Screen Time</span>
+                <div class="stat-sub">~{_fmt_time(s['avg_daily'])} / day · {s['active_days']}/7 active</div>
+            </div>
+            <div class="stat-card green" style="animation-delay:0.1s">
+                <span class="stat-icon">🔥</span>
+                <span class="stat-value" style="color:var(--green)">{s['productivity_pct']}%</span>
+                <span class="stat-label">Productivity</span>
+                <div class="stat-sub">of total screen time</div>
+            </div>
+            <div class="stat-card amber" style="animation-delay:0.15s">
+                <span class="stat-icon">🎯</span>
+                <span class="stat-value" style="color:var(--amber)">{s['avg_focus_score']}</span>
+                <span class="stat-label">Avg Focus Score</span>
+                <div class="stat-sub">out of 100</div>
+            </div>
+            <div class="stat-card purple" style="animation-delay:0.2s">
+                <span class="stat-icon">⌨️</span>
+                <span class="stat-value" style="color:var(--purple)">{s['total_keystrokes']:,}</span>
+                <span class="stat-label">Keystrokes</span>
+                <div class="stat-sub">{s['total_clicks']:,} clicks</div>
+            </div>
+        </div>
+
+        <!-- ── Daily Activity Heatmap Bar ── -->
+        <div class="card" style="margin-bottom:20px;animation-delay:0.22s">
+            <div class="card-header">
+                <div class="card-title"><span class="card-title-dot" style="background:var(--accent)"></span>Daily Activity Rhythm</div>
+                <div class="card-badge">Mon → Sun</div>
+            </div>
+            <div id="sparklineContainer" style="padding:8px 0 4px;">
+                <div class="sparkline-row" id="sparkBars"></div>
+                <div class="day-labels" id="dayLabels"></div>
+            </div>
+        </div>
+
+        <!-- ── Main Charts Grid ── -->
+        <div class="main-grid">
+
+            <!-- Activity line chart -->
+            <div class="card span-2" style="animation-delay:0.25s">
+                <div class="card-header">
+                    <div class="card-title"><span class="card-title-dot" style="background:var(--accent)"></span>Screen Time &amp; Productivity</div>
+                    <div class="card-badge">This Week</div>
+                </div>
+                <div class="chart-wrap" style="height:220px"><canvas id="weeklyChart"></canvas></div>
+            </div>
+
+            <!-- Sidebar: Goals -->
+            <div class="card sidebar" style="animation-delay:0.3s">
+                <div class="card-header">
+                    <div class="card-title"><span class="card-title-dot" style="background:var(--green)"></span>Goals Progress</div>
+                </div>
+                {goals_html if goals_html else '<div style="color:var(--muted);font-size:0.85rem;padding:20px 0;text-align:center">No goals tracked</div>'}
+            </div>
+
+            <!-- Apps chart -->
+            <div class="card" style="animation-delay:0.32s">
+                <div class="card-header">
+                    <div class="card-title"><span class="card-title-dot" style="background:var(--cyan)"></span>Top Applications</div>
+                    <div class="card-badge">Hours</div>
+                </div>
+                <div class="chart-wrap" style="height:240px"><canvas id="appsChart"></canvas></div>
+            </div>
+
+            <!-- Category donut -->
+            <div class="card" style="animation-delay:0.35s">
+                <div class="card-header">
+                    <div class="card-title"><span class="card-title-dot" style="background:var(--purple)"></span>Category Breakdown</div>
+                </div>
+                <div class="chart-wrap" style="height:240px"><canvas id="categoryChart"></canvas></div>
+            </div>
+
+        </div>
+
+        <!-- ── Bottom Grid ── -->
+        <div class="bottom-grid">
+
+            <!-- 6-week trend -->
+            <div class="card" style="animation-delay:0.38s">
+                <div class="card-header">
+                    <div class="card-title"><span class="card-title-dot" style="background:var(--accent2)"></span>6-Week Trend</div>
+                </div>
+                <div class="chart-wrap" style="height:150px"><canvas id="trendChart"></canvas></div>
+                <div class="trend-numbers">
+                    <div class="trend-num">
+                        <div class="trend-num-val">{_fmt_time(s['total_screen_time'])}</div>
+                        <div class="trend-num-lab">This Week</div>
+                    </div>
+                    <div class="trend-num">
+                        <div class="trend-num-val" style="color:var(--green)">{s['productivity_pct']}%</div>
+                        <div class="trend-num-lab">Productive</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Insights -->
+            <div class="card" style="animation-delay:0.4s">
+                <div class="card-header">
+                    <div class="card-title"><span class="card-title-dot" style="background:var(--amber)"></span>Key Insights</div>
+                </div>
+                {insights_html if insights_html else '<div style="color:var(--muted);font-size:0.85rem">No insights available.</div>'}
+            </div>
+
+            <!-- What changed + limits -->
+            <div class="card" style="animation-delay:0.42s">
+                <div class="card-header">
+                    <div class="card-title"><span class="card-title-dot" style="background:var(--purple)"></span>What Changed</div>
+                </div>
+                {changed_html if changed_html else '<div style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">No comparison data.</div>'}
+
+                {"" if not limit_apps_html else f'''
+                <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+                    <div class="card-title" style="margin-bottom:12px"><span class="card-title-dot" style="background:var(--red)"></span>App Limits</div>
+                    {limit_apps_html}
+                </div>'''}
+            </div>
+
+        </div>
+
+    </div><!-- /page -->
+
+    <script>
+    (() => {{
+        // ── Sparkline heatmap ──
+        const sparkData   = {json.dumps(screen_data)};
+        const sparkLabels = {json.dumps(day_labels)};
+        const sparkProd   = {json.dumps(prod_data)};
+        const maxSpark    = Math.max(...sparkData, 0.1);
+        const container   = document.getElementById('sparkBars');
+        const labelsEl    = document.getElementById('dayLabels');
+
+        sparkData.forEach((hrs, i) => {{
+            const pct = hrs / maxSpark;
+            const h   = Math.max(pct * 80, 4);
+            const alpha = 0.2 + pct * 0.8;
+            const bar = document.createElement('div');
+            bar.className = 'spark-bar';
+            bar.style.cssText = `
+                height:${{h}}px;
+                background:rgba(59,130,246,${{alpha.toFixed(2)}});
+                border:1px solid rgba(59,130,246,${{(alpha*0.5).toFixed(2)}});
+            `;
+            const tip = document.createElement('div');
+            tip.className = 'spark-tooltip';
+            tip.textContent = `${{sparkLabels[i]}}: ${{hrs.toFixed(1)}}h · ${{sparkProd[i]}}% prod`;
+            bar.appendChild(tip);
+            container.appendChild(bar);
+
+            const lbl = document.createElement('div');
+            lbl.className = 'day-label';
+            lbl.textContent = sparkLabels[i];
+            labelsEl.appendChild(lbl);
+        }});
+
+        // ── Chart defaults ──
+        Chart.defaults.color = '#64748b';
+        Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+        Chart.defaults.font.family = "'DM Sans', sans-serif";
+
+        const gridColor  = 'rgba(255,255,255,0.05)';
+        const tickColor  = '#64748b';
+
+        // ── Weekly Activity Chart ──
+        new Chart(document.getElementById('weeklyChart'), {{
+            type: 'line',
+            data: {{
+                labels: {json.dumps(day_labels)},
+                datasets: [
+                    {{
+                        label: 'Hours Online',
+                        data: {json.dumps(screen_data)},
+                        borderColor: '#3b82f6',
+                        backgroundColor: (ctx) => {{
+                            const g = ctx.chart.ctx.createLinearGradient(0,0,0,220);
+                            g.addColorStop(0,'rgba(59,130,246,0.25)');
+                            g.addColorStop(1,'rgba(59,130,246,0)');
+                            return g;
+                        }},
+                        fill: true,
+                        tension: 0.45,
+                        borderWidth: 2.5,
+                        pointBackgroundColor: '#3b82f6',
+                        pointRadius: 4,
+                        pointHoverRadius: 7,
+                        yAxisID: 'y'
+                    }},
+                    {{
+                        label: 'Productivity %',
+                        data: {json.dumps(prod_data)},
+                        borderColor: '#10b981',
+                        backgroundColor: 'transparent',
+                        tension: 0.4,
+                        borderWidth: 2,
+                        borderDash: [5,4],
+                        pointBackgroundColor: '#10b981',
+                        pointRadius: 3,
+                        pointHoverRadius: 6,
+                        yAxisID: 'yPct'
+                    }}
+                ]
+            }},
+            options: {{
+                responsive: true, maintainAspectRatio: false,
+                interaction: {{ mode:'index', intersect:false }},
+                plugins: {{
+                    legend: {{ labels: {{ color:'#94a3b8', usePointStyle:true, pointStyleWidth:8, padding:20 }} }},
+                    tooltip: {{
+                        backgroundColor:'#1e293b',
+                        borderColor:'rgba(255,255,255,0.1)',
+                        borderWidth:1,
+                        titleColor:'#e2e8f0',
+                        bodyColor:'#94a3b8',
+                        padding:12,
+                        callbacks: {{
+                            label: (ctx) => ctx.dataset.label === 'Hours Online'
+                                ? ` ${{ctx.parsed.y.toFixed(1)}}h`
+                                : ` ${{ctx.parsed.y}}%`
+                        }}
+                    }}
+                }},
+                scales: {{
+                    x: {{ grid:{{color:gridColor}}, ticks:{{color:tickColor}} }},
+                    y: {{
+                        grid:{{color:gridColor}}, ticks:{{color:'#3b82f6',callback:v=>v+'h'}},
+                        title:{{display:false}}
+                    }},
+                    yPct: {{
+                        position:'right', min:0, max:100,
+                        grid:{{display:false}},
+                        ticks:{{color:'#10b981',callback:v=>v+'%'}}
+                    }}
+                }}
+            }}
+        }});
+
+        // ── Apps horizontal bar ──
+        new Chart(document.getElementById('appsChart'), {{
+            type: 'bar',
+            data: {{
+                labels: {json.dumps(top_apps_labels)},
+                datasets: [{{
+                    label: 'Hours',
+                    data: {json.dumps(top_apps_data)},
+                    backgroundColor: {json.dumps(top_apps_labels)}.map((_,i) => `hsla(${{200 + i*15}},80%,60%,0.75)`),
+                    borderColor:      {json.dumps(top_apps_labels)}.map((_,i) => `hsla(${{200 + i*15}},80%,60%,1)`),
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    borderSkipped: false
+                }}]
+            }},
+            options: {{
+                indexAxis: 'y',
+                responsive: true, maintainAspectRatio: false,
+                plugins: {{
+                    legend: {{display:false}},
+                    tooltip: {{
+                        backgroundColor:'#1e293b', borderColor:'rgba(255,255,255,0.1)', borderWidth:1,
+                        titleColor:'#e2e8f0', bodyColor:'#94a3b8', padding:10,
+                        callbacks: {{ label: (ctx) => ` ${{ctx.parsed.x.toFixed(1)}}h (${{({json.dumps(top_apps_pct)})[ctx.dataIndex]}}%)` }}
+                    }}
+                }},
+                scales: {{
+                    x: {{ grid:{{color:gridColor}}, ticks:{{color:tickColor,callback:v=>v+'h'}} }},
+                    y: {{ grid:{{display:false}}, ticks:{{color:'#e2e8f0',font:{{size:12}}}} }}
+                }}
+            }}
+        }});
+
+        // ── Category doughnut ──
+        new Chart(document.getElementById('categoryChart'), {{
+            type: 'doughnut',
+            data: {{
+                labels: {json.dumps(cat_labels)},
+                datasets: [{{
+                    data: {json.dumps(cat_data)},
+                    backgroundColor: ['#10b981','#6366f1','#ef4444','#f59e0b','#06b6d4','#a855f7'],
+                    borderColor: '#111827',
+                    borderWidth: 3,
+                    hoverBorderWidth: 2,
+                    hoverOffset: 6
+                }}]
+            }},
+            options: {{
+                responsive: true, maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {{
+                    legend: {{
+                        position:'bottom',
+                        labels:{{color:'#94a3b8',usePointStyle:true,pointStyleWidth:8,padding:14,font:{{size:11}}}}
+                    }},
+                    tooltip: {{
+                        backgroundColor:'#1e293b', borderColor:'rgba(255,255,255,0.1)', borderWidth:1,
+                        titleColor:'#e2e8f0', bodyColor:'#94a3b8', padding:10,
+                        callbacks: {{ label:(ctx)=>` ${{ctx.parsed.toFixed(1)}}h` }}
+                    }}
+                }}
+            }}
+        }});
+
+        // ── 6-Week Trend ──
+        new Chart(document.getElementById('trendChart'), {{
+            type: 'bar',
+            data: {{
+                labels: {json.dumps(trend_labels)}.map(d => d ? d.slice(5) : ''),
+                datasets: [
+                    {{
+                        type: 'bar',
+                        label: 'Hours/week',
+                        data: {json.dumps(trend_screen)},
+                        backgroundColor: 'rgba(99,102,241,0.5)',
+                        borderColor: 'rgba(99,102,241,0.9)',
+                        borderWidth:1, borderRadius:4,
+                        yAxisID:'y'
+                    }},
+                    {{
+                        type: 'line',
+                        label: 'Prod %',
+                        data: {json.dumps(trend_prod)},
+                        borderColor: '#10b981',
+                        tension: 0.4, borderWidth:2,
+                        pointRadius:3, pointBackgroundColor:'#10b981',
+                        yAxisID:'yPct'
+                    }}
+                ]
+            }},
+            options: {{
+                responsive:true, maintainAspectRatio:false,
+                plugins:{{ legend:{{display:false}}, tooltip:{{
+                    backgroundColor:'#1e293b',borderColor:'rgba(255,255,255,0.1)',borderWidth:1,
+                    titleColor:'#e2e8f0',bodyColor:'#94a3b8',padding:8
+                }} }},
+                scales:{{
+                    x:{{ grid:{{display:false}}, ticks:{{color:tickColor,font:{{size:10}}}} }},
+                    y:{{ grid:{{color:gridColor}}, ticks:{{color:'#6366f1',font:{{size:10}},callback:v=>v+'h'}} }},
+                    yPct:{{ position:'right',min:0,max:100, grid:{{display:false}}, ticks:{{color:'#10b981',font:{{size:10}},callback:v=>v+'%'}} }}
+                }}
+            }}
+        }});
+
+        // ── Animate goal bars on load ──
+        document.querySelectorAll('.goal-bar-fill').forEach(el => {{
+            const target = el.style.width;
+            el.style.width = '0';
+            setTimeout(() => el.style.width = target, 400);
+        }});
+
+    }})();
+    </script>
+</body>
+</html>"""
+    return html
+
+
 @wellbeing_bp.route("/api/weekly-report/send-telegram", methods=["POST"])
 def api_send_weekly_report_telegram():
-    """Send the weekly report via Telegram."""
+    """Send the weekly report via Telegram (Text + HTML Page)."""
     from src.config.settings_manager import TelegramSettingsManager
     from src.config.crypto import decrypt
+    from src.config.storage import get_data_dir
 
     enabled = SettingsManager.get_bool("weekly_report_telegram", False)
     if not enabled:
@@ -604,15 +1484,55 @@ def api_send_weekly_report_telegram():
 
     week_of = request.json.get("week_of") if request.json else None
     verbosity = _normalize_verbosity(SettingsManager.get("weekly_report_verbosity") or "standard")
-    report = _generate_report(week_of, verbosity=verbosity)
-    html = _report_to_telegram_html(report)
+    logger.info(f"Generating weekly report for week_of={week_of}...")
+    try:
+        report = _generate_report(week_of, verbosity=verbosity)
+        logger.info("Report data generated successfully.")
+    except Exception as e:
+        logger.error(f"Failed to generate report data: {e}")
+        return jsonify({"error": f"Report generation failed: {str(e)}"}), 500
+    
+    # 1. Generate text message
+    try:
+        text = _report_to_telegram_html(report)
+        logger.info("Report text formatted successfully.")
+    except Exception as e:
+        logger.error(f"Failed to format report text: {e}")
+        return jsonify({"error": f"Text formatting failed: {str(e)}"}), 500
+    
+    # 2. Generate HTML file
+    try:
+        report_html = _generate_report_html(report)
+        temp_dir = get_data_dir()
+        file_name = f"Stasis_Report_{report['period']['start']}.html"
+        file_path = os.path.join(temp_dir, file_name)
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(report_html)
+        logger.info(f"HTML report saved to {file_path}")
+    except Exception as e:
+        logger.error(f"Failed to generate/save HTML report: {e}")
+        return jsonify({"error": f"HTML generation failed: {str(e)}"}), 500
 
     try:
         from src.core.telegram.api import TelegramAPI
         api = TelegramAPI(token, chat_id)
-        api.send_message(html)
+        
+        logger.info("Sending text summary to Telegram...")
+        api.send_message(text)
+        
+        logger.info("Sending HTML document to Telegram...")
+        api.send_document(file_path, caption=f"📄 Full Interactive Report ({report['period']['start']})")
+        
+        # Cleanup
+        try: 
+            os.remove(file_path)
+            logger.info("Cleanup: Temporary HTML report removed.")
+        except: pass
+        
         return jsonify({"ok": True, "status": "sent"})
     except Exception as e:
+        logger.exception("Failed to send weekly report to Telegram.")
         return jsonify({"error": str(e)}), 500
 
 
@@ -620,7 +1540,7 @@ def run_weekly_report_scheduler(stop_event=None, check_interval_sec=300):
     """Background worker: auto-send weekly report once each Sunday when enabled."""
     from src.config.settings_manager import TelegramSettingsManager
     from src.config.crypto import decrypt
-    from src.core.telegram.api import TelegramAPI
+    from src.config.storage import get_data_dir
 
     while True:
         if stop_event and stop_event.is_set():
@@ -647,10 +1567,25 @@ def run_weekly_report_scheduler(stop_event=None, check_interval_sec=300):
 
                     verbosity = _normalize_verbosity(SettingsManager.get("weekly_report_verbosity") or "standard")
                     report = _generate_report(now.date().isoformat(), verbosity=verbosity)
-                    html = _report_to_telegram_html(report)
+                    
+                    text = _report_to_telegram_html(report)
+                    report_html = _generate_report_html(report)
+                    
+                    temp_dir = get_data_dir()
+                    file_name = f"Stasis_Report_{monday}.html"
+                    file_path = os.path.join(temp_dir, file_name)
+                    
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(report_html)
+
+                    from src.core.telegram.api import TelegramAPI
                     api = TelegramAPI(token, chat_id)
-                    if api.send_message(html):
+                    if api.send_message(text):
+                        api.send_document(file_path, caption=f"📄 Full Interactive Report ({monday})")
                         SettingsManager.set("weekly_report_last_sent_week", monday)
+                    
+                    try: os.remove(file_path)
+                    except: pass
         except Exception:
             pass
 

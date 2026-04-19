@@ -10,7 +10,7 @@ from src.core.app_controller import AppController
 from src.core.file_monitor import file_monitor_controller
 from src.core.single_instance import ensure_single_instance
 from src.core.startup import add_to_startup, ensure_notification_identity
-from src.database.database import init_db, start_app_session, end_app_session, resolve_stale_sessions, log_system_boot, log_system_shutdown
+from src.database.database import init_db, log_system_boot, log_system_shutdown
 from src.services.blocking_service import BlockingService
 from src.services.update_manager import UpdateManager
 from src.utils.logger import setup_logger
@@ -63,7 +63,6 @@ def main():
     api_server = None
     blocking_service = None
     threads = []
-    current_session_id = None
     shutdown_status = 'graceful'
 
     def handle_signal(signum, frame):
@@ -98,9 +97,7 @@ def main():
 
     init_db()
     log_system_boot()
-    resolve_stale_sessions()
-    current_session_id = start_app_session()
-    logger.info(f"Application session started (ID: {current_session_id})")
+    logger.info("System lifecycle session initialized")
 
     # Pre-warm settings cache so the first get() doesn't hit the DB
     from src.core.settings_cache import settings_cache
@@ -170,26 +167,22 @@ def main():
     for t in threads:
         t.join(timeout=3)
     
-    # Finalize session logging
-    if current_session_id:
-        try:
-            duration = end_app_session(current_session_id, status=shutdown_status)
-            logger.info(f"Session {current_session_id} finalized as {shutdown_status}. Duration: {duration}s")
-            
-            # Always log the shutdown time in system_lifecycle to record 'Last Seen'
-            # But only mark 'completed' if it's a real system shutdown
-            is_actual = (shutdown_status == 'system_shutdown')
-            log_system_shutdown(is_actual_shutdown=is_actual)
-            logger.info(f"System lifecycle updated (Actual Shutdown: {is_actual})")
-            
-            # Send Telegram shutdown notification if enabled
-            if app_controller.telegram_service and app_controller.is_telegram_running():
-                app_controller.telegram_service.send_shutdown_notification(
-                    duration_seconds=duration,
-                    status=shutdown_status
-                )
-        except Exception:
-            logger.exception("Failed to finalize application session")
+    # Finalize system lifecycle logging
+    try:
+        # Always log the shutdown time in system_lifecycle to record 'Last Seen'
+        # Returns the total system uptime duration
+        is_actual = (shutdown_status == 'system_shutdown')
+        uptime_duration = log_system_shutdown(is_actual_shutdown=is_actual)
+        logger.info(f"System lifecycle updated. Total Uptime: {uptime_duration}s (Actual Shutdown: {is_actual})")
+        
+        # Send Telegram shutdown notification if enabled
+        if app_controller.telegram_service and app_controller.is_telegram_running():
+            app_controller.telegram_service.send_shutdown_notification(
+                duration_seconds=uptime_duration,
+                status=shutdown_status
+            )
+    except Exception:
+        logger.exception("Failed to finalize system lifecycle session")
 
     logger.info("Stasis has shut down gracefully.")
 

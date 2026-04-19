@@ -295,24 +295,11 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_limit_events_app ON limit_events(app_name)")
 
     # ===============================
-    # APP SESSIONS (Startup/Shutdown)
-    # ===============================
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS app_sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        start_time TEXT NOT NULL,
-        end_time TEXT,
-        system_boot_time TEXT,
-        duration_seconds INTEGER,
-        status TEXT DEFAULT 'active'
-    )
-    """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_start ON app_sessions(start_time)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_status ON app_sessions(status)")
+    # SYSTEM LIFECYCLE (Unified Tracking)
+    # =============-==================
+    # Merged functionality: Tracks both system uptime and tracking events.
+    cursor.execute("DROP TABLE IF EXISTS app_sessions")
 
-    # ===============================
-    # SYSTEM LIFECYCLE (OS Boot/Shutdown)
-    # ===============================
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS system_lifecycle (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -910,97 +897,12 @@ def get_setting(key: str, default=None):
 
 
 # ==========================================================
-# ================= SESSION FUNCTIONS ======================
-# ==========================================================
-
-def start_app_session():
-    """
-    Records a new application session start.
-    Returns the session_id.
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    now = datetime.now().isoformat()
-    boot_time = None
-    try:
-        import psutil
-        # Round to nearest second to avoid precision jitter
-        boot_time = datetime.fromtimestamp(int(psutil.boot_time())).isoformat()
-    except Exception:
-        pass
-
-    cursor.execute("""
-        INSERT INTO app_sessions (start_time, system_boot_time, status)
-        VALUES (?, ?, 'active')
-    """, (now, boot_time))
-
-    session_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return session_id
-
-
-def end_app_session(session_id: int, status: str = 'graceful'):
-    """
-    Closes an application session.
-    Calculates duration and updates status.
-    """
-    if not session_id:
-        return None
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    now = datetime.now()
-    now_iso = now.isoformat()
-
-    # Fetch start time to calculate duration
-    cursor.execute("SELECT start_time FROM app_sessions WHERE id = ?", (session_id,))
-    row = cursor.fetchone()
-
-    duration = None
-    if row:
-        start_time = datetime.fromisoformat(row[0])
-        duration = int((now - start_time).total_seconds())
-
-    cursor.execute("""
-        UPDATE app_sessions
-        SET end_time = ?,
-            duration_seconds = ?,
-            status = ?
-        WHERE id = ?
-    """, (now_iso, duration, status, session_id))
-
-    conn.commit()
-    conn.close()
-    return duration
-
-
-def resolve_stale_sessions():
-    """
-    On startup, find any 'active' sessions from previous runs and mark as 'unexpected'.
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        UPDATE app_sessions
-        SET status = 'unexpected'
-        WHERE status = 'active'
-    """)
-
-    conn.commit()
-    conn.close()
-
-
-# ==========================================================
 # ================= SYSTEM LIFECYCLE =======================
 # ==========================================================
 
 def log_system_boot():
     """
-    Captures system metadata and records a boot event if not already present.
+    Captures system metadata and records/updates a boot event.
     """
     try:
         import psutil
@@ -1014,13 +916,7 @@ def log_system_boot():
         conn = get_connection()
         cursor = conn.cursor()
 
-        # Check if this boot is already logged
-        cursor.execute("SELECT id FROM system_lifecycle WHERE boot_time = ?", (boot_time_iso,))
-        if cursor.fetchone():
-            conn.close()
-            return
-
-        # Gather system metadata
+        # Gather current system metadata
         hostname = socket.gethostname()
         os_name = platform.system()
         os_version = platform.version()
@@ -1029,11 +925,24 @@ def log_system_boot():
         total_ram_gb = round(memory.total / (1024 ** 3), 2)
         ip_address = socket.gethostbyname(hostname)
 
-        cursor.execute("""
-            INSERT INTO system_lifecycle 
-            (boot_time, hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
-        """, (boot_time_iso, hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address))
+        # Check if this boot is already logged
+        cursor.execute("SELECT id FROM system_lifecycle WHERE boot_time = ?", (boot_time_iso,))
+        row = cursor.fetchone()
+
+        if row:
+            # Update metadata in case some things changed (like IP)
+            cursor.execute("""
+                UPDATE system_lifecycle 
+                SET hostname = ?, os_name = ?, os_version = ?, cpu_cores = ?, total_ram_gb = ?, ip_address = ?, status = 'active'
+                WHERE id = ?
+            """, (hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address, row[0]))
+        else:
+            # Create new row for this boot
+            cursor.execute("""
+                INSERT INTO system_lifecycle 
+                (boot_time, hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+            """, (boot_time_iso, hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address))
 
         conn.commit()
         conn.close()
@@ -1043,15 +952,20 @@ def log_system_boot():
 
 def log_system_shutdown(is_actual_shutdown: bool = False):
     """
-    Records the system shutdown time for the current boot session.
-    If is_actual_shutdown is True, marks the session as 'completed'.
+    Records the system shutdown time and returns total system uptime duration.
     """
     try:
         import psutil
         # Round to nearest second to match the boot-time entry
         boot_time_raw = int(psutil.boot_time())
         boot_time_iso = datetime.fromtimestamp(boot_time_raw).isoformat()
-        now_iso = datetime.now().isoformat()
+        
+        now = datetime.now()
+        now_iso = now.isoformat()
+        
+        # Calculate system uptime duration
+        boot_dt = datetime.fromtimestamp(boot_time_raw)
+        uptime_seconds = int((now - boot_dt).total_seconds())
 
         conn = get_connection()
         cursor = conn.cursor()
@@ -1064,7 +978,7 @@ def log_system_shutdown(is_actual_shutdown: bool = False):
                 WHERE boot_time = ?
             """, (now_iso, boot_time_iso))
         else:
-            # Just update the last seen time without completing the session
+            # Just update the last seen time
             cursor.execute("""
                 UPDATE system_lifecycle
                 SET shutdown_time = ?
@@ -1073,5 +987,7 @@ def log_system_shutdown(is_actual_shutdown: bool = False):
 
         conn.commit()
         conn.close()
+        return uptime_seconds
     except Exception as e:
         print(f"Error logging system shutdown: {e}")
+        return None

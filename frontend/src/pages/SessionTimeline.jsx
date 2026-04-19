@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { CATEGORY_COLORS } from "../shared/constants";
-import { fmtTime } from "../shared/utils";
+import { fmtTime, fmtAppName } from "../shared/utils";
 import { SectionCard } from "../shared/components";
 
 // ─── SESSION TIMELINE ─────────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ function Timeline({ BASE, date }) {
             currentBlock.active += row.active;
             currentBlock.keys   += row.keys;
             currentBlock.clicks += row.clicks;
-            const appName = row.app.replace(".exe", "");
+            const appName = row.app;
             currentBlock.apps[appName] = (currentBlock.apps[appName] || 0) + row.active;
           } else {
             if (currentBlock && currentBlock.active >= MIN_BLOCK_SECS) {
@@ -52,7 +52,7 @@ function Timeline({ BASE, date }) {
               active: row.active,
               keys: row.keys,
               clicks: row.clicks,
-              apps: { [row.app.replace(".exe", "")]: row.active },
+              apps: { [row.app]: row.active },
               id: Math.random(),
             };
           }
@@ -194,7 +194,7 @@ function Timeline({ BASE, date }) {
                         const pct = Math.round((secs / block.active) * 100);
                         return (
                           <div key={app} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 500, minWidth: 60, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{app}</span>
+                            <span style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 500, minWidth: 60, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fmtAppName(app)}</span>
                             <div style={{ flex: 1, height: 2, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
                               <div style={{ width: `${pct}%`, height: "100%", borderRadius: 2, background: col.grad || col.primary, transition: "width 0.3s ease" }} />
                             </div>

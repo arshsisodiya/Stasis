@@ -1,6 +1,8 @@
 import psutil
 import time
 import threading
+import win32api
+import os
 
 class ProcessCache:
     """
@@ -19,7 +21,6 @@ class ProcessCache:
         Returns (None, None) if the process is inaccessible.
         """
         try:
-            # We must fetch the process object to get the creation time (ID integrity)
             p = psutil.Process(pid)
             create_time = p.create_time()
             key = (pid, create_time)
@@ -31,11 +32,10 @@ class ProcessCache:
                     if now - timestamp < self._ttl:
                         return name, exe
                 
-                # Not in cache or expired — fetch fresh data
-                name = p.name()
+                # Fetch fresh data
                 exe = p.exe()
+                name = self._get_friendly_name(exe) or p.name()
                 
-                # Cleanup if cache is getting too large
                 if len(self._cache) >= self._max_size:
                     self._cleanup(now)
                 
@@ -46,6 +46,24 @@ class ProcessCache:
             return None, None
         except Exception:
             return None, None
+
+    def _get_friendly_name(self, exe_path: str) -> str | None:
+        """Extracts the FileDescription from the executable's version info."""
+        try:
+            if not exe_path or not os.path.exists(exe_path):
+                return None
+            
+            # Get the language and codepage for the translation
+            language, codepage = win32api.GetFileVersionInfo(exe_path, '\\VarFileInfo\\Translation')[0]
+            # Construct the query string for FileDescription
+            string_file_info = u'\\StringFileInfo\\%04X%04X\\FileDescription' % (language, codepage)
+            description = win32api.GetFileVersionInfo(exe_path, string_file_info)
+            
+            if description and description.strip():
+                return description.strip()
+            return None
+        except Exception:
+            return None
 
     def _cleanup(self, now: float):
         """Removes expired entries from the cache."""

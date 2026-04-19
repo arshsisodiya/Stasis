@@ -1,6 +1,6 @@
 import { useState, useEffect, memo } from "react";
 import { CATEGORY_COLORS, BROWSER_EXES } from "../shared/constants";
-import { fmtTime, trendPct } from "../shared/utils";
+import { fmtTime, trendPct, fmtAppName } from "../shared/utils";
 import { AppIcon, CategoryChip, TrendBadge, SectionCard } from "../shared/components";
 
 // ─── APP ROW ─────────────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ const AppRow = memo(function AppRow({ app, active, maxActive, main, sub, prevAct
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
             <span style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {app.replace(".exe", "")}
+              {fmtAppName(app)}
             </span>
             <CategoryChip main={main} sub={sub} />
           </div>

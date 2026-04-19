@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { SectionCard, AppIcon } from "../shared/components";
-import { fmtTime, localYMD } from "../shared/utils";
+import { fmtTime, localYMD, fmtAppName } from "../shared/utils";
 
 const BASE = "http://127.0.0.1:7432";
 const EARLIEST_WEEK = "2024-01-01";
@@ -836,7 +836,7 @@ function TopApp({ app, seconds, maxSec, rank, trend, deltaPct }) {
       <AppIcon appName={app} size={26} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-          <span style={{ fontSize: 11.5, color: "#e2e8f0", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.replace(".exe", "")}</span>
+          <span style={{ fontSize: 11.5, color: "#e2e8f0", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtAppName(app)}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginLeft: 6, flexShrink: 0 }}>
             {trend && trend !== "flat" && <span style={{ fontSize: 9.5, color: trendColor, fontFamily: "'DM Mono',monospace", fontWeight: 700 }}>{trendText}</span>}
             <span style={{ fontSize: 10.5, color: "#64748b", fontFamily: "'DM Mono',monospace" }}>{fmtTime(seconds)}</span>
@@ -856,7 +856,7 @@ function LimitRow({ app, hits, edits }) {
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <AppIcon appName={app} size={22} />
-        <span style={{ fontSize: 11.5, color: "#e2e8f0", fontWeight: 500 }}>{app.replace(".exe", "")}</span>
+        <span style={{ fontSize: 11.5, color: "#e2e8f0", fontWeight: 500 }}>{fmtAppName(app)}</span>
       </div>
       <div style={{ display: "flex", gap: 10 }}>
         {hits > 0 && <span style={{ fontSize: 10.5, fontWeight: 700, color: "#f87171", fontFamily: "'DM Mono',monospace", background: "rgba(248,113,113,0.1)", padding: "2px 7px", borderRadius: 5 }}>{hits}x hit</span>}

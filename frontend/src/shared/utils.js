@@ -60,15 +60,47 @@ export function interpolateColor(val, colorStops) {
 }
 
 // ─── APP ICON RESOLVER ────────────────────────────────────────────────────────
-import { KNOWN_APP_EMOJIS, CATEGORY_EMOJIS } from "./constants";
+import { KNOWN_APP_EMOJIS, CATEGORY_EMOJIS, BROWSER_EXES } from "./constants";
 
 export function resolveAppIcon(appName, category) {
   const key = appName.toLowerCase();
   const BASE = "http://127.0.0.1:7432"; // Standard backend port
+
+  // Handle common browser icons if appName is a browser EXE
+  if (BROWSER_EXES.has(key)) {
+    if (key.includes("chrome")) return { type: "backend", url: `${BASE}/api/app-icon/chrome.exe`, value: "🌐" };
+    if (key.includes("edge")) return { type: "backend", url: `${BASE}/api/app-icon/msedge.exe`, value: "🌐" };
+    if (key.includes("firefox")) return { type: "backend", url: `${BASE}/api/app-icon/firefox.exe`, value: "🌐" };
+  }
 
   return {
     type: "backend",
     url: `${BASE}/api/app-icon/${appName}`,
     value: KNOWN_APP_EMOJIS[key] || CATEGORY_EMOJIS[category] || "📦"
   };
+}
+
+/**
+ * Returns a clean display name for an application.
+ * Backend now provides friendly names, so this mostly handles fallback 
+ * and technical suffix removal for older data.
+ */
+export function fmtAppName(name) {
+  if (!name) return "";
+  
+  // 1. If it's a browser URL or N/A, return as is (handled elsewhere usually)
+  if (name === "N/A" || name.startsWith("http")) return name;
+
+  // 2. Generic cleanup for technical suffixes
+  let clean = name
+    .replace(/\.exe$/i, "")
+    .replace(/\.root$/i, "")
+    .replace(/\.app$/i, "");
+
+  // 3. Title case if it's all lowercase and looks like a single word
+  if (clean.length > 0 && clean === clean.toLowerCase() && !clean.includes(" ")) {
+    clean = clean.charAt(0).toUpperCase() + clean.slice(1);
+  }
+
+  return clean;
 }

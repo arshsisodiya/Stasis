@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { fmtTime } from "../shared/utils";
+import { fmtTime, fmtAppName } from "../shared/utils";
 import { SectionCard, AppIcon } from "../shared/components";
 import { useVisibilityPolling } from "../shared/hooks";
 
@@ -327,7 +327,7 @@ function LimitCard({ limit, onToggle, onEdit, onDelete, onUnblock, todayUsage, i
   const sc = isOver ? "#f87171" : isWarn ? "#fbbf24" : isEnabled ? "#4ade80" : "#475569";
   const sl = isOver ? "Blocked" : isWarn ? "Warning" : isEnabled ? "Active" : "Paused";
   const remaining = Math.max(0, limit.daily_limit_seconds - used);
-  const appName = limit.app_name.replace(".exe", "");
+  const appName = fmtAppName(limit.app_name);
 
   return (
     <>
@@ -477,7 +477,7 @@ function TempUnblockCard({ appName, expiresAt, totalSeconds, onExpired, onRebloc
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(34,211,238,0.1)", border: "1px solid rgba(34,211,238,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🔓</div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>{appName.replace(".exe", "")}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>{fmtAppName(appName)}</div>
             <div style={{ fontSize: 11, color: "#22d3ee", marginTop: 2 }}>Temporarily unblocked</div>
           </div>
         </div>
@@ -596,7 +596,7 @@ function BreachLogPanel({ onClose }) {
               <div style={{ position: "relative" }}>
                 <button onClick={() => setShowAppDrop(v => !v)}
                   style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${appFilter ? "rgba(248,113,113,0.3)" : "rgba(255,255,255,0.1)"}`, background: appFilter ? "rgba(248,113,113,0.08)" : "rgba(255,255,255,0.05)", color: appFilter ? "#f1f5f9" : "#475569", fontSize: 11, cursor: "pointer", fontFamily: "'DM Sans',sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
-                  {appFilter ? appFilter.replace(".exe", "") : "Pick app…"}
+                  {appFilter ? fmtAppName(appFilter) : "Pick app…"}
                   <span style={{ fontSize: 9, opacity: 0.5 }}>▾</span>
                 </button>
                 {showAppDrop && allApps.length > 0 && (
@@ -606,7 +606,7 @@ function BreachLogPanel({ onClose }) {
                         style={{ padding: "8px 14px", fontSize: 12, color: a === appFilter ? "#f1f5f9" : "#64748b", background: a === appFilter ? "rgba(248,113,113,0.1)" : "transparent", cursor: "pointer", transition: "all 0.12s", fontFamily: "'DM Sans',sans-serif" }}
                         onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
                         onMouseLeave={e => e.currentTarget.style.background = a === appFilter ? "rgba(248,113,113,0.1)" : "transparent"}>
-                        {a.replace(".exe", "")}
+                        {fmtAppName(a)}
                       </div>
                     ))}
                   </div>
@@ -640,7 +640,7 @@ function BreachLogPanel({ onClose }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {e.app.replace(".exe", "")}
+                        {fmtAppName(e.app)}
                       </span>
                       <span style={{ fontSize: 10, fontWeight: 700, color: typeColor(e.type), background: `${typeColor(e.type)}18`, padding: "2px 7px", borderRadius: 5, flexShrink: 0 }}>
                         {typeLabel(e.type)}
@@ -680,7 +680,7 @@ function LimitModal({ onClose, onSave, knownApps, editTarget, BASE, stats = [] }
   const [saving, setSaving] = useState(false);
   const [systemApps, setSystemApps] = useState([]);
   const [showD, setShowD] = useState(false);
-  const [query, setQuery] = useState(editTarget?.app_name?.replace(".exe", "") || "");
+  const [query, setQuery] = useState(editTarget?.app_name ? fmtAppName(editTarget.app_name) : "");
   const [confirm, setConfirm] = useState(false);
 
   useEffect(() => {
@@ -764,9 +764,9 @@ function LimitModal({ onClose, onSave, knownApps, editTarget, BASE, stats = [] }
             {!editTarget && knownApps.length > 0 && !app && query.length === 0 && (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
                 {knownApps.slice(0, 6).map(a => (
-                  <button key={a} onClick={() => { setApp(a); setQuery(a.replace(".exe", "")); }}
+                  <button key={a} onClick={() => { setApp(a); setQuery(fmtAppName(a)); }}
                     style={{ padding: "4px 10px", borderRadius: 8, fontSize: 11, cursor: "pointer", fontFamily: "'DM Sans',sans-serif", border: "1px solid rgba(255,255,255,0.08)", background: app === a ? "rgba(74,222,128,0.12)" : "rgba(255,255,255,0.04)", color: app === a ? "#4ade80" : "#64748b", transition: "all 0.15s" }}>
-                    {a.replace(".exe", "")}
+                    {fmtAppName(a)}
                   </button>
                 ))}
               </div>
@@ -846,7 +846,7 @@ function LimitModal({ onClose, onSave, knownApps, editTarget, BASE, stats = [] }
 
       {confirm && (
         <ConfirmModal title="Update this limit?"
-          message={`Updating daily limit for "${(app || editTarget?.app_name || "").replace(".exe", "")}" to ${fmtTime(secs)}.`}
+          message={`Updating daily limit for "${fmtAppName(app || editTarget?.app_name || "")}" to ${fmtTime(secs)}.`}
           confirmLabel="Update Limit" confirmColor="#60a5fa" confirmBg="rgba(96,165,250,0.12)" icon="✏️"
           onConfirm={() => { setConfirm(false); doSave(); }}
           onCancel={() => setConfirm(false)} />
@@ -867,7 +867,7 @@ function UnblockModal({ appName, onClose, onUnblock }) {
           <div style={{ textAlign: "center", marginBottom: 24 }}>
             <div style={{ width: 58, height: 58, borderRadius: "50%", background: "radial-gradient(circle,rgba(251,191,36,0.16) 0%,transparent 70%)", border: "1px solid rgba(251,191,36,0.22)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 26, animation: "bounce-in 0.4s cubic-bezier(0.34,1.56,0.64,1)" }}>🔓</div>
             <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: "#f1f5f9", marginBottom: 6 }}>Temporary Unblock</div>
-            <div style={{ fontSize: 13, color: "#64748b" }}>Allow <strong style={{ color: "#fbbf24" }}>{appName.replace(".exe", "")}</strong> for how long?</div>
+            <div style={{ fontSize: 13, color: "#64748b" }}>Allow <strong style={{ color: "#fbbf24" }}>{fmtAppName(appName)}</strong> for how long?</div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 24 }}>
             {[15, 30, 60, 120].map(opt => (
@@ -889,7 +889,7 @@ function UnblockModal({ appName, onClose, onUnblock }) {
       </div>
       {confirm && (
         <ConfirmModal title="Confirm Unblock?"
-          message={`"${appName.replace(".exe", "")}" will be accessible for ${mins < 60 ? `${mins} minutes` : `${mins / 60} hour`}.`}
+          message={`"${fmtAppName(appName)}" will be accessible for ${mins < 60 ? `${mins} minutes` : `${mins / 60} hour`}.`}
           confirmLabel={`Unblock for ${mins < 60 ? `${mins}m` : `${mins / 60}h`}`}
           confirmColor="#fbbf24" confirmBg="rgba(251,191,36,0.12)" icon="🔓"
           onConfirm={() => { onUnblock(appName, mins); onClose(); setConfirm(false); }}
@@ -1007,7 +1007,7 @@ export default function LimitsPage({ BASE, stats, isActive = true }) {
     });
     try {
       await fetch(`${BASE}/limits/set`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ app_name: name, limit_seconds: secs }) });
-      showT(`Limit set for ${name.replace(".exe", "")}`);
+      showT(`Limit set for ${fmtAppName(name)}`);
     } catch { showT("Failed to save", "warn"); }
     fetchAll();
   };
@@ -1026,7 +1026,7 @@ export default function LimitsPage({ BASE, stats, isActive = true }) {
     setLimits(prev => prev.filter(l => l.app_name !== name));
     try {
       await fetch(`${BASE}/limits/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ app_name: name }) });
-      showT(`Limit removed for ${name.replace(".exe", "")}`, "warn");
+      showT(`Limit removed for ${fmtAppName(name)}`, "warn");
     } catch { showT("Delete failed", "warn"); }
     fetchAll();
   };
@@ -1054,7 +1054,7 @@ export default function LimitsPage({ BASE, stats, isActive = true }) {
 
     try {
       await fetch(`${BASE}/limits/unblock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ app_name: name, minutes }) });
-      showT(`${name.replace(".exe", "")} unblocked for ${minutes}m`);
+      showT(`${fmtAppName(name)} unblocked for ${minutes}m`);
     } catch { showT("Unblock failed", "warn"); }
   };
 
@@ -1075,7 +1075,7 @@ export default function LimitsPage({ BASE, stats, isActive = true }) {
     // Sync breach-log refs so the next scheduled poll doesn't log a spurious entry
     knownBlockedRef.current.add(name);
     if (initialBlockedRef.current) initialBlockedRef.current.add(name);
-    showT(`${name.replace(".exe", "")} re-blocked`, "warn");
+    showT(`${fmtAppName(name)} re-blocked`, "warn");
     // Persist to backend so block is immediately re-applied regardless of temp timer.
     fetch(`${BASE}/limits/reblock`, {
       method: "POST",
@@ -1327,7 +1327,7 @@ export default function LimitsPage({ BASE, stats, isActive = true }) {
                 <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "rgba(248,113,113,0.05)", border: "1px solid rgba(248,113,113,0.12)", borderRadius: 12, transition: "all 0.2s" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#f87171", boxShadow: "0 0 6px #f87171", animation: "pulse-dot 2s ease-in-out infinite" }} />
-                    <span style={{ fontSize: 14, color: "#f1f5f9", fontWeight: 500 }}>{name.replace(".exe", "")}</span>
+                    <span style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 600 }}>{fmtAppName(name)}</span>
                   </div>
                   <button className="hover-raise-amber" onClick={() => setUnblockTarget(name)}
                     style={{ padding: "5px 14px", borderRadius: 9, border: "none", cursor: "pointer", background: "rgba(251,191,36,0.09)", color: "#fbbf24", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", transition: "all 0.2s" }}

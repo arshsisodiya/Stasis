@@ -311,10 +311,20 @@ def init_db():
         total_ram_gb REAL,
         cpu_cores INTEGER,
         ip_address TEXT,
+        app_start_time TEXT,
+        total_screentime_seconds INTEGER DEFAULT 0,
         status TEXT DEFAULT 'active'
     )
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_boot ON system_lifecycle(boot_time)")
+
+    # Migration: Add missing columns if table already existed
+    try:
+        cursor.execute("ALTER TABLE system_lifecycle ADD COLUMN app_start_time TEXT")
+    except Exception: pass
+    try:
+        cursor.execute("ALTER TABLE system_lifecycle ADD COLUMN total_screentime_seconds INTEGER DEFAULT 0")
+    except Exception: pass
 
     conn.commit()
     conn.close()
@@ -930,19 +940,21 @@ def log_system_boot():
         row = cursor.fetchone()
 
         if row:
-            # Update metadata in case some things changed (like IP)
+            # Update metadata in case some things changed, and update app_start_time to NOW
             cursor.execute("""
                 UPDATE system_lifecycle 
-                SET hostname = ?, os_name = ?, os_version = ?, cpu_cores = ?, total_ram_gb = ?, ip_address = ?, status = 'active'
+                SET hostname = ?, os_name = ?, os_version = ?, cpu_cores = ?, total_ram_gb = ?, ip_address = ?, 
+                    app_start_time = ?, status = 'active'
                 WHERE id = ?
-            """, (hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address, row[0]))
+            """, (hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address, datetime.now().isoformat(), row[0]))
         else:
             # Create new row for this boot
+            now_iso = datetime.now().isoformat()
             cursor.execute("""
                 INSERT INTO system_lifecycle 
-                (boot_time, hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
-            """, (boot_time_iso, hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address))
+                (boot_time, hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address, app_start_time, total_screentime_seconds, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'active')
+            """, (boot_time_iso, hostname, os_name, os_version, cpu_cores, total_ram_gb, ip_address, now_iso))
 
         conn.commit()
         conn.close()
@@ -952,7 +964,7 @@ def log_system_boot():
 
 def log_system_shutdown(is_actual_shutdown: bool = False):
     """
-    Records the system shutdown time and returns total system uptime duration.
+    Records the system shutdown time and returns TOTAL cumulative screentime duration.
     """
     try:
         import psutil
@@ -963,31 +975,48 @@ def log_system_shutdown(is_actual_shutdown: bool = False):
         now = datetime.now()
         now_iso = now.isoformat()
         
-        # Calculate system uptime duration
-        boot_dt = datetime.fromtimestamp(boot_time_raw)
-        uptime_seconds = int((now - boot_dt).total_seconds())
-
         conn = get_connection()
         cursor = conn.cursor()
 
+        # 1. Fetch current screentime state
+        cursor.execute("SELECT app_start_time, total_screentime_seconds FROM system_lifecycle WHERE boot_time = ?", (boot_time_iso,))
+        row = cursor.fetchone()
+        
+        new_total_screentime = 0
+        if row and row[0]:
+            app_start_dt = datetime.fromisoformat(row[0])
+            cumulative_prev = row[1] or 0
+            session_duration = int((now - app_start_dt).total_seconds())
+            new_total_screentime = cumulative_prev + session_duration
+        else:
+            # Fallback if app_start_time is missing (should not happen)
+            boot_dt = datetime.fromtimestamp(boot_time_raw)
+            new_total_screentime = int((now - boot_dt).total_seconds())
+
+        # 2. Update DB with new cumulative total
         if is_actual_shutdown:
             cursor.execute("""
                 UPDATE system_lifecycle
                 SET shutdown_time = ?,
+                    total_screentime_seconds = ?,
                     status = 'completed'
                 WHERE boot_time = ?
-            """, (now_iso, boot_time_iso))
+            """, (now_iso, new_total_screentime, boot_time_iso))
         else:
-            # Just update the last seen time
+            # Just update the last seen time and cumulative duration
             cursor.execute("""
                 UPDATE system_lifecycle
-                SET shutdown_time = ?
+                SET shutdown_time = ?,
+                    total_screentime_seconds = ?
                 WHERE boot_time = ?
-            """, (now_iso, boot_time_iso))
+            """, (now_iso, new_total_screentime, boot_time_iso))
 
         conn.commit()
         conn.close()
-        return uptime_seconds
+        return new_total_screentime
+    except Exception as e:
+        print(f"Error logging system shutdown: {e}")
+        return None
     except Exception as e:
         print(f"Error logging system shutdown: {e}")
         return None

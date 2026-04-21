@@ -149,6 +149,7 @@ fn toggle_widget(app: tauri::AppHandle) {
     use tauri_plugin_store::StoreExt;
     if let Ok(store) = app.store("settings.json") {
         store.set("widget_visible", serde_json::json!(target_visible));
+        let _ = store.save(); // Crucial: Actually write to disk
     }
 }
 
@@ -249,6 +250,7 @@ fn main() {
             // Restore widget visibility if it was open last session
             use tauri_plugin_store::StoreExt;
             if let Ok(store) = app.store("settings.json") {
+                let _ = store.load(); // Force load from disk
                 if let Some(val) = store.get("widget_visible") {
                     if val.as_bool().unwrap_or(false) {
                         toggle_widget(app.handle().clone());

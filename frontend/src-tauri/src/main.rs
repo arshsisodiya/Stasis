@@ -8,10 +8,13 @@ use std::io::Write;
 use std::net::TcpStream;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, Manager, Emitter};
-use tauri::tray::TrayIconBuilder;
+use tauri::{AppHandle, Emitter, Manager};
 use tauri::menu::{Menu, MenuItem};
-use tauri_plugin_dialog::{MessageDialogBuilder, MessageDialogButtons, DialogExt};
+use tauri::tray::TrayIconBuilder;
+use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_dialog::{DialogExt, MessageDialogBuilder, MessageDialogButtons};
+use tauri_plugin_store::StoreBuilder;
+use tauri_plugin_autostart::ManagerExt;
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -103,12 +106,12 @@ fn handle_backend_only_action(url: &str) -> bool {
 
 #[tauri::command]
 fn toggle_widget(app: tauri::AppHandle) {
+    let mut target_visible = false;
     if let Some(window) = app.get_webview_window("widget") {
         if window.is_visible().unwrap_or(false) {
             let _ = window.hide();
+            target_visible = false;
         } else {
-            // Smart positioning: only auto-place if the window is currently at the default 0,0 position.
-            // This ensures it starts in a sane place on first launch, but stays where the user drags it.
             if let Ok(pos) = window.outer_position() {
                 if pos.x == 0 && pos.y == 0 {
                     position_widget(&window);
@@ -117,6 +120,7 @@ fn toggle_widget(app: tauri::AppHandle) {
             let _ = window.show();
             let _ = window.set_focus();
             let _ = window.set_always_on_top(true);
+            target_visible = true;
         }
     } else {
         match tauri::WebviewWindowBuilder::new(
@@ -134,9 +138,19 @@ fn toggle_widget(app: tauri::AppHandle) {
             Ok(window) => {
                 position_widget(&window);
                 let _ = window.show();
+                target_visible = true;
             }
-            Err(e) => eprintln!("Failed to create widget window: {}", e),
+            Err(e) => {
+                eprintln!("Failed to create widget window: {}", e);
+                return;
+            }
         }
+    }
+
+    // Persist visibility state
+    use tauri_plugin_store::StoreExt;
+    if let Ok(store) = app.store("settings.json") {
+        store.set("widget_visible", serde_json::json!(target_visible));
     }
 }
 
@@ -231,6 +245,24 @@ fn main() {
                         _ => {}
                     }
                 });
+            }
+
+            // -------- Persistence & Autostart --------
+            // Restore widget visibility if it was open last session
+            use tauri_plugin_store::StoreExt;
+            if let Ok(store) = app.store("settings.json") {
+                if let Some(val) = store.get("widget_visible") {
+                    if val.as_bool().unwrap_or(false) {
+                        toggle_widget(app.handle().clone());
+                    }
+                }
+            }
+
+            // Ensure the main app starts with Windows (Production only)
+            #[cfg(not(debug_assertions))]
+            {
+                use tauri_plugin_autostart::ManagerExt;
+                let _ = app.autolaunch().enable();
             }
 
             start_backend(app.handle());
@@ -369,6 +401,9 @@ fn main() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--quiet"])))
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![toggle_widget])
 
         .build(tauri::generate_context!())

@@ -15,6 +15,9 @@
         "core:menu:default",
         "core:tray:default",
         "core:window:allow-start-dragging",
-        "opener:default"
+        "opener:default",
+        "autostart:default",
+        "window-state:default",
+        "store:default"
     ]
 }

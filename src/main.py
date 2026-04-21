@@ -115,8 +115,8 @@ def main():
                 working_dir=repo_root,
             )
 
-    if getattr(sys, "frozen", False):
-        add_to_startup(get_executable_path())
+    # if getattr(sys, "frozen", False):
+    #     add_to_startup(get_executable_path())
 
     time.sleep(1) # Reduced startup delay
 

@@ -13,6 +13,12 @@ use tauri::tray::TrayIconBuilder;
 use tauri::menu::{Menu, MenuItem};
 use tauri_plugin_dialog::{MessageDialogBuilder, MessageDialogButtons, DialogExt};
 
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    GetWindowLongW, SetWindowLongW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+};
+
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 
 struct BackendState(Mutex<Option<Child>>);
@@ -101,9 +107,16 @@ fn toggle_widget(app: tauri::AppHandle) {
         if window.is_visible().unwrap_or(false) {
             let _ = window.hide();
         } else {
-            position_widget(&window);
+            // Smart positioning: only auto-place if the window is currently at the default 0,0 position.
+            // This ensures it starts in a sane place on first launch, but stays where the user drags it.
+            if let Ok(pos) = window.outer_position() {
+                if pos.x == 0 && pos.y == 0 {
+                    position_widget(&window);
+                }
+            }
             let _ = window.show();
             let _ = window.set_focus();
+            let _ = window.set_always_on_top(true);
         }
     } else {
         match tauri::WebviewWindowBuilder::new(
@@ -112,7 +125,7 @@ fn toggle_widget(app: tauri::AppHandle) {
             tauri::WebviewUrl::App("index.html".into()),
         )
         .title("Stasis Widget")
-        .inner_size(280.0, 48.0)
+        .inner_size(200.0, 44.0)
         .decorations(false)
         .transparent(true)
         .always_on_top(true)
@@ -135,12 +148,28 @@ fn position_widget(window: &tauri::WebviewWindow) {
         // Target: Bottom Right, above taskbar
         // Typical Windows taskbar is ~48px. 
         // We'll place it 60px from bottom, 20px from right.
-        let window_size = window.outer_size().unwrap_or(tauri::PhysicalSize { width: 280, height: 48 });
+        let window_size = window.outer_size().unwrap_or(tauri::PhysicalSize { width: 200, height: 44 });
         
         let x = size.width - window_size.width - (20.0 * scale_factor) as u32;
         let y = size.height - window_size.height - (60.0 * scale_factor) as u32;
         
         let _ = window.set_position(tauri::PhysicalPosition { x: x as i32, y: y as i32 });
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn apply_widget_styles(window: &tauri::WebviewWindow) {
+    if let Ok(hwnd) = window.hwnd() {
+        let hwnd_val = hwnd.0 as isize;
+        unsafe {
+            let mut style = GetWindowLongW(hwnd_val, GWL_EXSTYLE) as usize;
+            style |= WS_EX_TOOLWINDOW as usize;
+            style |= WS_EX_NOACTIVATE as usize;
+            SetWindowLongW(hwnd_val, GWL_EXSTYLE, style as i32);
+            
+            // Initial topmost setting
+            SetWindowPos(hwnd_val, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
     }
 }
 
@@ -160,6 +189,50 @@ fn main() {
         .manage(BackendState(Mutex::new(None)))
 
         .setup(|app| {
+            // -------- Background Maintenance --------
+            // Re-enforce always_on_top for the widget aggressively (500ms) to fight Windows layering issues
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    if let Some(window) = app_handle.get_webview_window("widget") {
+                        if window.is_visible().unwrap_or(false) {
+                            #[cfg(target_os = "windows")]
+                            if let Ok(hwnd) = window.hwnd() {
+                                unsafe {
+                                    SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                                }
+                            }
+                            #[cfg(not(target_os = "windows"))]
+                            let _ = window.set_always_on_top(true);
+                        }
+                    }
+                }
+            });
+
+            // Also re-enforce on focus changes for the widget and apply initial styles
+            if let Some(window) = app.get_webview_window("widget") {
+                #[cfg(target_os = "windows")]
+                apply_widget_styles(&window);
+
+                let w = window.clone();
+                window.on_window_event(move |event| {
+                    match event {
+                        tauri::WindowEvent::Focused(_) | tauri::WindowEvent::Moved(_) => {
+                            #[cfg(target_os = "windows")]
+                            if let Ok(hwnd) = w.hwnd() {
+                                unsafe {
+                                    SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                                }
+                            }
+                            #[cfg(not(target_os = "windows"))]
+                            let _ = w.set_always_on_top(true);
+                        }
+                        _ => {}
+                    }
+                });
+            }
+
             start_backend(app.handle());
 
             // Handle deep-link when app is launched directly via protocol.

@@ -34,34 +34,40 @@ def live_status():
     cursor = conn.cursor()
 
     try:
-        # Today's totals (sum of all non-ignored apps)
-        cursor.execute("""
-            SELECT SUM(active_seconds)
-            FROM daily_stats
-            WHERE date = ?
-        """, (selected_date,))
-        
-        # We should ideally filter ignored apps in the query, but for live status 
-        # a simple sum is usually fine since ignored apps are likely not in daily_stats 
-        # (they are skipped by the logger).
-        today_seconds = safe(cursor.fetchone()[0])
-
-        # Top App
+        # Today's detailed usage (group by app)
         cursor.execute("""
             SELECT app_name, SUM(active_seconds) as total
             FROM daily_stats
             WHERE date = ?
             GROUP BY app_name
             ORDER BY total DESC
-            LIMIT 1
         """, (selected_date,))
-        row = cursor.fetchone()
-        top_app = row[0] if row else "N/A"
+        usage_rows = cursor.fetchall()
+        
+        # Build dictionary and ensure sessions don't get lost
+        usage = {row[0]: safe(row[1]) for row in usage_rows}
+        
+        # Incorporate the current ongoing session
+        active_app = info.get("app_name")
+        if active_app:
+            usage[active_app] = usage.get(active_app, 0) + session_duration
+
+        # Calculate today_seconds from the accumulated usage map
+        today_seconds = sum(usage.values())
+
+        # Category for the current app
+        category, _ = get_category(active_app or "", info.get("url"))
+
+        # Sort usage to return the most accurate top_app
+        sorted_usage = sorted(usage.items(), key=lambda x: x[1], reverse=True)
+        top_app = sorted_usage[0][0] if sorted_usage else "N/A"
 
         return jsonify({
             "active": info,
+            "category": category,
             "session_seconds": session_duration,
-            "today_seconds": today_seconds + session_duration,
+            "today_seconds": today_seconds,
+            "usage": usage,
             "top_app": top_app
         })
 

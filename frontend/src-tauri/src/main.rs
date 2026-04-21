@@ -13,8 +13,6 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_dialog::{DialogExt, MessageDialogBuilder, MessageDialogButtons};
-use tauri_plugin_store::StoreBuilder;
-use tauri_plugin_autostart::ManagerExt;
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -106,7 +104,7 @@ fn handle_backend_only_action(url: &str) -> bool {
 
 #[tauri::command]
 fn toggle_widget(app: tauri::AppHandle) {
-    let mut target_visible = false;
+    let target_visible: bool;
     if let Some(window) = app.get_webview_window("widget") {
         if window.is_visible().unwrap_or(false) {
             let _ = window.hide();

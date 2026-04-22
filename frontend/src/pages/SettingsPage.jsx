@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import UpdateSection from "./UpdatePage";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
@@ -777,7 +778,7 @@ function TelegramSection({ push }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // GENERAL SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
-const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false, weekly_report_verbosity: "standard" };
+const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false, weekly_report_verbosity: "standard", widget_enabled: false };
 
 function GeneralSection({ push }) {
   const [s, setS] = useState({ ...DEFAULTS });
@@ -817,7 +818,8 @@ function GeneralSection({ push }) {
           show_yesterday_comparison: s.show_yesterday_comparison,
           hardware_acceleration: s.hardware_acceleration,
           weekly_report_telegram: s.weekly_report_telegram,
-          weekly_report_verbosity: s.weekly_report_verbosity
+          weekly_report_verbosity: s.weekly_report_verbosity,
+          widget_enabled: s.widget_enabled
         })
       });
       setSaved({ ...s });
@@ -908,7 +910,16 @@ function GeneralSection({ push }) {
         <SettingRow label="Run in system tray" desc="Minimise to tray instead of closing" control={<Toggle on={s.tray} onChange={v => set("tray", v)} />} />
         <SettingRow label="Desktop notifications" desc="Alerts for limit warnings and events" control={<Toggle on={s.notifications} onChange={v => set("notifications", v)} />} />
         <SettingRow label="Show yesterday comparison" desc="Show 'vs yesterday' indicators on dashboard" control={<Toggle on={s.show_yesterday_comparison} onChange={v => set("show_yesterday_comparison", v)} />} />
-        <SettingRow borderless label="Hardware Acceleration" desc="Boost performance using GPU, turn off to save RAM (requires restart)" control={<Toggle on={s.hardware_acceleration} onChange={v => set("hardware_acceleration", v)} />} />
+        <SettingRow label="Hardware Acceleration" desc="Boost performance using GPU, turn off to save RAM (requires restart)" control={<Toggle on={s.hardware_acceleration} onChange={v => set("hardware_acceleration", v)} />} />
+        <SettingRow borderless label="Taskbar Widget" desc="Show a persistent floating widget for real-time stats" control={
+          <Toggle 
+            on={s.widget_enabled} 
+            onChange={v => {
+              set("widget_enabled", v);
+              invoke("set_widget_visibility", { visible: v });
+            }} 
+          />
+        } />
       </Card>
 
       {/* Data Retention Card */}

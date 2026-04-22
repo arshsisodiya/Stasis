@@ -2,6 +2,7 @@ import WellbeingDashboard from './WellbeingDashboard';
 import LoadingScreen from './pages/LoadingScreen';
 import TaskbarWidget from './shared/TaskbarWidget';
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from 'react';
 
 const BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:7432";
@@ -29,10 +30,23 @@ export default function App() {
     }
   }, []);
 
-  const handleReady = (prefetchedData) => {
+  const handleReady = async (prefetchedData) => {
     // Dashboard mounts right now with real data already available
     setInitialData(prefetchedData || null);
     setStage("entering");
+
+    // Restore widget anchor if present in settings
+    const ax = parseInt(prefetchedData?.settings?.widget_anchor_x || "0");
+    const ay = parseInt(prefetchedData?.settings?.widget_anchor_y || "0");
+    if (ax > 0 && ay > 0) {
+      await invoke("set_widget_anchor", { x: ax, y: ay });
+    }
+
+    // Restore widget visibility if enabled in settings
+    if (prefetchedData?.settings?.widget_enabled) {
+      await invoke("set_widget_visibility", { visible: true });
+    }
+
     // Remove LoadingScreen after its ls-outro finishes (700 ms)
     setTimeout(() => setStage("done"), 750);
   };

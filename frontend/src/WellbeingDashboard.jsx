@@ -659,21 +659,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
                   ))}
                 </div>
                 
-                <button 
-                  className="tab-btn" 
-                  onClick={() => invoke("toggle_widget")}
-                  style={{
-                    gap: 6,
-                    background: "rgba(74, 222, 128, 0.05)",
-                    border: "1px solid rgba(74, 222, 128, 0.15)",
-                    color: "#4ade80",
-                    padding: "7px 12px",
-                    display: "flex", alignItems: "center"
-                  }}
-                >
-                  <span style={{ fontSize: 10 }}>🛸</span>
-                  Widget
-                </button>
+
 
                 <button className="hover-surface" onClick={() => setShowSettings("drawer")} title="Menu" style={{
                   width: 36, height: 36, borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)",

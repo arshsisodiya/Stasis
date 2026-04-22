@@ -119,7 +119,10 @@ class SettingsManager(BaseSettingsManager):
             "browser_tracking": "true",
             "weekly_report_telegram": "false",
             "weekly_report_verbosity": "standard",
-            "weekly_report_last_sent_week": ""
+            "weekly_report_last_sent_week": "",
+            "widget_enabled": "false",
+            "widget_anchor_x": "0",
+            "widget_anchor_y": "0"
         }
 
         for key, value in defaults.items():

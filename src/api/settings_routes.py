@@ -41,18 +41,32 @@ def get_settings():
         "hardware_acceleration": SettingsManager.get_bool("hardware_acceleration", True),
         "idle_detection": SettingsManager.get_bool("idle_detection", True),
         "browser_tracking": SettingsManager.get_bool("browser_tracking", True),
-        "weekly_report_telegram": SettingsManager.get_bool("weekly_report_telegram", False),
-        "weekly_report_verbosity": SettingsManager.get("weekly_report_verbosity") or "standard"
+        "weekly_report_verbosity": SettingsManager.get("weekly_report_verbosity") or "standard",
+        "widget_enabled": SettingsManager.get_bool("widget_enabled", False),
+        "widget_anchor_x": SettingsManager.get("widget_anchor_x") or "0",
+        "widget_anchor_y": SettingsManager.get("widget_anchor_y") or "0"
     })
 
 
-@wellbeing_bp.route("/api/settings/update", methods=["POST"])
+@wellbeing_bp.route("/api/settings/update", methods=["POST", "GET"])
 def update_settings():
-    data = request.json
+    """
+    Updates application settings. 
+    Accepts JSON body (POST) or Query Parameters (GET).
+    """
+    if request.method == "POST":
+        data = request.get_json() or {}
+    else:
+        # Fallback for GET (used by backend for rapid updates like widget repositioning)
+        data = request.args.to_dict()
+
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
     _file_monitor_changed = False
 
     if "notifications" in data:
-        val = "true" if data["notifications"] else "false"
+        val = "true" if str(data["notifications"]).lower() == "true" else "false"
         SettingsManager.set("notifications", val)
 
     if "notifications_enable_goal_events" in data:
@@ -140,6 +154,16 @@ def update_settings():
         if val not in ("compact", "standard", "detailed"):
             val = "standard"
         SettingsManager.set("weekly_report_verbosity", val)
+    
+    if "widget_enabled" in data:
+        val = "true" if data["widget_enabled"] else "false"
+        SettingsManager.set("widget_enabled", val)
+
+    if "widget_anchor_x" in data:
+        SettingsManager.set("widget_anchor_x", str(data["widget_anchor_x"]))
+
+    if "widget_anchor_y" in data:
+        SettingsManager.set("widget_anchor_y", str(data["widget_anchor_y"]))
 
     return jsonify({"status": "updated"})
 

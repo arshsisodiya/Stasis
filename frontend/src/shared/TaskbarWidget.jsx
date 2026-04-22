@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { fmtTime } from "./utils";
+import { fmtTime, fmtAppName } from "./utils";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -17,18 +17,29 @@ const getAppColor = (name) => {
 const getCategoryColor = (cat) => {
   switch (cat) {
     case "productive": return "#4ade80";
-    case "distraction": return "#f87171";
+    case "distraction":
+    case "unproductive": return "#f87171";
     case "neutral": return "#60a5fa";
-    default: return "#94a3b8";
+    case "entertainment": return "#a855f7";
+    case "communication": return "#22d3ee";
+    case "system": return "#94a3b8";
+    case "development": return "#fbbf24";
+    default: return "#64748b";
   }
 };
 
 const getCategoryLabel = (cat) => {
   switch (cat) {
     case "productive": return "Productive";
-    case "distraction": return "Distraction";
+    case "distraction":
+    case "unproductive": return "Distraction";
     case "neutral": return "Neutral";
-    default: return "Unknown";
+    case "entertainment": return "Entertainment";
+    case "communication": return "Communication";
+    case "system": return "System";
+    case "development": return "Development";
+    case "other": return "Other";
+    default: return "Activity";
   }
 };
 
@@ -43,9 +54,7 @@ function DetailCard({ status, segments, todayTime, visible }) {
         bottom: 48,
         right: 0,
         width: 300,
-        background: "rgba(13, 17, 28, 0.98)",
-        backdropFilter: "blur(40px) saturate(200%)",
-        WebkitBackdropFilter: "blur(40px) saturate(200%)",
+        background: "#0d111c",
         border: "1px solid rgba(255,255,255,0.10)",
         borderRadius: 16,
         padding: "18px",
@@ -99,12 +108,14 @@ function DetailCard({ status, segments, todayTime, visible }) {
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {status.active?.app_name || "No active app"}
+            {status.active?.app_name ? fmtAppName(status.active.app_name) : "No active app"}
           </div>
           <div style={{ fontSize: 11, color: "#64748b", marginTop: 1, fontWeight: 500 }}>Active now</div>
         </div>
         <div style={{ fontSize: 13, fontWeight: 800, color: "#94a3b8", fontVariantNumeric: "tabular-nums" }}>
-          {fmtTime(status.active?.duration_seconds || 0)}
+          {status.active?.duration_seconds < 60 
+            ? `${status.active.duration_seconds}s` 
+            : fmtTime(status.active?.duration_seconds || 0)}
         </div>
       </div>
 
@@ -286,6 +297,39 @@ export default function TaskbarWidget({ BASE }) {
           visible={showCard && !hoveredSegment}
         />
 
+        {/* Custom Tooltip */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: 56,
+            right: 0,
+            background: "#0d111c",
+            border: "1px solid rgba(255,255,255,0.10)",
+            borderRadius: 8,
+            padding: "8px 12px",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)",
+            fontFamily: "'Geist', 'Inter', system-ui, sans-serif",
+            color: "#f1f5f9",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            pointerEvents: "none",
+            opacity: showCard && hoveredSegment ? 1 : 0,
+            transform: showCard && hoveredSegment ? "translateY(0) scale(1)" : "translateY(4px) scale(0.97)",
+            transformOrigin: "bottom right",
+            transition: "opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)",
+            zIndex: 10,
+          }}
+        >
+          {hoveredSegment && (
+            <>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: hoveredSegment.color, boxShadow: `0 0 8px ${hoveredSegment.color}` }} />
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{hoveredSegment.name}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8" }}>{fmtTime(hoveredSegment.seconds)}</span>
+            </>
+          )}
+        </div>
+
         {/* The fixed-size widget bar */}
         <div
           onPointerDown={handlePointerDown}
@@ -349,7 +393,6 @@ export default function TaskbarWidget({ BASE }) {
                 key={i}
                 onMouseEnter={(e) => { e.stopPropagation(); setHoveredSegment(s); }}
                 onMouseLeave={() => { setHoveredSegment(null); }}
-                title={`${s.name} — ${fmtTime(s.seconds)}`}
                 style={{
                   width: `${s.pct}%`,
                   height: "100%",

@@ -34,41 +34,87 @@ def live_status():
     cursor = conn.cursor()
 
     try:
-        # Today's detailed usage (group by app)
+        # 1. Total usage from Daily Stats
         cursor.execute("""
-            SELECT app_name, SUM(active_seconds) as total
+            SELECT app_name, main_category, SUM(active_seconds), SUM(keystrokes), SUM(sessions)
             FROM daily_stats
             WHERE date = ?
-            GROUP BY app_name
-            ORDER BY total DESC
+            GROUP BY app_name, main_category
         """, (selected_date,))
-        usage_rows = cursor.fetchall()
-        
-        # Build dictionary and ensure sessions don't get lost
-        usage = {row[0]: safe(row[1]) for row in usage_rows}
-        
-        # Incorporate the current ongoing session
-        active_app = info.get("app_name")
-        if active_app:
+        rows = cursor.fetchall()
+
+        usage = {}
+        category_data = defaultdict(int)
+        total_keys = 0
+        total_sessions = 0
+
+        for app, cat, act, keys, sessions in rows:
+            if is_ignored(app): continue
+            usage[app] = usage.get(app, 0) + safe(act)
+            category_data[cat] += safe(act)
+            total_keys += safe(keys)
+            total_sessions += safe(sessions)
+
+        # 2. Factor in the current ongoing session
+        active_app = info.get("app_name") if info else None
+        if active_app and not is_ignored(active_app):
+            # Update usage map
             usage[active_app] = usage.get(active_app, 0) + session_duration
+            
+            # Update category aggregation for score
+            curr_cat, _ = get_category(active_app, info.get("url"))
+            category_data[curr_cat] += session_duration
+            
+            # Inject duration into info for frontend
+            info["duration_seconds"] = usage[active_app]
 
-        # Calculate today_seconds from the accumulated usage map
-        today_seconds = sum(usage.values())
+        total_active = sum(usage.values())
 
-        # Category for the current app
-        category, _ = get_category(active_app or "", info.get("url"))
+        # 3. Calculate Productivity Score (Simplified version of wellbeing logic)
+        score = None
+        if total_active > 0:
+            productive = category_data.get("productive", 0)
+            neutral = category_data.get("neutral", 0) + category_data.get("other", 0)
+            unproductive = category_data.get("unproductive", 0) + category_data.get("distraction", 0)
+            
+            # Engagement factor based on KPM
+            minutes_active = total_active / 60
+            kpm = total_keys / minutes_active if minutes_active > 0 else 0
+            engagement = min(1.0, kpm / 35.0) 
+            
+            weighted_time = (productive * engagement * 1.0) + (neutral * 0.4)
+            score = round((weighted_time / total_active) * 100)
 
-        # Sort usage to return the most accurate top_app
+        # 4. Find Peak Hour
+        cursor.execute("""
+            SELECT strftime('%H', timestamp) as hr, SUM(active_seconds) as act
+            FROM activity_logs
+            WHERE timestamp LIKE ?
+            GROUP BY 1
+            ORDER BY act DESC
+            LIMIT 1
+        """, (selected_date + "%",))
+        peak_row = cursor.fetchone()
+        peak_hour = f"{int(peak_row[0])}:00" if peak_row else "—"
+
+        # 5. Top App
         sorted_usage = sorted(usage.items(), key=lambda x: x[1], reverse=True)
         top_app = sorted_usage[0][0] if sorted_usage else "N/A"
+        
+        # 6. Final Category for Color/Label (Current App)
+        final_cat = "neutral"
+        if active_app:
+            final_cat, _ = get_category(active_app, info.get("url"))
 
         return jsonify({
             "active": info,
-            "category": category,
-            "session_seconds": session_duration,
-            "today_seconds": today_seconds,
+            "category": final_cat,
+            "today_seconds": total_active,
             "usage": usage,
-            "top_app": top_app
+            "top_app": top_app,
+            "score": score,
+            "sessions_today": total_sessions,
+            "peak_hour": peak_hour
         })
 
     finally:

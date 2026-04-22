@@ -114,22 +114,34 @@ fn handle_backend_only_action(url: &str) -> bool {
 }
 
 #[tauri::command]
-fn toggle_widget(app: tauri::AppHandle) {
-    let target_visible: bool;
+fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
     if let Some(window) = app.get_webview_window("widget") {
-        if window.is_visible().unwrap_or(false) {
-            let _ = window.hide();
-            target_visible = false;
-        } else {
-            // Force collapsed size and reposition
+        let current = window.is_visible().unwrap_or(false);
+        if visible && !current {
+             // Force collapsed size
             let _ = window.set_size(tauri::LogicalSize::<f64> { width: WIDGET_COLLAPSED_W, height: WIDGET_COLLAPSED_H });
-            position_widget(&app, &window);
+
+            // Restore to stored anchor position, or default position if first show
+            let state = app.state::<WidgetAnchor>();
+            let anchor = state.0.lock().unwrap();
+            if let Some((ax, ay)) = *anchor {
+                let scale = window.scale_factor().unwrap_or(1.0);
+                let phys_w = (WIDGET_COLLAPSED_W * scale) as i32;
+                let phys_h = (WIDGET_COLLAPSED_H * scale) as i32;
+                drop(anchor);
+                let _ = window.set_position(tauri::PhysicalPosition { x: ax - phys_w, y: ay - phys_h });
+            } else {
+                drop(anchor);
+                position_widget(&app, &window);
+            }
+
             let _ = window.show();
             let _ = window.set_focus();
             let _ = window.set_always_on_top(true);
-            target_visible = true;
+        } else if !visible && current {
+            let _ = window.hide();
         }
-    } else {
+    } else if visible {
         match tauri::WebviewWindowBuilder::new(
             &app,
             "widget",
@@ -143,26 +155,48 @@ fn toggle_widget(app: tauri::AppHandle) {
         .skip_taskbar(true)
         .resizable(false)
         .shadow(false)
+        .visible(false) // Start hidden — position first, show after
         .build() {
             Ok(window) => {
-                position_widget(&app, &window);
+                // Check if an anchor was pre-set (from DB via set_widget_anchor)
+                let state = app.state::<WidgetAnchor>();
+                let anchor = state.0.lock().unwrap();
+                if let Some((ax, ay)) = *anchor {
+                    let scale = window.scale_factor().unwrap_or(1.0);
+                    let phys_w = (WIDGET_COLLAPSED_W * scale) as i32;
+                    let phys_h = (WIDGET_COLLAPSED_H * scale) as i32;
+                    drop(anchor);
+                    let _ = window.set_position(tauri::PhysicalPosition { x: ax - phys_w, y: ay - phys_h });
+                } else {
+                    drop(anchor);
+                    position_widget(&app, &window);
+                }
                 let _ = window.show();
-                target_visible = true;
             }
             Err(e) => {
                 eprintln!("Failed to create widget window: {}", e);
-                return;
             }
         }
     }
 
-    // Persist visibility state
-    use tauri_plugin_store::StoreExt;
-    if let Ok(store) = app.store("settings.json") {
-        println!("Saving widget_visible: {}", target_visible);
-        store.set("widget_visible", serde_json::json!(target_visible));
-        let _ = store.save();
-    }
+    // We no longer persist here, as it's handled by the DB via Python/Frontend
+}
+
+#[tauri::command]
+fn set_widget_anchor(app: tauri::AppHandle, x: i32, y: i32) {
+    let state = app.state::<WidgetAnchor>();
+    let mut anchor = state.0.lock().unwrap();
+    *anchor = Some((x, y));
+}
+
+#[tauri::command]
+fn toggle_widget(app: tauri::AppHandle) {
+    let current_visible = if let Some(window) = app.get_webview_window("widget") {
+        window.is_visible().unwrap_or(false)
+    } else {
+        false
+    };
+    set_widget_visibility(app, !current_visible);
 }
 
 #[tauri::command]
@@ -320,10 +354,19 @@ fn main() {
                                 if let Ok(size) = w.outer_size() {
                                     let state = w.state::<WidgetAnchor>();
                                     let mut anchor = state.0.lock().unwrap();
-                                    *anchor = Some((
-                                        new_pos.x + size.width as i32,
-                                        new_pos.y + size.height as i32,
-                                    ));
+                                    
+                                    let ax = new_pos.x + size.width as i32;
+                                    let ay = new_pos.y + size.height as i32;
+                                    *anchor = Some((ax, ay));
+                                    
+                                    // Persist to DB asynchronously
+                                    std::thread::spawn(move || {
+                                        let path = format!(
+                                            "/api/settings/update?widget_anchor_x={}&widget_anchor_y={}",
+                                            ax, ay
+                                        );
+                                        call_backend_get(&path);
+                                    });
                                 }
                             }
                             // Re-enforce topmost on any move
@@ -340,22 +383,10 @@ fn main() {
             }
 
             // -------- Persistence & Autostart --------
-            // Restore widget visibility if it was open last session
-            use tauri_plugin_store::StoreExt;
-            if let Ok(store) = app.store("settings.json") {
-                let _ = store.reload(); // Force load from disk
-                if let Some(val) = store.get("widget_visible") {
-                    println!("Restoring widget visibility state: {:?}", val);
-                    if val.as_bool().unwrap_or(false) {
-                        println!("Auto-starting widget...");
-                        toggle_widget(app.handle().clone());
-                    }
-                } else {
-                    println!("No widget_visible key found in settings.json");
-                }
-            } else {
-                println!("Failed to open settings.json for restoration");
-            }
+            // Widget visibility is now restored by the frontend (App.jsx)
+            // after it fetches settings from the DB and pre-sets the anchor.
+            // This avoids the widget flashing at the default position before
+            // jumping to the saved coordinates.
 
             // Ensure the main app starts with Windows (Production only)
             #[cfg(not(debug_assertions))]
@@ -503,7 +534,13 @@ fn main() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--quiet"])))
         .plugin(tauri_plugin_window_state::Builder::default().with_denylist(&["widget"]).build())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![toggle_widget, expand_widget, shrink_widget])
+        .invoke_handler(tauri::generate_handler![
+            toggle_widget,
+            set_widget_visibility,
+            expand_widget,
+            shrink_widget,
+            set_widget_anchor
+        ])
 
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -21,8 +21,19 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
+static WIDGET_RESIZING: AtomicBool = AtomicBool::new(false);
 
 struct BackendState(Mutex<Option<Child>>);
+
+// Bottom-right anchor in physical pixels — stays constant during resize
+struct WidgetAnchor(Mutex<Option<(i32, i32)>>);
+
+// Widget logical sizes
+const WIDGET_COLLAPSED_W: f64 = 200.0;
+const WIDGET_COLLAPSED_H: f64 = 44.0;
+const WIDGET_EXPANDED_W: f64 = 320.0;
+const WIDGET_EXPANDED_H: f64 = 440.0;
+
 
 fn extract_deep_link(args: &[String]) -> Option<String> {
     args.iter()
@@ -110,11 +121,9 @@ fn toggle_widget(app: tauri::AppHandle) {
             let _ = window.hide();
             target_visible = false;
         } else {
-            if let Ok(pos) = window.outer_position() {
-                if pos.x == 0 && pos.y == 0 {
-                    position_widget(&window);
-                }
-            }
+            // Force collapsed size and reposition
+            let _ = window.set_size(tauri::LogicalSize::<f64> { width: WIDGET_COLLAPSED_W, height: WIDGET_COLLAPSED_H });
+            position_widget(&app, &window);
             let _ = window.show();
             let _ = window.set_focus();
             let _ = window.set_always_on_top(true);
@@ -127,14 +136,16 @@ fn toggle_widget(app: tauri::AppHandle) {
             tauri::WebviewUrl::App("index.html".into()),
         )
         .title("Stasis Widget")
-        .inner_size(200.0, 44.0)
+        .inner_size(WIDGET_COLLAPSED_W, WIDGET_COLLAPSED_H)
         .decorations(false)
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
+        .resizable(false)
+        .shadow(false)
         .build() {
             Ok(window) => {
-                position_widget(&window);
+                position_widget(&app, &window);
                 let _ = window.show();
                 target_visible = true;
             }
@@ -148,25 +159,86 @@ fn toggle_widget(app: tauri::AppHandle) {
     // Persist visibility state
     use tauri_plugin_store::StoreExt;
     if let Ok(store) = app.store("settings.json") {
+        println!("Saving widget_visible: {}", target_visible);
         store.set("widget_visible", serde_json::json!(target_visible));
-        let _ = store.save(); // Crucial: Actually write to disk
+        let _ = store.save();
     }
 }
 
-fn position_widget(window: &tauri::WebviewWindow) {
+#[tauri::command]
+fn expand_widget(window: tauri::WebviewWindow) {
+    resize_widget_anchored(&window, WIDGET_EXPANDED_W, WIDGET_EXPANDED_H);
+}
+
+#[tauri::command]
+fn shrink_widget(window: tauri::WebviewWindow) {
+    resize_widget_anchored(&window, WIDGET_COLLAPSED_W, WIDGET_COLLAPSED_H);
+}
+
+fn resize_widget_anchored(window: &tauri::WebviewWindow, width: f64, height: f64) {
+    let state = window.state::<WidgetAnchor>();
+    let anchor_lock = state.0.lock().unwrap();
+
+    if let Some((anchor_x, anchor_y)) = *anchor_lock {
+        let scale = window.scale_factor().unwrap_or(1.0);
+        let phys_w = (width * scale) as i32;
+        let phys_h = (height * scale) as i32;
+        let new_x = anchor_x - phys_w;
+        let new_y = anchor_y - phys_h;
+
+        // Mark as programmatic resize so Moved handler ignores it
+        WIDGET_RESIZING.store(true, Ordering::SeqCst);
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(hwnd) = window.hwnd() {
+                unsafe {
+                    // Atomic resize + reposition in a single OS call — no flicker
+                    SetWindowPos(
+                        hwnd.0 as isize,
+                        HWND_TOPMOST,
+                        new_x, new_y,
+                        phys_w, phys_h,
+                        SWP_NOACTIVATE,
+                    );
+                }
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = window.set_size(tauri::LogicalSize::<f64> { width, height });
+            let _ = window.set_position(tauri::PhysicalPosition { x: new_x, y: new_y });
+        }
+
+        // Clear flag after a short delay to skip OS-dispatched Moved events
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            WIDGET_RESIZING.store(false, Ordering::SeqCst);
+        });
+    } else {
+        // Fallback: no anchor yet, just set size
+        let _ = window.set_size(tauri::LogicalSize::<f64> { width, height });
+    }
+}
+
+/// Position the widget at the bottom-right of the primary monitor and initialize anchor.
+fn position_widget(app: &AppHandle, window: &tauri::WebviewWindow) {
     if let Ok(Some(monitor)) = window.primary_monitor() {
-        let size = monitor.size();
-        let scale_factor = monitor.scale_factor();
-        
-        // Target: Bottom Right, above taskbar
-        // Typical Windows taskbar is ~48px. 
-        // We'll place it 60px from bottom, 20px from right.
-        let window_size = window.outer_size().unwrap_or(tauri::PhysicalSize { width: 200, height: 44 });
-        
-        let x = size.width - window_size.width - (20.0 * scale_factor) as u32;
-        let y = size.height - window_size.height - (60.0 * scale_factor) as u32;
-        
-        let _ = window.set_position(tauri::PhysicalPosition { x: x as i32, y: y as i32 });
+        let monitor_size = monitor.size();
+        let scale = monitor.scale_factor();
+        let phys_w = (WIDGET_COLLAPSED_W * scale) as i32;
+        let phys_h = (WIDGET_COLLAPSED_H * scale) as i32;
+
+        let x = monitor_size.width as i32 - phys_w - (20.0 * scale) as i32;
+        let y = monitor_size.height as i32 - phys_h - (60.0 * scale) as i32;
+
+        let _ = window.set_position(tauri::PhysicalPosition { x, y });
+
+        // Store bottom-right corner as the stable anchor
+        let state = app.state::<WidgetAnchor>();
+        let mut anchor = state.0.lock().unwrap();
+        *anchor = Some((x + phys_w, y + phys_h));
     }
 }
 
@@ -200,6 +272,7 @@ fn main() {
     }
     tauri::Builder::default()
         .manage(BackendState(Mutex::new(None)))
+        .manage(WidgetAnchor(Mutex::new(None)))
 
         .setup(|app| {
             // -------- Background Maintenance --------
@@ -231,7 +304,7 @@ fn main() {
                 let w = window.clone();
                 window.on_window_event(move |event| {
                     match event {
-                        tauri::WindowEvent::Focused(_) | tauri::WindowEvent::Moved(_) => {
+                        tauri::WindowEvent::Focused(_) => {
                             #[cfg(target_os = "windows")]
                             if let Ok(hwnd) = w.hwnd() {
                                 unsafe {
@@ -240,6 +313,26 @@ fn main() {
                             }
                             #[cfg(not(target_os = "windows"))]
                             let _ = w.set_always_on_top(true);
+                        }
+                        tauri::WindowEvent::Moved(new_pos) => {
+                            // Only update anchor for user-initiated moves (drags), not programmatic resizes
+                            if !WIDGET_RESIZING.load(Ordering::SeqCst) {
+                                if let Ok(size) = w.outer_size() {
+                                    let state = w.state::<WidgetAnchor>();
+                                    let mut anchor = state.0.lock().unwrap();
+                                    *anchor = Some((
+                                        new_pos.x + size.width as i32,
+                                        new_pos.y + size.height as i32,
+                                    ));
+                                }
+                            }
+                            // Re-enforce topmost on any move
+                            #[cfg(target_os = "windows")]
+                            if let Ok(hwnd) = w.hwnd() {
+                                unsafe {
+                                    SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                                }
+                            }
                         }
                         _ => {}
                     }
@@ -250,12 +343,18 @@ fn main() {
             // Restore widget visibility if it was open last session
             use tauri_plugin_store::StoreExt;
             if let Ok(store) = app.store("settings.json") {
-                let _ = store.load(); // Force load from disk
+                let _ = store.reload(); // Force load from disk
                 if let Some(val) = store.get("widget_visible") {
+                    println!("Restoring widget visibility state: {:?}", val);
                     if val.as_bool().unwrap_or(false) {
+                        println!("Auto-starting widget...");
                         toggle_widget(app.handle().clone());
                     }
+                } else {
+                    println!("No widget_visible key found in settings.json");
                 }
+            } else {
+                println!("Failed to open settings.json for restoration");
             }
 
             // Ensure the main app starts with Windows (Production only)
@@ -402,9 +501,9 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--quiet"])))
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_window_state::Builder::default().with_denylist(&["widget"]).build())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![toggle_widget])
+        .invoke_handler(tauri::generate_handler![toggle_widget, expand_widget, shrink_widget])
 
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

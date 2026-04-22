@@ -1,19 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { fmtTime } from "./utils";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 
 const POLL_INTERVAL = 2000;
-const MIN_WIDTH = 180;
-const MAX_WIDTH = 520;
-const COMPACT_BREAKPOINT = 260;
 
 const getAppColor = (name) => {
-  if (!name || name === "N/A") return "#475569";
+  if (!name || name === "N/A") return "#94a3b8";
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return `hsl(${Math.abs(hash % 360)}, 70%, 58%)`;
+  return `hsl(${Math.abs(hash % 360)}, 75%, 60%)`;
 };
 
 const getCategoryColor = (cat) => {
@@ -34,200 +32,133 @@ const getCategoryLabel = (cat) => {
   }
 };
 
-// ── Resize handle ──────────────────────────────────────────────────────────
-function ResizeHandle({ side, onResize }) {
-  const dragging = useRef(false);
-  const startX = useRef(0);
-  const startW = useRef(0);
-
-  const onMouseDown = (e) => {
-    e.preventDefault();
-    dragging.current = true;
-    startX.current = e.clientX;
-    startW.current = e.currentTarget.closest("[data-widget-root]").offsetWidth;
-
-    const onMove = (me) => {
-      if (!dragging.current) return;
-      const delta = side === "right"
-        ? me.clientX - startX.current
-        : startX.current - me.clientX;
-      const newW = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW.current + delta));
-      onResize(newW);
-    };
-    const onUp = () => {
-      dragging.current = false;
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-
-  return (
-    <div
-      onMouseDown={onMouseDown}
-      style={{
-        position: "absolute",
-        top: 0, bottom: 0,
-        [side]: -4,
-        width: 8,
-        cursor: "ew-resize",
-        zIndex: 10,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <div style={{
-        width: 2, height: 16,
-        background: "rgba(255,255,255,0.18)",
-        borderRadius: 2,
-        transition: "background 0.2s",
-      }} />
-    </div>
-  );
-}
-
 // ── Hover Detail Card ──────────────────────────────────────────────────────
-function DetailCard({ status, segments, todayTime, position }) {
+function DetailCard({ status, segments, todayTime, visible }) {
   const top5 = segments.slice(0, 5);
 
   return (
-    <div style={{
-      position: "fixed",
-      bottom: position.bottom,
-      left: position.left,
-      width: 280,
-      background: "rgba(10, 12, 22, 0.96)",
-      backdropFilter: "blur(32px) saturate(180%)",
-      WebkitBackdropFilter: "blur(32px) saturate(180%)",
-      border: "1px solid rgba(255,255,255,0.12)",
-      borderRadius: 14,
-      padding: "14px 16px",
-      boxShadow: "0 -8px 40px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.04)",
-      zIndex: 9999,
-      fontFamily: "'Geist', 'SF Pro Display', system-ui, sans-serif",
-      color: "#f1f5f9",
-      animation: "card-appear 0.18s cubic-bezier(0.16, 1, 0.3, 1)",
-      pointerEvents: "none",
-    }}>
+    <div
+      style={{
+        position: "absolute",
+        bottom: 48,
+        right: 0,
+        width: 300,
+        background: "rgba(13, 17, 28, 0.98)",
+        backdropFilter: "blur(40px) saturate(200%)",
+        WebkitBackdropFilter: "blur(40px) saturate(200%)",
+        border: "1px solid rgba(255,255,255,0.10)",
+        borderRadius: 16,
+        padding: "18px",
+        boxShadow: "0 16px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)",
+        fontFamily: "'Geist', 'Inter', system-ui, sans-serif",
+        color: "#f1f5f9",
+        pointerEvents: visible ? "auto" : "none",
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0) scale(1)" : "translateY(8px) scale(0.97)",
+        transformOrigin: "bottom right",
+        transition: "opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
+      }}
+    >
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{
-            width: 7, height: 7, borderRadius: "50%",
+            width: 8, height: 8, borderRadius: "50%",
             background: getCategoryColor(status.category),
-            boxShadow: `0 0 8px ${getCategoryColor(status.category)}`,
+            boxShadow: `0 0 10px ${getCategoryColor(status.category)}`,
           }} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.09em" }}>
+          <span style={{ fontSize: 11, fontWeight: 900, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.12em" }}>
             {getCategoryLabel(status.category)}
           </span>
         </div>
-        <span style={{ fontSize: 14, fontWeight: 800, color: "#fff", fontVariantNumeric: "tabular-nums" }}>
+        <span style={{ fontSize: 18, fontWeight: 900, color: "#fff", fontVariantNumeric: "tabular-nums" }}>
           {fmtTime(todayTime)}
         </span>
       </div>
 
-      {/* Active app */}
+      {/* Active app - Highlighted Row */}
       <div style={{
-        background: "rgba(255,255,255,0.05)",
+        background: "rgba(255,255,255,0.04)",
         border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: 9,
-        padding: "8px 11px",
-        marginBottom: 12,
+        borderRadius: 12,
+        padding: "12px 14px",
+        marginBottom: 16,
         display: "flex",
         alignItems: "center",
-        gap: 9,
+        gap: 12,
       }}>
         <div style={{
-          width: 28, height: 28, borderRadius: 7,
+          width: 36, height: 36, borderRadius: 10,
           background: getAppColor(status.active?.app_name || ""),
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 13, fontWeight: 700, color: "rgba(0,0,0,0.7)",
+          fontSize: 16, fontWeight: 800, color: "rgba(0,0,0,0.6)",
           flexShrink: 0,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
         }}>
           {(status.active?.app_name || "?").charAt(0).toUpperCase()}
         </div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#f1f5f9", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {status.active?.app_name || "No active app"}
           </div>
-          <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>Active now</div>
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 1, fontWeight: 500 }}>Active now</div>
         </div>
-        <div style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#94a3b8", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: "#94a3b8", fontVariantNumeric: "tabular-nums" }}>
           {fmtTime(status.active?.duration_seconds || 0)}
         </div>
       </div>
 
-      {/* Top apps */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+      {/* Top apps list */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
         {top5.map((s, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 11, color: "#cbd5e1", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {s.name}
             </span>
-            <span style={{ fontSize: 11, color: "#475569", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#475569", fontVariantNumeric: "tabular-nums" }}>
               {fmtTime(s.seconds)}
             </span>
-            <div style={{ width: 52, height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 2, flexShrink: 0, overflow: "hidden" }}>
-              <div style={{ width: `${s.pct}%`, height: "100%", background: s.color, borderRadius: 2 }} />
+            <div style={{ width: 60, height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 3, overflow: "hidden", marginLeft: 8 }}>
+              <div style={{ width: `${s.pct}%`, height: "100%", background: s.color, borderRadius: 3 }} />
             </div>
           </div>
         ))}
       </div>
 
-      {/* Footer stats */}
-      <div style={{ display: "flex", gap: 8, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 10 }}>
+      {/* Bottom info columns */}
+      <div style={{ display: "flex", gap: 12, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 14 }}>
         {[
           { label: "Sessions", value: status.sessions_today ?? "—" },
           { label: "Peak hour", value: status.peak_hour ?? "—" },
           { label: "Score", value: status.score != null ? `${status.score}%` : "—" },
         ].map((item, i) => (
           <div key={i} style={{ flex: 1, textAlign: "center" }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#e2e8f0" }}>{item.value}</div>
-            <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 2 }}>{item.label}</div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: "#e2e8f0" }}>{item.value}</div>
+            <div style={{ fontSize: 9, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 3 }}>{item.label}</div>
           </div>
         ))}
       </div>
-
-      <style>{`
-        @keyframes card-appear {
-          from { opacity: 0; transform: translateY(6px) scale(0.98); }
-          to   { opacity: 1; transform: translateY(0) scale(1); }
-        }
-      `}</style>
     </div>
   );
 }
 
-// ── Main Widget ────────────────────────────────────────────────────────────
 export default function TaskbarWidget({ BASE }) {
   const [status, setStatus] = useState(null);
-  const [hovered, setHovered] = useState(false);
-  const [hoveredSegment, setHoveredSegment] = useState(null);
   const [showCard, setShowCard] = useState(false);
-  const [width, setWidth] = useState(300);
-  const rootRef = useRef(null);
+  const [hoveredSegment, setHoveredSegment] = useState(null);
+  const hideTimeout = useRef(null);
+  const shrinkTimeout = useRef(null);
+  const isExpanded = useRef(false);
 
-  const isCompact = width < COMPACT_BREAKPOINT;
-
-  // Sync width to physical window size and persist
+  // Override global overflow:hidden from index.css — the widget needs visible overflow
+  // so the detail card (positioned above the bar) isn't clipped when window is expanded
   useEffect(() => {
-    if (window.__TAURI_INTERNALS__) {
-      const win = getCurrentWindow();
-      // Update window width (keep height fixed at 36 + padding/margins if any, 
-      // but the widget design seems to aim for ~44px total height)
-      win.setSize(new (window.__TAURI_INTERNALS__.plugins.path.LogicalSize)(width, 44)).catch(console.error);
-
-      // Persist to store (settings.json)
-      import("@tauri-apps/plugin-store").then(({ load }) => {
-        load("settings.json", { autoSave: true }).then(store => {
-          store.set("widget_width", width);
-        });
-      });
-    }
-  }, [width]);
+    document.documentElement.style.overflow = "visible";
+    document.body.style.overflow = "visible";
+    const root = document.getElementById("root");
+    if (root) root.style.overflow = "visible";
+  }, []);
 
   useEffect(() => {
     const fetchStatus = () => {
@@ -237,189 +168,210 @@ export default function TaskbarWidget({ BASE }) {
         .catch(err => console.error("Widget fetch error:", err));
     };
 
-    // Load initial width from persistence
-    if (window.__TAURI_INTERNALS__) {
-      import("@tauri-apps/plugin-store").then(({ load }) => {
-        load("settings.json", { autoSave: true }).then(store => {
-          store.get("widget_width").then(w => {
-            if (w) setWidth(w);
-          });
-        });
-      });
-    }
-
     fetchStatus();
     const iv = setInterval(fetchStatus, POLL_INTERVAL);
     return () => clearInterval(iv);
   }, [BASE]);
 
-  const handlePointerDown = (e) => {
+  const handlePointerDown = useCallback((e) => {
     if (window.__TAURI_INTERNALS__ && e.button === 0) {
       getCurrentWindow().startDragging().catch(err => console.error("Drag start error:", err));
     }
-  };
+  }, []);
 
-  // Card position: above the widget, aligned to left edge
-  const getCardPosition = useCallback(() => {
-    if (!rootRef.current) return { bottom: 48, left: 0 };
-    const rect = rootRef.current.getBoundingClientRect();
-    return {
-      bottom: window.innerHeight - rect.top + 8,
-      left: Math.max(8, Math.min(rect.left, window.innerWidth - 296)),
+  // Show card: expand window first, then reveal card
+  const requestShow = useCallback(() => {
+    if (hideTimeout.current) {
+      clearTimeout(hideTimeout.current);
+      hideTimeout.current = null;
+    }
+    if (shrinkTimeout.current) {
+      clearTimeout(shrinkTimeout.current);
+      shrinkTimeout.current = null;
+    }
+    if (!isExpanded.current) {
+      isExpanded.current = true;
+      invoke("expand_widget").catch(e => console.error("Expand error:", e));
+    }
+    setShowCard(true);
+  }, []);
+
+  // Hide card: fade out first, then shrink window after animation completes
+  const requestHide = useCallback(() => {
+    hideTimeout.current = setTimeout(() => {
+      setShowCard(false);
+      setHoveredSegment(null);
+      // Shrink window after the CSS fade-out transition completes
+      shrinkTimeout.current = setTimeout(() => {
+        isExpanded.current = false;
+        invoke("shrink_widget").catch(e => console.error("Shrink error:", e));
+      }, 280);
+    }, 100);
+  }, []);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (hideTimeout.current) clearTimeout(hideTimeout.current);
+      if (shrinkTimeout.current) clearTimeout(shrinkTimeout.current);
     };
   }, []);
 
-  if (!status) return null;
-
-  const todayTime = status.today_seconds || 1;
-  const currentApp = status.active?.app_name || "N/A";
-  const categoryColor = getCategoryColor(status.category);
-
-  // Build segments
-  const usageArray = Object.entries(status.usage || {}).sort((a, b) => b[1] - a[1]);
-  const top7 = usageArray.slice(0, 7);
-  const othersSeconds = usageArray.slice(7).reduce((acc, [, v]) => acc + v, 0);
-
-  const segments = top7.map(([app, sec]) => ({
-    name: app, seconds: sec,
-    pct: (sec / todayTime) * 100,
-    color: getAppColor(app),
-  }));
-  if (othersSeconds > 0) {
-    segments.push({ name: "Others", seconds: othersSeconds, pct: (othersSeconds / todayTime) * 100, color: "#334155" });
+  if (!status) {
+    return (
+      <div style={{
+        height: "100%", width: "100%",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <div style={{
+          width: 200, height: 44,
+          background: "rgba(13, 17, 28, 0.95)",
+          backdropFilter: "blur(40px) saturate(200%)",
+          borderRadius: 14,
+          display: "flex", alignItems: "center", padding: "0 14px", gap: 10,
+        }}>
+          <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#4ade80", opacity: 0.3, animation: "pulse 2s infinite" }} />
+          <div style={{ width: 60, height: 12, background: "rgba(255,255,255,0.1)", borderRadius: 6 }} />
+        </div>
+        <style>{`@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.2); opacity: 0.6; } }`}</style>
+      </div>
+    );
   }
 
-  const activeLabel = hoveredSegment ? hoveredSegment.name : currentApp;
-  const activeTime = hoveredSegment ? hoveredSegment.seconds : (status.active?.duration_seconds || todayTime);
+  const todayTime = status.today_seconds || 1;
+  const categoryColor = getCategoryColor(status.category);
+
+  // Compute Top 7 Apps + Other
+  const usageArray = Object.entries(status.usage || {})
+    .sort((a, b) => b[1] - a[1]);
+
+  const top7 = usageArray.slice(0, 7);
+  const othersSeconds = usageArray.slice(7).reduce((acc, curr) => acc + curr[1], 0);
+
+  const segments = top7.map(([app, sec]) => ({
+    name: app,
+    seconds: sec,
+    pct: (sec / todayTime) * 100,
+    color: getAppColor(app)
+  }));
+
+  if (othersSeconds > 0) {
+    segments.push({
+      name: "Others",
+      seconds: othersSeconds,
+      pct: (othersSeconds / todayTime) * 100,
+      color: "#475569"
+    });
+  }
+
+  const activeTime = hoveredSegment ? hoveredSegment.seconds : todayTime;
 
   return (
-    <>
-      <div
-        ref={rootRef}
-        data-widget-root
-        onPointerDown={handlePointerDown}
-        onMouseEnter={() => { setHovered(true); setShowCard(true); }}
-        onMouseLeave={() => { setHovered(false); setShowCard(false); setHoveredSegment(null); }}
-        style={{
-          position: "relative",
-          width: width,
-          height: 36,
-          background: hovered
-            ? "rgba(15, 18, 32, 0.92)"
-            : "rgba(8, 11, 24, 0.72)",
-          backdropFilter: "blur(20px) saturate(180%)",
-          WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          border: "1px solid rgba(255,255,255,0.1)",
-          borderRadius: 10,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          padding: isCompact ? "0 10px" : "0 14px",
-          color: "#f8fafc",
-          boxShadow: hovered
-            ? "0 4px 24px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.06)"
-            : "0 2px 12px rgba(0,0,0,0.4)",
-          userSelect: "none",
-          cursor: "grab",
-          fontFamily: "'Geist', 'SF Pro Display', system-ui, sans-serif",
-          transition: "background 0.25s ease, box-shadow 0.25s ease, width 0.1s ease",
-          overflow: "visible",
-        }}
-      >
-        {/* Left resize handle */}
-        <ResizeHandle side="left" onResize={setWidth} />
-
-        {/* Content row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-
-          {/* Status dot */}
-          <div style={{
-            width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-            background: hoveredSegment ? hoveredSegment.color : categoryColor,
-            boxShadow: `0 0 8px ${hoveredSegment ? hoveredSegment.color : categoryColor}cc`,
-            animation: hoveredSegment ? "none" : "wpulse 2s ease-in-out infinite",
-            transition: "background 0.2s ease, box-shadow 0.2s ease",
-          }} />
-
-          {/* App name */}
-          {!isCompact && (
-            <span style={{
-              fontSize: 11, fontWeight: 600,
-              color: hoveredSegment ? hoveredSegment.color : "#94a3b8",
-              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-              maxWidth: 110, transition: "color 0.2s ease",
-            }}>
-              {activeLabel}
-            </span>
-          )}
-
-          {/* Time */}
-          <span style={{
-            fontSize: 13, fontWeight: 800, color: "#fff",
-            fontVariantNumeric: "tabular-nums",
-            flexShrink: 0,
-            marginLeft: isCompact ? 2 : 0,
-          }}>
-            {fmtTime(activeTime)}
-          </span>
-
-          {/* Stacked bar — fills remaining space */}
-          <div style={{
-            flex: 1,
-            height: hovered ? 6 : 3,
-            background: "rgba(255,255,255,0.06)",
-            borderRadius: 3,
-            display: "flex",
-            overflow: "hidden",
-            transition: "height 0.2s ease",
-            cursor: "default",
-            minWidth: 0,
-          }}>
-            {segments.map((s, i) => (
-              <div
-                key={i}
-                onMouseEnter={(e) => { e.stopPropagation(); setHoveredSegment(s); setShowCard(false); }}
-                onMouseLeave={() => { setHoveredSegment(null); setShowCard(true); }}
-                title={`${s.name} — ${fmtTime(s.seconds)} (${s.pct.toFixed(1)}%)`}
-                style={{
-                  width: `${s.pct}%`,
-                  height: "100%",
-                  background: s.color,
-                  transition: "opacity 0.2s ease, transform 0.2s ease",
-                  opacity: hoveredSegment && hoveredSegment.name !== s.name ? 0.3 : 1,
-                  transform: hoveredSegment?.name === s.name
-                    ? "scaleY(1.6)"
-                    : "scaleY(1)",
-                  transformOrigin: "center",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Right resize handle */}
-        <ResizeHandle side="right" onResize={setWidth} />
-
-        <style>{`
-          @keyframes wpulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50%       { opacity: 0.6; transform: scale(0.8); }
-          }
-          [data-widget-root]:active { cursor: grabbing; }
-        `}</style>
-      </div>
-
-      {/* Hover detail card — shown when hovering widget body (not bar segments) */}
-      {showCard && hovered && !hoveredSegment && (
+    <div
+      style={{
+        height: "100%", width: "100%",
+        display: "flex", flexDirection: "column",
+        justifyContent: "flex-end", alignItems: "flex-end",
+      }}
+      onMouseEnter={requestShow}
+      onMouseLeave={requestHide}
+    >
+      {/* Inner container — positions detail card relative to bar */}
+      <div style={{ position: "relative" }}>
+        {/* Detail Card — always mounted for CSS transitions */}
         <DetailCard
           status={status}
           segments={segments}
           todayTime={todayTime}
-          position={getCardPosition()}
+          visible={showCard && !hoveredSegment}
         />
-      )}
-    </>
+
+        {/* The fixed-size widget bar */}
+        <div
+          onPointerDown={handlePointerDown}
+          style={{
+            width: 200,
+            height: 44,
+            background: "rgba(13, 17, 28, 0.95)",
+            backdropFilter: "blur(40px) saturate(200%)",
+            WebkitBackdropFilter: "blur(40px) saturate(200%)",
+            borderRadius: 14,
+            display: "flex",
+            alignItems: "center",
+            padding: "0 14px",
+            gap: 10,
+            color: "#fff",
+            overflow: "hidden",
+            userSelect: "none",
+            cursor: "grab",
+            fontFamily: "'Geist', 'Inter', system-ui, sans-serif",
+            position: "relative",
+          }}
+        >
+          {/* Productivity Dot + Time */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            <div style={{
+              width: 10, height: 10, borderRadius: "50%",
+              background: hoveredSegment ? hoveredSegment.color : categoryColor,
+              boxShadow: `0 0 14px ${hoveredSegment ? hoveredSegment.color : categoryColor}`,
+              animation: "widget-pulse 2.5s ease-in-out infinite",
+              transition: "all 0.3s ease",
+              flexShrink: 0
+            }} />
+
+            <div style={{ display: "flex", alignItems: "baseline", gap: 4, flexShrink: 0 }}>
+              <span style={{
+                fontSize: 16,
+                fontWeight: 800,
+                letterSpacing: "-0.02em",
+                fontVariantNumeric: "tabular-nums",
+                background: "linear-gradient(180deg, #fff 0%, #cbd5e1 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}>
+                {fmtTime(activeTime)}
+              </span>
+            </div>
+          </div>
+
+          {/* Usage Bar */}
+          <div style={{
+            flex: 1,
+            height: 8,
+            background: "rgba(255,255,255,0.06)",
+            borderRadius: 4,
+            display: "flex",
+            overflow: "hidden",
+            boxShadow: "inset 0 1px 3px rgba(0,0,0,0.4)",
+          }}>
+            {segments.map((s, i) => (
+              <div
+                key={i}
+                onMouseEnter={(e) => { e.stopPropagation(); setHoveredSegment(s); }}
+                onMouseLeave={() => { setHoveredSegment(null); }}
+                title={`${s.name} — ${fmtTime(s.seconds)}`}
+                style={{
+                  width: `${s.pct}%`,
+                  height: "100%",
+                  background: s.color,
+                  transition: "opacity 0.3s ease, transform 0.3s ease",
+                  opacity: hoveredSegment && hoveredSegment.name !== s.name ? 0.3 : 1,
+                  transform: hoveredSegment && hoveredSegment.name === s.name ? "scaleY(1.3)" : "scaleY(1)",
+                  cursor: "pointer"
+                }}
+              />
+            ))}
+          </div>
+
+          <style>{`
+            @keyframes widget-pulse {
+              0%, 100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+              50% { opacity: 0.8; transform: scale(0.9); filter: brightness(1.2); }
+            }
+            div:active { cursor: grabbing; }
+          `}</style>
+        </div>
+      </div>
+    </div>
   );
 }

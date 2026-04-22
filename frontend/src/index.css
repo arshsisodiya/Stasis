@@ -10,15 +10,30 @@
     --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.35);
 }
 
-body {
+html, body, #root {
     margin: 0;
+    padding: 0;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    overflow: hidden;
+    width: 100%;
+    height: 100vh;
+}
+
+body {
     font-family: 'DM Sans', sans-serif;
+    color: #f8fafc;
+}
+
+.app-surface {
     background: radial-gradient(circle at 15% 10%, #171c35 0%, #080b14 40%),
         radial-gradient(circle at 85% 90%, #14172e 0%, #080b14 50%);
     background-color: #080b14;
-    color: #f8fafc;
-    overflow-y: scroll;
-    min-height: 100vh;
+    width: 100%;
+    height: 100vh;
 }
 
 ::selection {

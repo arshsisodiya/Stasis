@@ -522,11 +522,10 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
   if (noData) return <EmptyState />;
 
   return (
-    <div style={{
-      height: "100vh", width: "100%", background: "#080b14",
-      fontFamily: "'DM Sans',sans-serif", color: "#e2e8f0",
-      position: "relative", overflow: "hidden",
-      animation: "db-enter 0.5s cubic-bezier(0.16,1,0.3,1) both",
+    <div className="app-surface" style={{
+        fontFamily: "'DM Sans',sans-serif", color: "#e2e8f0",
+        position: "relative", overflow: "hidden",
+        animation: "db-enter 0.5s cubic-bezier(0.16,1,0.3,1) both",
     }}>
       <MemoNoiseOverlay />
 

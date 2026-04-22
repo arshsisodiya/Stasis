@@ -399,6 +399,16 @@ fn main() {
 
             // Handle deep-link when app is launched directly via protocol.
             let args: Vec<String> = std::env::args().collect();
+            let is_quiet = args.contains(&"--quiet".to_string());
+            let is_backend_action = extract_deep_link(&args).map(|u| is_backend_only_action(&u)).unwrap_or(false);
+
+            if !is_quiet && !is_backend_action {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+
             if let Some(url) = extract_deep_link(&args) {
                 if is_backend_only_action(&url) {
                     let _ = handle_backend_only_action(&url);
@@ -443,6 +453,7 @@ fn main() {
                                 .resizable(true)
                                 .fullscreen(false)
                                 .decorations(true)
+                                .visible(true)
                                 .build();
                             }
                         }
@@ -507,6 +518,7 @@ fn main() {
                     .resizable(true)
                     .fullscreen(false)
                     .decorations(true)
+                    .visible(true)
                     .build();
                 }
                 emit_deep_link(app, &url);
@@ -525,6 +537,7 @@ fn main() {
                     .resizable(true)
                     .fullscreen(false)
                     .decorations(true)
+                    .visible(true)
                     .build();
                 }
             }

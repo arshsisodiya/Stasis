@@ -46,6 +46,7 @@ const getCategoryLabel = (cat) => {
 // ── Hover Detail Card ──────────────────────────────────────────────────────
 function DetailCard({ status, segments, todayTime, visible }) {
   const top5 = segments.slice(0, 5);
+  const catColor = getCategoryColor(status.category);
 
   return (
     <div
@@ -53,19 +54,20 @@ function DetailCard({ status, segments, todayTime, visible }) {
         position: "absolute",
         bottom: 48,
         right: 0,
-        width: 300,
-        background: "#0d111c",
-        border: "1px solid rgba(255,255,255,0.10)",
-        borderRadius: 16,
-        padding: "18px",
-        boxShadow: "0 16px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)",
-        fontFamily: "'Geist', 'Inter', system-ui, sans-serif",
+        width: 320,
+        background: "rgba(13, 17, 28, 0.98)",
+        backdropFilter: "blur(20px)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 20,
+        padding: "20px",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
+        fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif",
         color: "#f1f5f9",
         pointerEvents: visible ? "auto" : "none",
         opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0) scale(1)" : "translateY(8px) scale(0.97)",
+        transform: visible ? "translateY(0) scale(1)" : "translateY(12px) scale(0.98)",
         transformOrigin: "bottom right",
-        transition: "opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
+        transition: "all 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
       }}
     >
       {/* Header */}
@@ -73,8 +75,8 @@ function DetailCard({ status, segments, todayTime, visible }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{
             width: 8, height: 8, borderRadius: "50%",
-            background: getCategoryColor(status.category),
-            boxShadow: `0 0 10px ${getCategoryColor(status.category)}`,
+            background: catColor,
+            boxShadow: `0 0 10px ${catColor}`,
           }} />
           <span style={{ fontSize: 11, fontWeight: 900, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.12em" }}>
             {getCategoryLabel(status.category)}
@@ -107,12 +109,12 @@ function DetailCard({ status, segments, todayTime, visible }) {
           {(status.active?.app_name || "?").charAt(0).toUpperCase()}
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <div style={{ fontSize: 14, fontWeight: 750, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: "-0.01em" }}>
             {status.active?.app_name ? fmtAppName(status.active.app_name) : "No active app"}
           </div>
-          <div style={{ fontSize: 11, color: "#64748b", marginTop: 1, fontWeight: 500 }}>Active now</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, fontWeight: 600, opacity: 0.8 }}>Current Session</div>
         </div>
-        <div style={{ fontSize: 13, fontWeight: 800, color: "#94a3b8", fontVariantNumeric: "tabular-nums" }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: catColor, fontVariantNumeric: "tabular-nums", background: "rgba(255,255,255,0.05)", padding: "4px 8px", borderRadius: 6 }}>
           {status.active?.duration_seconds < 60 
             ? `${status.active.duration_seconds}s` 
             : fmtTime(status.active?.duration_seconds || 0)}
@@ -142,11 +144,11 @@ function DetailCard({ status, segments, todayTime, visible }) {
         {[
           { label: "Sessions", value: status.sessions_today ?? "—" },
           { label: "Peak hour", value: status.peak_hour ?? "—" },
-          { label: "Score", value: status.score != null ? `${status.score}%` : "—" },
+          { label: "Focus Score", value: status.score != null ? `${status.score}%` : "—" },
         ].map((item, i) => (
           <div key={i} style={{ flex: 1, textAlign: "center" }}>
-            <div style={{ fontSize: 14, fontWeight: 900, color: "#e2e8f0" }}>{item.value}</div>
-            <div style={{ fontSize: 9, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 3 }}>{item.label}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", letterSpacing: "-0.01em" }}>{item.value}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>{item.label}</div>
           </div>
         ))}
       </div>
@@ -303,12 +305,13 @@ export default function TaskbarWidget({ BASE }) {
             position: "absolute",
             bottom: 56,
             right: 0,
-            background: "#0d111c",
-            border: "1px solid rgba(255,255,255,0.10)",
-            borderRadius: 8,
+            background: "rgba(13, 17, 28, 0.95)",
+            backdropFilter: "blur(12px)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 10,
             padding: "8px 12px",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)",
-            fontFamily: "'Geist', 'Inter', system-ui, sans-serif",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+            fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif",
             color: "#f1f5f9",
             display: "flex",
             alignItems: "center",

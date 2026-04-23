@@ -443,11 +443,13 @@ export default function TaskbarWidget({ BASE }) {
                 style={{
                   width: `${Math.max(0, Math.min(100, isFinite(s.pct) ? s.pct : 0))}%`,
                   height: "100%",
-                  background: s.color,
-                  transition: "opacity 0.3s ease, transform 0.3s ease",
+                  background: `linear-gradient(180deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 50%), ${s.color}`,
+                  transition: "width 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease, transform 0.3s ease",
                   opacity: hoveredSegment && hoveredSegment.name !== s.name ? 0.3 : 1,
                   transform: hoveredSegment && hoveredSegment.name === s.name ? "scaleY(1.3)" : "scaleY(1)",
-                  cursor: "pointer"
+                  cursor: "pointer",
+                  borderRight: i < segments.length - 1 ? "1px solid rgba(0,0,0,0.15)" : "none",
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1)",
                 }}
               />
             ))}

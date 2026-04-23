@@ -72,23 +72,27 @@ def generate_daily_digest_html(data: dict, template_path: str, output_path: str)
             </li>
             """
 
-        # Populate template
-        html = template.format(
-            date=date_val,
-            full_date=full_date,
-            total_active_str=total_active_str,
-            goal_diff_str=goal_diff_str,
-            goal_class=goal_class,
-            ring_dash_offset=dash_offset,
-            productive_ratio=ratio,
-            productive_time_str=productive_time_str,
-            focus_score=data.get("best_streak", 0), # Using best_streak as focus_score for now
-            top_dist_name=top_dist_name,
-            top_dist_time=top_dist_time,
-            dist_initial=dist_initial,
-            dist_ratio=dist_ratio,
-            app_items_html=app_items_html
-        )
+        # Populate template safely
+        replacements = {
+            "{date}": date_val,
+            "{full_date}": full_date,
+            "{total_active_str}": total_active_str,
+            "{goal_diff_str}": goal_diff_str,
+            "{goal_class}": goal_class,
+            "{ring_dash_offset}": str(dash_offset),
+            "{productive_ratio}": str(ratio),
+            "{productive_time_str}": productive_time_str,
+            "{focus_score}": str(data.get("best_streak", 0)),
+            "{top_dist_name}": top_dist_name,
+            "{top_dist_time}": top_dist_time,
+            "{dist_initial}": dist_initial,
+            "{dist_ratio}": str(dist_ratio),
+            "{app_items_html}": app_items_html
+        }
+
+        html = template
+        for key, value in replacements.items():
+            html = html.replace(key, value)
 
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html)

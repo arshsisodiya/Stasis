@@ -421,12 +421,15 @@ class BlockingService:
         Returns structured data for the daily digest.
         """
         from src.database.database import get_connection
+        from src.utils.categories import get_category
         if not date:
             date = datetime.now().date().isoformat()
 
         conn = get_connection()
         try:
             cursor = conn.cursor()
+            
+            # 1. Basic Stats & Categories
             cursor.execute(
                 """
                 SELECT app_name, main_category, COALESCE(SUM(active_seconds), 0)
@@ -442,8 +445,10 @@ class BlockingService:
 
             total_active = 0.0
             productive = 0.0
+            distraction = 0.0
             distract_by_app: dict[str, float] = {}
             all_apps: dict[str, float] = {}
+            categories: dict[str, float] = {}
 
             for app_name, main_category, seconds in rows:
                 if is_ignored(app_name):
@@ -451,15 +456,22 @@ class BlockingService:
                 secs = float(seconds or 0)
                 total_active += secs
                 all_apps[app_name] = all_apps.get(app_name, 0.0) + secs
+                
+                # Use category mapping for better donut split
+                _, sub_cat = get_category(app_name, main_category)
+                cat_name = sub_cat if sub_cat else main_category
+                categories[cat_name] = categories.get(cat_name, 0.0) + secs
+                
                 if main_category == "productive":
                     productive += secs
                 if main_category == "unproductive":
+                    distraction += secs
                     distract_by_app[app_name] = distract_by_app.get(app_name, 0.0) + secs
 
             if total_active <= 0:
                 return None
 
-            # Get daily goal
+            # 2. Daily goal
             cursor.execute(
                 """
                 SELECT target_value
@@ -472,6 +484,60 @@ class BlockingService:
             )
             goal_row = cursor.fetchone()
             goal_secs = float(goal_row[0]) if goal_row and goal_row[0] is not None else None
+
+            # 3. Hourly Activity (Last 24h)
+            cursor.execute(
+                """
+                SELECT strftime('%H', timestamp) as hour, 
+                       SUM(CASE WHEN main_category = 'productive' THEN active_seconds ELSE 0 END) as prod,
+                       SUM(CASE WHEN main_category = 'unproductive' THEN active_seconds ELSE 0 END) as dist,
+                       SUM(CASE WHEN main_category = 'idle' THEN active_seconds ELSE 0 END) as idle
+                FROM activity_logs
+                WHERE timestamp LIKE ?
+                GROUP BY hour
+                ORDER BY hour ASC
+                """,
+                (f"{date}%",),
+            )
+            hourly_rows = cursor.fetchall()
+            hourly_stats = []
+            peak_hour = "N/A"
+            max_focus = -1
+            for h, p, d, i in hourly_rows:
+                h_int = int(h)
+                h_display = f"{h_int % 12 or 12} {'AM' if h_int < 12 else 'PM'}"
+                hourly_stats.append({
+                    "h": h_display,
+                    "prod": round(p/60, 1),
+                    "dist": round(d/60, 1),
+                    "idle": round(i/60, 1)
+                })
+                if p > max_focus:
+                    max_focus = p
+                    peak_hour = h_display
+
+            # 4. 7-Day Streak
+            streak_days = []
+            for i in range(6, -1, -1):
+                d_past = (datetime.fromisoformat(date) - timedelta(days=i)).date().isoformat()
+                cursor.execute("SELECT SUM(active_seconds) FROM daily_stats WHERE date = ?", (d_past,))
+                r = cursor.fetchone()
+                val = float(r[0]) if r and r[0] else 0
+                state = "empty"
+                if val > 0:
+                    cursor.execute("SELECT SUM(active_seconds) FROM daily_stats WHERE date = ? AND main_category='productive'", (d_past,))
+                    rp = cursor.fetchone()
+                    prod_val = float(rp[0]) if rp and rp[0] else 0
+                    ratio = (prod_val / val) * 100 if val > 0 else 0
+                    if ratio > 60: state = "good"
+                    elif ratio > 30: state = "ok"
+                    else: state = "bad"
+                
+                if i == 0: state += " today"
+                streak_days.append({
+                    "label": datetime.fromisoformat(d_past).strftime("%a")[0],
+                    "state": state
+                })
 
             # Top distraction
             top_distraction = None
@@ -489,11 +555,18 @@ class BlockingService:
             return {
                 "date": date,
                 "total_active": total_active,
+                "productive_time": productive,
+                "distraction_time": distraction,
                 "goal_seconds": goal_secs,
                 "top_distraction": top_distraction,
                 "top_apps": top_5_apps,
                 "productive_ratio": productive_ratio,
-                "best_streak": best_streak
+                "best_streak": best_streak,
+                "hourly_stats": hourly_stats,
+                "categories": categories,
+                "peak_hour": peak_hour,
+                "max_focus_hour_secs": max_focus,
+                "streak_days": streak_days
             }
         finally:
             conn.close()

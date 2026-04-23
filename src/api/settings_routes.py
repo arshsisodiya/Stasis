@@ -167,7 +167,7 @@ def update_settings():
 
     if "widget_theme" in data:
         val = str(data["widget_theme"]).strip().lower()
-        if val not in ("normal", "transparent"):
+        if val not in ("normal", "transparent", "glass"):
             val = "normal"
         SettingsManager.set("widget_theme", val)
 

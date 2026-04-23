@@ -942,6 +942,7 @@ function GeneralSection({ push }) {
               }}>
               <option value="normal">Normal</option>
               <option value="transparent">Transparent</option>
+              <option value="glass">Glassmorphism</option>
             </select>
             <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 10, color: C.textMuted }}>▾</span>
           </div>

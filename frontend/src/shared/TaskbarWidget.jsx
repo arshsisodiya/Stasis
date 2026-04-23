@@ -115,8 +115,8 @@ const DetailCard = memo(({ status, segments, todayTime, visible }) => {
           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, fontWeight: 600, opacity: 0.8 }}>Current Session</div>
         </div>
         <div style={{ fontSize: 13, fontWeight: 800, color: catColor, fontVariantNumeric: "tabular-nums", background: "rgba(255,255,255,0.05)", padding: "4px 8px", borderRadius: 6 }}>
-          {status.active?.duration_seconds < 60 
-            ? `${status.active.duration_seconds}s` 
+          {status.active?.duration_seconds < 60
+            ? `${status.active.duration_seconds}s`
             : fmtTime(status.active?.duration_seconds || 0)}
         </div>
       </div>
@@ -181,7 +181,7 @@ export default function TaskbarWidget({ BASE }) {
         .then(d => {
           console.log("[Widget] data received:", JSON.stringify(d).slice(0, 200));
           setStatus(d);
-          
+
           // Also fetch settings occasionally (or every poll)
           fetch(`${BASE}/api/settings`)
             .then(res => res.json())
@@ -189,7 +189,7 @@ export default function TaskbarWidget({ BASE }) {
               setHoverEnabled(s.widget_details_hover_enabled !== false);
               setTheme(s.widget_theme || "normal");
             })
-            .catch(() => {});
+            .catch(() => { });
         })
         .catch(err => console.error("Widget fetch error:", err));
     };
@@ -211,7 +211,7 @@ export default function TaskbarWidget({ BASE }) {
       clearTimeout(hideTimeout.current);
       hideTimeout.current = null;
     }
-    
+
     // Expand the physical window to fit the detail card
     if (window.__TAURI_INTERNALS__) {
       invoke("expand_widget").catch(e => console.error("Expand error:", e));
@@ -228,7 +228,7 @@ export default function TaskbarWidget({ BASE }) {
     hideTimeout.current = setTimeout(() => {
       setIsMounted(false);
       setHoveredSegment(null);
-      
+
       // Shrink the physical window back to bar size
       if (window.__TAURI_INTERNALS__) {
         invoke("shrink_widget").catch(e => console.error("Shrink error:", e));
@@ -255,7 +255,7 @@ export default function TaskbarWidget({ BASE }) {
       const s = top7.map(([app, sec]) => ({
         name: app || "Unknown",
         seconds: Number(sec) || 0,
-        pct: ( (Number(sec) || 0) / (status.today_seconds || 1)) * 100,
+        pct: ((Number(sec) || 0) / (status.today_seconds || 1)) * 100,
         color: getAppColor(app)
       }));
 
@@ -309,8 +309,8 @@ export default function TaskbarWidget({ BASE }) {
       }}
     >
       {/* Inner container — only this part and its children catch mouse events */}
-      <div 
-        style={{ 
+      <div
+        style={{
           position: "relative",
           pointerEvents: "auto", // Re-enable for the UI
         }}
@@ -369,11 +369,24 @@ export default function TaskbarWidget({ BASE }) {
           style={{
             width: 200,
             height: 44,
-            background: theme === "transparent" ? "transparent" : "rgba(13, 17, 28, 0.95)",
-            backdropFilter: theme === "transparent" ? "none" : "blur(40px) saturate(200%)",
-            WebkitBackdropFilter: theme === "transparent" ? "none" : "blur(40px) saturate(200%)",
-            border: theme === "transparent" ? "none" : "1px solid rgba(255,255,255,0.04)",
+            background: 
+              theme === "transparent" ? "transparent" : 
+              theme === "glass" ? "rgba(255, 255, 255, 0.08)" : 
+              "rgba(13, 17, 28, 0.95)",
+            backdropFilter: 
+              theme === "transparent" ? "none" : 
+              theme === "glass" ? "blur(24px) saturate(160%)" : 
+              "blur(40px) saturate(200%)",
+            WebkitBackdropFilter: 
+              theme === "transparent" ? "none" : 
+              theme === "glass" ? "blur(24px) saturate(160%)" : 
+              "blur(40px) saturate(200%)",
+            border: 
+              theme === "transparent" ? "none" : 
+              theme === "glass" ? "1px solid rgba(255, 255, 255, 0.12)" : 
+              "1px solid rgba(255, 255, 255, 0.04)",
             borderRadius: theme === "transparent" ? 0 : 14,
+            boxShadow: theme === "glass" ? "0 4px 24px rgba(0, 0, 0, 0.15)" : "none",
             display: "flex",
             alignItems: "center",
             padding: "0 14px",

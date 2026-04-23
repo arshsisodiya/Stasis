@@ -219,8 +219,13 @@ class TelegramService:
             
             # Paths
             date_val = data.get("date", datetime.now().date().isoformat())
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            template_path = os.path.join(base_dir, "src", "utils", "digest_template.html")
+            # current file is src/core/telegram/service.py
+            # we need project root
+            core_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # src/core
+            src_dir = os.path.dirname(core_dir) # src
+            base_dir = os.path.dirname(src_dir) # project root
+            
+            template_path = os.path.join(src_dir, "utils", "digest_template.html")
             
             reports_dir = os.path.join(base_dir, "reports")
             os.makedirs(reports_dir, exist_ok=True)

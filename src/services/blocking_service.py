@@ -1,7 +1,7 @@
 import threading
 import time
 import psutil
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from src.database.database import get_blocked_app_names
 from src.core.desktop_notifications import desktop_notifier
@@ -421,7 +421,6 @@ class BlockingService:
         Returns structured data for the daily digest.
         """
         from src.database.database import get_connection
-        from src.utils.categories import get_category
         if not date:
             date = datetime.now().date().isoformat()
 
@@ -486,26 +485,44 @@ class BlockingService:
             goal_secs = float(goal_row[0]) if goal_row and goal_row[0] is not None else None
 
             # 3. Hourly Activity (Last 24h)
+            # activity_logs does not have main_category, so we fetch and categorize in Python
             cursor.execute(
                 """
-                SELECT strftime('%H', timestamp) as hour, 
-                       SUM(CASE WHEN main_category = 'productive' THEN active_seconds ELSE 0 END) as prod,
-                       SUM(CASE WHEN main_category = 'unproductive' THEN active_seconds ELSE 0 END) as dist,
-                       SUM(CASE WHEN main_category = 'idle' THEN active_seconds ELSE 0 END) as idle
+                SELECT strftime('%H', timestamp) as hour, app_name,
+                       SUM(active_seconds) as prod,
+                       SUM(idle_seconds) as idle
                 FROM activity_logs
                 WHERE timestamp LIKE ?
-                GROUP BY hour
+                GROUP BY hour, app_name
                 ORDER BY hour ASC
                 """,
                 (f"{date}%",),
             )
-            hourly_rows = cursor.fetchall()
+            hourly_raw = cursor.fetchall()
+            
+            hour_map = {} # hour -> {prod: 0, dist: 0, idle: 0}
+            for h_str, app_name, active, idle in hourly_raw:
+                h_int = int(h_str)
+                h_display = f"{h_int % 12 or 12} {'AM' if h_int < 12 else 'PM'}"
+                if h_display not in hour_map:
+                    hour_map[h_display] = {"prod": 0.0, "dist": 0.0, "idle": 0.0}
+                
+                cat, _ = get_category(app_name, None)
+                if cat == "productive":
+                    hour_map[h_display]["prod"] += active
+                elif cat == "unproductive":
+                    hour_map[h_display]["dist"] += active
+                
+                hour_map[h_display]["idle"] += idle
+
             hourly_stats = []
             peak_hour = "N/A"
             max_focus = -1
-            for h, p, d, i in hourly_rows:
-                h_int = int(h)
-                h_display = f"{h_int % 12 or 12} {'AM' if h_int < 12 else 'PM'}"
+            
+            # Sort by hour to keep order
+            for h_display in sorted(hour_map.keys(), key=lambda x: int(x.split()[0]) if 'AM' in x and x.split()[0]!='12' else (int(x.split()[0])+12 if 'PM' in x and x.split()[0]!='12' else (0 if x=='12 AM' else 12))):
+                stats = hour_map[h_display]
+                p, d, i = stats["prod"], stats["dist"], stats["idle"]
                 hourly_stats.append({
                     "h": h_display,
                     "prod": round(p/60, 1),

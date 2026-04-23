@@ -189,16 +189,20 @@ def main():
                     status=final_status
                 )
             except Exception:
-                logger.warning("Failed to send shutdown notification to Telegram")
+                logger.exception("Failed to send shutdown notification to Telegram")
             
             # 2. Daily productivity digest (if it's the end of the day or shutdown)
             try:
                 if blocking_service:
+                    logger.info("Generating daily digest data for shutdown...")
                     digest_data = blocking_service.get_daily_digest_data()
                     if digest_data:
+                        logger.info("Sending daily digest via Telegram...")
                         app_controller.telegram_service.send_daily_digest(digest_data)
+                    else:
+                        logger.info("No digest data available for today.")
             except Exception:
-                logger.warning("Failed to send daily digest during shutdown teardown")
+                logger.exception("Failed to send daily digest during shutdown teardown")
     except Exception:
         logger.exception("Failed to finalize system lifecycle session")
 

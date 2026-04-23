@@ -1,6 +1,6 @@
 [package]
 name = "stasis"
-version = "3.6.53-beta"
+version = "3.6.54-beta"
 description = "Stasis Desktop App"
 authors = ["you"]
 edition = "2021"

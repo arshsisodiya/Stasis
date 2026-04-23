@@ -66,14 +66,13 @@ def main():
     shutdown_status = 'graceful'
 
     def handle_signal(signum, frame):
-        nonlocal shutdown_status
         logger.info(f"Signal {signum} received. Initiating graceful shutdown...")
         
-        # If SIGTERM is received, it often indicates a system shutdown or service termination
+        status = 'graceful'
         if signum == signal.SIGTERM:
-            shutdown_status = 'system_shutdown'
+            status = 'system_shutdown'
             
-        trigger_shutdown()
+        trigger_shutdown(status=status)
         if api_server: api_server.stop()
         if blocking_service: blocking_service.stop()
 
@@ -164,24 +163,33 @@ def main():
         pass
 
     # Give threads a few seconds to finish their cleanup
-    for t in threads:
-        t.join(timeout=3)
+    # We join them in parallel-ish by using a short timeout and multiple passes
+    for _ in range(3): # Try 3 times
+        active_threads = [t for t in threads if t.is_alive()]
+        if not active_threads:
+            break
+        for t in active_threads:
+            t.join(timeout=0.5)
     
     # Finalize system lifecycle logging
     try:
+        from src.core.shutdown import shutdown_status as final_status
         # Always log the shutdown time in system_lifecycle to record 'Last Seen'
         # Returns the total system uptime duration
-        is_actual = (shutdown_status == 'system_shutdown')
+        is_actual = (final_status == 'system_shutdown')
         uptime_duration = log_system_shutdown(is_actual_shutdown=is_actual)
         logger.info(f"System lifecycle updated. Total Uptime: {uptime_duration}s (Actual Shutdown: {is_actual})")
         
         # Send Telegram shutdown notification and daily digest if enabled
-        if app_controller.telegram_service and app_controller.is_telegram_running():
+        if app_controller.telegram_service:
             # 1. Basic shutdown summary
-            app_controller.telegram_service.send_shutdown_notification(
-                duration_seconds=uptime_duration,
-                status=shutdown_status
-            )
+            try:
+                app_controller.telegram_service.send_shutdown_notification(
+                    duration_seconds=uptime_duration,
+                    status=final_status
+                )
+            except Exception:
+                logger.warning("Failed to send shutdown notification to Telegram")
             
             # 2. Daily productivity digest (if it's the end of the day or shutdown)
             try:

@@ -113,3 +113,16 @@ def api_system_apps():
 
     finally:
         conn.close()
+
+
+@wellbeing_bp.route("/api/system/shutdown", methods=["GET", "POST"])
+def api_system_shutdown():
+    """
+    Triggers a graceful shutdown of the backend.
+    """
+    from src.core.shutdown import trigger_shutdown
+    from flask import request
+    
+    status = request.args.get("status", "graceful")
+    trigger_shutdown(status=status)
+    return jsonify({"status": "shutdown_initiated"})

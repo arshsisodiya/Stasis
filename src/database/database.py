@@ -1017,6 +1017,3 @@ def log_system_shutdown(is_actual_shutdown: bool = False):
     except Exception as e:
         print(f"Error logging system shutdown: {e}")
         return None
-    except Exception as e:
-        print(f"Error logging system shutdown: {e}")
-        return None

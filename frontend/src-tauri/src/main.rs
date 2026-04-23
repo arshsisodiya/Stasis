@@ -708,7 +708,37 @@ fn stop_backend(app: &AppHandle) {
     let mut guard = state.0.lock().unwrap();
 
     if let Some(mut child) = guard.take() {
-        println!("Stopping backend immediate child...");
+        println!("Attempting graceful shutdown of backend via API...");
+        
+        // Try graceful shutdown via API
+        if call_backend_get("/api/system/shutdown?status=graceful") {
+            println!("Shutdown signal sent to backend. Waiting for exit...");
+            
+            // Wait up to 10 seconds for the child to exit gracefully
+            let start = std::time::Instant::now();
+            let mut exited = false;
+            while start.elapsed().as_secs() < 10 {
+                match child.try_wait() {
+                    Ok(Some(_)) => {
+                        exited = true;
+                        break;
+                    }
+                    Ok(None) => {
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                    }
+                    Err(_) => break,
+                }
+            }
+            
+            if exited {
+                println!("Backend exited gracefully.");
+                return;
+            }
+            println!("Backend did not exit in time. Force killing...");
+        } else {
+            println!("Could not reach backend API for graceful shutdown. Force killing...");
+        }
+
         let _ = child.kill();
         let _ = child.wait();
     }

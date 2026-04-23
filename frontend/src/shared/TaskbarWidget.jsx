@@ -162,6 +162,7 @@ export default function TaskbarWidget({ BASE }) {
   const [isVisible, setIsVisible] = useState(false);
   const [hoveredSegment, setHoveredSegment] = useState(null);
   const [hoverEnabled, setHoverEnabled] = useState(true);
+  const [theme, setTheme] = useState("normal");
   const hideTimeout = useRef(null);
 
   // Override global overflow:hidden from index.css — the widget needs visible overflow
@@ -181,10 +182,13 @@ export default function TaskbarWidget({ BASE }) {
           console.log("[Widget] data received:", JSON.stringify(d).slice(0, 200));
           setStatus(d);
           
-          // Also fetch hover setting occasionally (or every poll)
+          // Also fetch settings occasionally (or every poll)
           fetch(`${BASE}/api/settings`)
             .then(res => res.json())
-            .then(s => setHoverEnabled(s.widget_details_hover_enabled !== false))
+            .then(s => {
+              setHoverEnabled(s.widget_details_hover_enabled !== false);
+              setTheme(s.widget_theme || "normal");
+            })
             .catch(() => {});
         })
         .catch(err => console.error("Widget fetch error:", err));
@@ -365,10 +369,11 @@ export default function TaskbarWidget({ BASE }) {
           style={{
             width: 200,
             height: 44,
-            background: "rgba(13, 17, 28, 0.95)",
-            backdropFilter: "blur(40px) saturate(200%)",
-            WebkitBackdropFilter: "blur(40px) saturate(200%)",
-            borderRadius: 14,
+            background: theme === "transparent" ? "transparent" : "rgba(13, 17, 28, 0.95)",
+            backdropFilter: theme === "transparent" ? "none" : "blur(40px) saturate(200%)",
+            WebkitBackdropFilter: theme === "transparent" ? "none" : "blur(40px) saturate(200%)",
+            border: theme === "transparent" ? "none" : "1px solid rgba(255,255,255,0.04)",
+            borderRadius: theme === "transparent" ? 0 : 14,
             display: "flex",
             alignItems: "center",
             padding: "0 14px",

@@ -44,6 +44,7 @@ def get_settings():
         "weekly_report_verbosity": SettingsManager.get("weekly_report_verbosity") or "standard",
         "widget_enabled": SettingsManager.get_bool("widget_enabled", False),
         "widget_details_hover_enabled": SettingsManager.get_bool("widget_details_hover_enabled", True),
+        "widget_theme": SettingsManager.get("widget_theme") or "normal",
         "widget_anchor_x": SettingsManager.get("widget_anchor_x") or "0",
         "widget_anchor_y": SettingsManager.get("widget_anchor_y") or "0"
     })
@@ -163,6 +164,12 @@ def update_settings():
     if "widget_details_hover_enabled" in data:
         val = "true" if data["widget_details_hover_enabled"] else "false"
         SettingsManager.set("widget_details_hover_enabled", val)
+
+    if "widget_theme" in data:
+        val = str(data["widget_theme"]).strip().lower()
+        if val not in ("normal", "transparent"):
+            val = "normal"
+        SettingsManager.set("widget_theme", val)
 
     if "widget_anchor_x" in data:
         SettingsManager.set("widget_anchor_x", str(data["widget_anchor_x"]))

@@ -912,8 +912,12 @@ function GeneralSection({ push }) {
         <SettingRow label="Run in system tray" desc="Minimise to tray instead of closing" control={<Toggle on={s.tray} onChange={v => set("tray", v)} />} />
         <SettingRow label="Desktop notifications" desc="Alerts for limit warnings and events" control={<Toggle on={s.notifications} onChange={v => set("notifications", v)} />} />
         <SettingRow label="Show yesterday comparison" desc="Show 'vs yesterday' indicators on dashboard" control={<Toggle on={s.show_yesterday_comparison} onChange={v => set("show_yesterday_comparison", v)} />} />
-        <SettingRow label="Hardware Acceleration" desc="Boost performance using GPU, turn off to save RAM (requires restart)" control={<Toggle on={s.hardware_acceleration} onChange={v => set("hardware_acceleration", v)} />} />
-        <SettingRow borderless label="Taskbar Widget" desc="Show a persistent floating widget for real-time stats" control={
+        <SettingRow borderless label="Hardware Acceleration" desc="Boost performance using GPU, turn off to save RAM (requires restart)" control={<Toggle on={s.hardware_acceleration} onChange={v => set("hardware_acceleration", v)} />} />
+      </Card>
+
+      <Card>
+        <SectionLabel>Widget</SectionLabel>
+        <SettingRow label="Enable Taskbar Widget" desc="Show a persistent floating widget for real-time stats" control={
           <Toggle 
             on={s.widget_enabled} 
             onChange={v => {
@@ -922,7 +926,7 @@ function GeneralSection({ push }) {
             }} 
           />
         } />
-        <SettingRow borderless label="Widget details on hover" desc="Show the detailed card when hovering over the taskbar widget" control={
+        <SettingRow label="Widget details on hover" desc="Show the detailed card when hovering over the taskbar widget" control={
           <Toggle 
             on={s.widget_details_hover_enabled} 
             onChange={v => set("widget_details_hover_enabled", v)} 

@@ -14,14 +14,18 @@ use tauri::tray::TrayIconBuilder;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_dialog::{DialogExt, MessageDialogBuilder, MessageDialogButtons};
 
-#[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongW, SetWindowLongW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    GetForegroundWindow, GetWindowRect, GetWindowLongW, SetWindowLongW, SetWindowPos, 
+    GetClassNameW, GWL_EXSTYLE, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, 
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+};
+use windows_sys::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
 
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 static WIDGET_RESIZING: AtomicBool = AtomicBool::new(false);
+static WIDGET_HIDDEN_BY_FULLSCREEN: AtomicBool = AtomicBool::new(false);
 
 struct BackendState(Mutex<Option<Child>>);
 
@@ -118,16 +122,16 @@ fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
     if let Some(window) = app.get_webview_window("widget") {
         let current = window.is_visible().unwrap_or(false);
         if visible && !current {
-             // Force collapsed size
-            let _ = window.set_size(tauri::LogicalSize::<f64> { width: WIDGET_COLLAPSED_W, height: WIDGET_COLLAPSED_H });
+             // Always use expanded size — no resize on hover eliminates flicker
+            let _ = window.set_size(tauri::LogicalSize::<f64> { width: WIDGET_EXPANDED_W, height: WIDGET_EXPANDED_H });
 
             // Restore to stored anchor position, or default position if first show
             let state = app.state::<WidgetAnchor>();
             let anchor = state.0.lock().unwrap();
             if let Some((ax, ay)) = *anchor {
                 let scale = window.scale_factor().unwrap_or(1.0);
-                let phys_w = (WIDGET_COLLAPSED_W * scale) as i32;
-                let phys_h = (WIDGET_COLLAPSED_H * scale) as i32;
+                let phys_w = (WIDGET_EXPANDED_W * scale) as i32;
+                let phys_h = (WIDGET_EXPANDED_H * scale) as i32;
                 drop(anchor);
                 let _ = window.set_position(tauri::PhysicalPosition { x: ax - phys_w, y: ay - phys_h });
             } else {
@@ -148,7 +152,7 @@ fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
             tauri::WebviewUrl::App("index.html".into()),
         )
         .title("Stasis Widget")
-        .inner_size(WIDGET_COLLAPSED_W, WIDGET_COLLAPSED_H)
+        .inner_size(WIDGET_EXPANDED_W, WIDGET_EXPANDED_H)
         .decorations(false)
         .transparent(true)
         .always_on_top(true)
@@ -163,8 +167,8 @@ fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
                 let anchor = state.0.lock().unwrap();
                 if let Some((ax, ay)) = *anchor {
                     let scale = window.scale_factor().unwrap_or(1.0);
-                    let phys_w = (WIDGET_COLLAPSED_W * scale) as i32;
-                    let phys_h = (WIDGET_COLLAPSED_H * scale) as i32;
+                    let phys_w = (WIDGET_EXPANDED_W * scale) as i32;
+                    let phys_h = (WIDGET_EXPANDED_H * scale) as i32;
                     drop(anchor);
                     let _ = window.set_position(tauri::PhysicalPosition { x: ax - phys_w, y: ay - phys_h });
                 } else {
@@ -200,13 +204,13 @@ fn toggle_widget(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn expand_widget(window: tauri::WebviewWindow) {
-    resize_widget_anchored(&window, WIDGET_EXPANDED_W, WIDGET_EXPANDED_H);
+fn expand_widget(_window: tauri::WebviewWindow) {
+    // No-op: window stays at expanded size always to prevent flicker
 }
 
 #[tauri::command]
-fn shrink_widget(window: tauri::WebviewWindow) {
-    resize_widget_anchored(&window, WIDGET_COLLAPSED_W, WIDGET_COLLAPSED_H);
+fn shrink_widget(_window: tauri::WebviewWindow) {
+    // No-op: window stays at expanded size always to prevent flicker
 }
 
 fn resize_widget_anchored(window: &tauri::WebviewWindow, width: f64, height: f64) {
@@ -261,8 +265,8 @@ fn position_widget(app: &AppHandle, window: &tauri::WebviewWindow) {
     if let Ok(Some(monitor)) = window.primary_monitor() {
         let monitor_size = monitor.size();
         let scale = monitor.scale_factor();
-        let phys_w = (WIDGET_COLLAPSED_W * scale) as i32;
-        let phys_h = (WIDGET_COLLAPSED_H * scale) as i32;
+        let phys_w = (WIDGET_EXPANDED_W * scale) as i32;
+        let phys_h = (WIDGET_EXPANDED_H * scale) as i32;
 
         let x = monitor_size.width as i32 - phys_w - (20.0 * scale) as i32;
         let y = monitor_size.height as i32 - phys_h - (60.0 * scale) as i32;
@@ -292,6 +296,43 @@ fn apply_widget_styles(window: &tauri::WebviewWindow) {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn is_foreground_fullscreen() -> bool {
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd == 0 { return false; }
+
+        // Skip shell windows (Desktop background)
+        let mut class_name = [0u16; 256];
+        let class_len = GetClassNameW(hwnd, class_name.as_mut_ptr(), 256);
+        if class_len > 0 {
+            let name = String::from_utf16_lossy(&class_name[..class_len as usize]);
+            if name == "Progman" || name == "WorkerW" {
+                return false;
+            }
+        }
+        
+        let mut rect = std::mem::zeroed();
+        if GetWindowRect(hwnd, &mut rect) != 0 {
+            let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            let mut mi: MONITORINFO = std::mem::zeroed();
+            mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+            if GetMonitorInfoW(monitor, &mut mi) != 0 {
+                let window_w = rect.right - rect.left;
+                let window_h = rect.bottom - rect.top;
+                let monitor_w = mi.rcMonitor.right - mi.rcMonitor.left;
+                let monitor_h = mi.rcMonitor.bottom - mi.rcMonitor.top;
+                
+                // If the foreground window covers the entire monitor, it's fullscreen
+                if window_w >= monitor_w && window_h >= monitor_h {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
 fn main() {
     // Check if hardware acceleration should be disabled
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
@@ -313,18 +354,62 @@ fn main() {
             // Re-enforce always_on_top for the widget aggressively (500ms) to fight Windows layering issues
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
+                // Give the app 3 seconds to fully initialize before managing layers
+                std::thread::sleep(std::time::Duration::from_secs(3));
+
+                let mut show_delay_count: u32 = 0;
+
                 loop {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    if SHOULD_EXIT.load(Ordering::SeqCst) { break; }
+
                     if let Some(window) = app_handle.get_webview_window("widget") {
-                        if window.is_visible().unwrap_or(false) {
-                            #[cfg(target_os = "windows")]
-                            if let Ok(hwnd) = window.hwnd() {
-                                unsafe {
-                                    SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                        #[cfg(target_os = "windows")]
+                        {
+                            let is_fullscreen = is_foreground_fullscreen();
+                            let is_visible = window.is_visible().unwrap_or(false);
+
+                            if is_fullscreen {
+                                // Reset the show-delay counter while fullscreen is active
+                                show_delay_count = 0;
+
+                                if is_visible {
+                                    // Hide immediately — no delay for hiding
+                                    let _ = window.hide();
+                                    WIDGET_HIDDEN_BY_FULLSCREEN.store(true, Ordering::SeqCst);
+                                }
+                            } else if WIDGET_HIDDEN_BY_FULLSCREEN.load(Ordering::SeqCst) {
+                                // Fullscreen ended, but debounce the show:
+                                // require 4 consecutive non-fullscreen checks (~1s)
+                                // before restoring the widget to avoid bounce
+                                show_delay_count += 1;
+                                if show_delay_count >= 4 {
+                                    let _ = window.show();
+                                    WIDGET_HIDDEN_BY_FULLSCREEN.store(false, Ordering::SeqCst);
+                                    show_delay_count = 0;
+                                    // Re-enforce topmost after restoring
+                                    if let Ok(hwnd) = window.hwnd() {
+                                        unsafe {
+                                            SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                                        }
+                                    }
+                                }
+                            } else if is_visible && !WIDGET_RESIZING.load(Ordering::SeqCst) {
+                                // Normal desktop — keep widget on top
+                                // Skip during resize to prevent hover flicker
+                                if let Ok(hwnd) = window.hwnd() {
+                                    unsafe {
+                                        SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                                    }
                                 }
                             }
-                            #[cfg(not(target_os = "windows"))]
-                            let _ = window.set_always_on_top(true);
+                        }
+                        
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.set_always_on_top(true);
+                            }
                         }
                     }
                 }
@@ -399,7 +484,7 @@ fn main() {
 
             // Handle deep-link when app is launched directly via protocol.
             let args: Vec<String> = std::env::args().collect();
-            let is_quiet = args.contains(&"--quiet".to_string());
+            let is_quiet = args.iter().any(|arg| arg == "--quiet" || arg == "--hidden");
             let is_backend_action = extract_deep_link(&args).map(|u| is_backend_only_action(&u)).unwrap_or(false);
 
             if !is_quiet && !is_backend_action {
@@ -498,6 +583,8 @@ fn main() {
         // The RunEvent handler below will prevent the app from exiting.
 
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            let is_quiet = args.iter().any(|arg| arg == "--quiet" || arg == "--hidden");
+
             if let Some(url) = extract_deep_link(&args) {
                 if is_backend_only_action(&url) {
                     let _ = handle_backend_only_action(&url);
@@ -505,9 +592,12 @@ fn main() {
                 }
 
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                    if !is_quiet {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
                 } else {
+                    // Recreate window but respect quiet mode
                     let _ = tauri::WebviewWindowBuilder::new(
                         app,
                         "main",
@@ -518,15 +608,17 @@ fn main() {
                     .resizable(true)
                     .fullscreen(false)
                     .decorations(true)
-                    .visible(true)
+                    .visible(!is_quiet)
                     .build();
                 }
                 emit_deep_link(app, &url);
             } else {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                } else {
+                    if !is_quiet {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                } else if !is_quiet {
                     let _ = tauri::WebviewWindowBuilder::new(
                         app,
                         "main",

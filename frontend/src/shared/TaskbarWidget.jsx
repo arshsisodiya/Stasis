@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
 import { fmtTime, fmtAppName } from "./utils";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
@@ -44,7 +44,7 @@ const getCategoryLabel = (cat) => {
 };
 
 // ── Hover Detail Card ──────────────────────────────────────────────────────
-function DetailCard({ status, segments, todayTime, visible }) {
+const DetailCard = memo(({ status, segments, todayTime, visible }) => {
   const top5 = segments.slice(0, 5);
   const catColor = getCategoryColor(status.category);
 
@@ -154,15 +154,13 @@ function DetailCard({ status, segments, todayTime, visible }) {
       </div>
     </div>
   );
-}
+});
 
 export default function TaskbarWidget({ BASE }) {
   const [status, setStatus] = useState(null);
   const [showCard, setShowCard] = useState(false);
   const [hoveredSegment, setHoveredSegment] = useState(null);
   const hideTimeout = useRef(null);
-  const shrinkTimeout = useRef(null);
-  const isExpanded = useRef(false);
 
   // Override global overflow:hidden from index.css — the widget needs visible overflow
   // so the detail card (positioned above the bar) isn't clipped when window is expanded
@@ -177,7 +175,10 @@ export default function TaskbarWidget({ BASE }) {
     const fetchStatus = () => {
       fetch(`${BASE}/api/live-status`)
         .then(r => r.json())
-        .then(d => setStatus(d))
+        .then(d => {
+          console.log("[Widget] data received:", JSON.stringify(d).slice(0, 200));
+          setStatus(d);
+        })
         .catch(err => console.error("Widget fetch error:", err));
     };
 
@@ -192,43 +193,60 @@ export default function TaskbarWidget({ BASE }) {
     }
   }, []);
 
-  // Show card: expand window first, then reveal card
+  // Show card: purely CSS — no window resize needed
   const requestShow = useCallback(() => {
     if (hideTimeout.current) {
       clearTimeout(hideTimeout.current);
       hideTimeout.current = null;
     }
-    if (shrinkTimeout.current) {
-      clearTimeout(shrinkTimeout.current);
-      shrinkTimeout.current = null;
-    }
-    if (!isExpanded.current) {
-      isExpanded.current = true;
-      invoke("expand_widget").catch(e => console.error("Expand error:", e));
-    }
     setShowCard(true);
   }, []);
 
-  // Hide card: fade out first, then shrink window after animation completes
+  // Hide card: fade out via CSS transition, then cleanup state
   const requestHide = useCallback(() => {
     hideTimeout.current = setTimeout(() => {
       setShowCard(false);
       setHoveredSegment(null);
-      // Shrink window after the CSS fade-out transition completes
-      shrinkTimeout.current = setTimeout(() => {
-        isExpanded.current = false;
-        invoke("shrink_widget").catch(e => console.error("Shrink error:", e));
-      }, 280);
-    }, 100);
+    }, 150);
   }, []);
 
   // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
       if (hideTimeout.current) clearTimeout(hideTimeout.current);
-      if (shrinkTimeout.current) clearTimeout(shrinkTimeout.current);
     };
   }, []);
+
+  // Compute Top 7 Apps + Other with extreme defensive checks
+  const segments = useMemo(() => {
+    if (!status) return [];
+    try {
+      const usage = status?.usage || {};
+      const usageArray = Object.entries(usage).sort((a, b) => (Number(b[1]) || 0) - (Number(a[1]) || 0));
+      const top7 = usageArray.slice(0, 7);
+      const othersSeconds = usageArray.slice(7).reduce((acc, curr) => acc + (Number(curr[1]) || 0), 0);
+
+      const s = top7.map(([app, sec]) => ({
+        name: app || "Unknown",
+        seconds: Number(sec) || 0,
+        pct: ( (Number(sec) || 0) / (status.today_seconds || 1)) * 100,
+        color: getAppColor(app)
+      }));
+
+      if (othersSeconds > 0) {
+        s.push({
+          name: "Others",
+          seconds: othersSeconds,
+          pct: (othersSeconds / (status.today_seconds || 1)) * 100,
+          color: "#475569"
+        });
+      }
+      return s;
+    } catch (e) {
+      console.error("Segments calculation error:", e);
+      return [];
+    }
+  }, [status?.usage, status?.today_seconds]);
 
   if (!status) {
     return (
@@ -251,32 +269,8 @@ export default function TaskbarWidget({ BASE }) {
     );
   }
 
-  const todayTime = status.today_seconds || 1;
-  const categoryColor = getCategoryColor(status.category);
-
-  // Compute Top 7 Apps + Other
-  const usageArray = Object.entries(status.usage || {})
-    .sort((a, b) => b[1] - a[1]);
-
-  const top7 = usageArray.slice(0, 7);
-  const othersSeconds = usageArray.slice(7).reduce((acc, curr) => acc + curr[1], 0);
-
-  const segments = top7.map(([app, sec]) => ({
-    name: app,
-    seconds: sec,
-    pct: (sec / todayTime) * 100,
-    color: getAppColor(app)
-  }));
-
-  if (othersSeconds > 0) {
-    segments.push({
-      name: "Others",
-      seconds: othersSeconds,
-      pct: (othersSeconds / todayTime) * 100,
-      color: "#475569"
-    });
-  }
-
+  const todayTime = Number(status?.today_seconds) || 1;
+  const categoryColor = getCategoryColor(status?.category);
   const activeTime = hoveredSegment ? hoveredSegment.seconds : todayTime;
 
   return (
@@ -285,12 +279,18 @@ export default function TaskbarWidget({ BASE }) {
         height: "100%", width: "100%",
         display: "flex", flexDirection: "column",
         justifyContent: "flex-end", alignItems: "flex-end",
+        pointerEvents: "none", // Ignore transparent areas
       }}
-      onMouseEnter={requestShow}
-      onMouseLeave={requestHide}
     >
-      {/* Inner container — positions detail card relative to bar */}
-      <div style={{ position: "relative" }}>
+      {/* Inner container — only this part and its children catch mouse events */}
+      <div 
+        style={{ 
+          position: "relative",
+          pointerEvents: "auto", // Re-enable for the UI
+        }}
+        onMouseEnter={requestShow}
+        onMouseLeave={requestHide}
+      >
         {/* Detail Card — always mounted for CSS transitions */}
         <DetailCard
           status={status}
@@ -397,7 +397,7 @@ export default function TaskbarWidget({ BASE }) {
                 onMouseEnter={(e) => { e.stopPropagation(); setHoveredSegment(s); }}
                 onMouseLeave={() => { setHoveredSegment(null); }}
                 style={{
-                  width: `${s.pct}%`,
+                  width: `${Math.max(0, Math.min(100, isFinite(s.pct) ? s.pct : 0))}%`,
                   height: "100%",
                   background: s.color,
                   transition: "opacity 0.3s ease, transform 0.3s ease",

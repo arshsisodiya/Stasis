@@ -162,6 +162,7 @@ class TelegramService:
     def send_daily_digest(self, data: dict):
         """
         Formats and sends a daily productivity digest as a rich HTML message.
+        Also sends a detailed animated HTML report as a document.
         """
         try:
             if not data:
@@ -200,11 +201,45 @@ class TelegramService:
                     summary += f"\n{i}. {name} — {format_duration(app['seconds'])}"
 
             self.api.send_message(summary, parse_mode="HTML")
-            self.logger.info("Daily digest sent to Telegram.")
+            self.logger.info("Daily digest summary sent to Telegram.")
+            
+            # Send detailed HTML report
+            self.generate_and_send_daily_report(data)
+
         except Exception:
             self.logger.exception("Failed to send daily digest to Telegram.")
+
+    def generate_and_send_daily_report(self, data: dict):
+        """
+        Generates a premium animated HTML report and sends it as a document.
+        """
+        try:
+            import os
+            from src.utils.report_generator import generate_daily_digest_html
+            
+            # Paths
+            date_val = data.get("date", datetime.now().date().isoformat())
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            template_path = os.path.join(base_dir, "src", "utils", "digest_template.html")
+            
+            reports_dir = os.path.join(base_dir, "reports")
+            os.makedirs(reports_dir, exist_ok=True)
+            
+            report_filename = f"Stasis_Report_{date_val}.html"
+            report_path = os.path.join(reports_dir, report_filename)
+            
+            # Generate
+            if generate_daily_digest_html(data, template_path, report_path):
+                # Send
+                self.api.send_document(
+                    report_path, 
+                    caption=f"✨ Detailed Visual Report — {date_val}"
+                )
+                self.logger.info(f"Daily HTML report sent: {report_filename}")
+        except Exception:
+            self.logger.exception("Failed to generate/send daily HTML report.")
 
     def is_running(self):
         if not self.thread:
             return False
-        return self.thread.is_alive()
+        return self.thread.is_alive()

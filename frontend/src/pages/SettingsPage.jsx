@@ -778,7 +778,7 @@ function TelegramSection({ push }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // GENERAL SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
-const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false, weekly_report_verbosity: "standard", widget_enabled: false };
+const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false, weekly_report_verbosity: "standard", widget_enabled: false, widget_details_hover_enabled: true };
 
 function GeneralSection({ push }) {
   const [s, setS] = useState({ ...DEFAULTS });
@@ -819,7 +819,8 @@ function GeneralSection({ push }) {
           hardware_acceleration: s.hardware_acceleration,
           weekly_report_telegram: s.weekly_report_telegram,
           weekly_report_verbosity: s.weekly_report_verbosity,
-          widget_enabled: s.widget_enabled
+          widget_enabled: s.widget_enabled,
+          widget_details_hover_enabled: s.widget_details_hover_enabled
         })
       });
       setSaved({ ...s });
@@ -918,6 +919,12 @@ function GeneralSection({ push }) {
               set("widget_enabled", v);
               invoke("set_widget_visibility", { visible: v });
             }} 
+          />
+        } />
+        <SettingRow borderless label="Widget details on hover" desc="Show the detailed card when hovering over the taskbar widget" control={
+          <Toggle 
+            on={s.widget_details_hover_enabled} 
+            onChange={v => set("widget_details_hover_enabled", v)} 
           />
         } />
       </Card>

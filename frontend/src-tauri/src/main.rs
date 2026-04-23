@@ -122,16 +122,16 @@ fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
     if let Some(window) = app.get_webview_window("widget") {
         let current = window.is_visible().unwrap_or(false);
         if visible && !current {
-             // Always use expanded size — no resize on hover eliminates flicker
-            let _ = window.set_size(tauri::LogicalSize::<f64> { width: WIDGET_EXPANDED_W, height: WIDGET_EXPANDED_H });
+            // Start at collapsed size
+            let _ = window.set_size(tauri::LogicalSize::<f64> { width: WIDGET_COLLAPSED_W, height: WIDGET_COLLAPSED_H });
 
             // Restore to stored anchor position, or default position if first show
             let state = app.state::<WidgetAnchor>();
             let anchor = state.0.lock().unwrap();
             if let Some((ax, ay)) = *anchor {
                 let scale = window.scale_factor().unwrap_or(1.0);
-                let phys_w = (WIDGET_EXPANDED_W * scale) as i32;
-                let phys_h = (WIDGET_EXPANDED_H * scale) as i32;
+                let phys_w = (WIDGET_COLLAPSED_W * scale) as i32;
+                let phys_h = (WIDGET_COLLAPSED_H * scale) as i32;
                 drop(anchor);
                 let _ = window.set_position(tauri::PhysicalPosition { x: ax - phys_w, y: ay - phys_h });
             } else {
@@ -152,7 +152,7 @@ fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
             tauri::WebviewUrl::App("index.html".into()),
         )
         .title("Stasis Widget")
-        .inner_size(WIDGET_EXPANDED_W, WIDGET_EXPANDED_H)
+        .inner_size(WIDGET_COLLAPSED_W, WIDGET_COLLAPSED_H)
         .decorations(false)
         .transparent(true)
         .always_on_top(true)
@@ -167,8 +167,8 @@ fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
                 let anchor = state.0.lock().unwrap();
                 if let Some((ax, ay)) = *anchor {
                     let scale = window.scale_factor().unwrap_or(1.0);
-                    let phys_w = (WIDGET_EXPANDED_W * scale) as i32;
-                    let phys_h = (WIDGET_EXPANDED_H * scale) as i32;
+                    let phys_w = (WIDGET_COLLAPSED_W * scale) as i32;
+                    let phys_h = (WIDGET_COLLAPSED_H * scale) as i32;
                     drop(anchor);
                     let _ = window.set_position(tauri::PhysicalPosition { x: ax - phys_w, y: ay - phys_h });
                 } else {
@@ -204,69 +204,50 @@ fn toggle_widget(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn expand_widget(_window: tauri::WebviewWindow) {
-    // No-op: window stays at expanded size always to prevent flicker
+fn expand_widget(window: tauri::WebviewWindow) {
+    resize_widget_anchored(&window, WIDGET_EXPANDED_W, WIDGET_EXPANDED_H);
 }
 
 #[tauri::command]
-fn shrink_widget(_window: tauri::WebviewWindow) {
-    // No-op: window stays at expanded size always to prevent flicker
+fn shrink_widget(window: tauri::WebviewWindow) {
+    resize_widget_anchored(&window, WIDGET_COLLAPSED_W, WIDGET_COLLAPSED_H);
 }
 
 fn resize_widget_anchored(window: &tauri::WebviewWindow, width: f64, height: f64) {
-    let state = window.state::<WidgetAnchor>();
-    let anchor_lock = state.0.lock().unwrap();
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let app = window.app_handle();
+    let state = app.state::<WidgetAnchor>();
+    let anchor = state.0.lock().unwrap();
 
-    if let Some((anchor_x, anchor_y)) = *anchor_lock {
-        let scale = window.scale_factor().unwrap_or(1.0);
+    if let Some((ax, ay)) = *anchor {
+        WIDGET_RESIZING.store(true, Ordering::SeqCst);
+        
         let phys_w = (width * scale) as i32;
         let phys_h = (height * scale) as i32;
-        let new_x = anchor_x - phys_w;
-        let new_y = anchor_y - phys_h;
+        
+        let _ = window.set_size(tauri::LogicalSize { width, height });
+        let _ = window.set_position(tauri::PhysicalPosition {
+            x: ax - phys_w,
+            y: ay - phys_h,
+        });
 
-        // Mark as programmatic resize so Moved handler ignores it
-        WIDGET_RESIZING.store(true, Ordering::SeqCst);
-
-        #[cfg(target_os = "windows")]
-        {
-            if let Ok(hwnd) = window.hwnd() {
-                unsafe {
-                    // Atomic resize + reposition in a single OS call — no flicker
-                    SetWindowPos(
-                        hwnd.0 as isize,
-                        HWND_TOPMOST,
-                        new_x, new_y,
-                        phys_w, phys_h,
-                        SWP_NOACTIVATE,
-                    );
-                }
-            }
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            let _ = window.set_size(tauri::LogicalSize::<f64> { width, height });
-            let _ = window.set_position(tauri::PhysicalPosition { x: new_x, y: new_y });
-        }
-
-        // Clear flag after a short delay to skip OS-dispatched Moved events
+        // Small delay before clearing flag to prevent feedback loops
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(150));
             WIDGET_RESIZING.store(false, Ordering::SeqCst);
         });
-    } else {
-        // Fallback: no anchor yet, just set size
-        let _ = window.set_size(tauri::LogicalSize::<f64> { width, height });
     }
 }
+
+
 
 /// Position the widget at the bottom-right of the primary monitor and initialize anchor.
 fn position_widget(app: &AppHandle, window: &tauri::WebviewWindow) {
     if let Ok(Some(monitor)) = window.primary_monitor() {
         let monitor_size = monitor.size();
         let scale = monitor.scale_factor();
-        let phys_w = (WIDGET_EXPANDED_W * scale) as i32;
-        let phys_h = (WIDGET_EXPANDED_H * scale) as i32;
+        let phys_w = (WIDGET_COLLAPSED_W * scale) as i32;
+        let phys_h = (WIDGET_COLLAPSED_H * scale) as i32;
 
         let x = monitor_size.width as i32 - phys_w - (20.0 * scale) as i32;
         let y = monitor_size.height as i32 - phys_h - (60.0 * scale) as i32;

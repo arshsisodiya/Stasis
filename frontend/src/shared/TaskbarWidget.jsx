@@ -158,8 +158,10 @@ const DetailCard = memo(({ status, segments, todayTime, visible }) => {
 
 export default function TaskbarWidget({ BASE }) {
   const [status, setStatus] = useState(null);
-  const [showCard, setShowCard] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
   const [hoveredSegment, setHoveredSegment] = useState(null);
+  const [hoverEnabled, setHoverEnabled] = useState(true);
   const hideTimeout = useRef(null);
 
   // Override global overflow:hidden from index.css — the widget needs visible overflow
@@ -178,6 +180,12 @@ export default function TaskbarWidget({ BASE }) {
         .then(d => {
           console.log("[Widget] data received:", JSON.stringify(d).slice(0, 200));
           setStatus(d);
+          
+          // Also fetch hover setting occasionally (or every poll)
+          fetch(`${BASE}/api/settings`)
+            .then(res => res.json())
+            .then(s => setHoverEnabled(s.widget_details_hover_enabled !== false))
+            .catch(() => {});
         })
         .catch(err => console.error("Widget fetch error:", err));
     };
@@ -193,22 +201,45 @@ export default function TaskbarWidget({ BASE }) {
     }
   }, []);
 
-  // Show card: purely CSS — no window resize needed
+  // Show card: mount it, then trigger entry transition
   const requestShow = useCallback(() => {
+    if (!hoverEnabled) return;
+
     if (hideTimeout.current) {
       clearTimeout(hideTimeout.current);
       hideTimeout.current = null;
     }
-    setShowCard(true);
+    
+    // Expand the physical window to fit the detail card
+    if (window.__TAURI_INTERNALS__) {
+      invoke("expand_widget").catch(e => console.error("Expand error:", e));
+    }
+
+    setIsMounted(true);
+    // Small delay to ensure React has mounted the component before we trigger the opacity transition
+    setTimeout(() => setIsVisible(true), 20);
+  }, [hoverEnabled]);
+
+  // Hide card: trigger fade out, then unmount after transition completes
+  const requestHide = useCallback(() => {
+    setIsVisible(false);
+    hideTimeout.current = setTimeout(() => {
+      setIsMounted(false);
+      setHoveredSegment(null);
+      
+      // Shrink the physical window back to bar size
+      if (window.__TAURI_INTERNALS__) {
+        invoke("shrink_widget").catch(e => console.error("Shrink error:", e));
+      }
+    }, 400); // Match the 0.4s transition duration in DetailCard
   }, []);
 
-  // Hide card: fade out via CSS transition, then cleanup state
-  const requestHide = useCallback(() => {
-    hideTimeout.current = setTimeout(() => {
-      setShowCard(false);
-      setHoveredSegment(null);
-    }, 150);
-  }, []);
+  // Force hide if setting is disabled while open
+  useEffect(() => {
+    if (!hoverEnabled && isMounted) {
+      requestHide();
+    }
+  }, [hoverEnabled, isMounted, requestHide]);
 
   // Cleanup timeouts on unmount
   useEffect(() => {
@@ -291,47 +322,51 @@ export default function TaskbarWidget({ BASE }) {
         onMouseEnter={requestShow}
         onMouseLeave={requestHide}
       >
-        {/* Detail Card — always mounted for CSS transitions */}
-        <DetailCard
-          status={status}
-          segments={segments}
-          todayTime={todayTime}
-          visible={showCard && !hoveredSegment}
-        />
+        {/* Detail Card — conditionally mounted for layout performance */}
+        {isMounted && (
+          <DetailCard
+            status={status}
+            segments={segments}
+            todayTime={todayTime}
+            visible={isVisible && !hoveredSegment}
+          />
+        )}
 
-        {/* Custom Tooltip */}
-        <div
-          style={{
-            position: "absolute",
-            bottom: 56,
-            right: 0,
-            background: "rgba(13, 17, 28, 0.95)",
-            backdropFilter: "blur(12px)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 10,
-            padding: "8px 12px",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
-            fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif",
-            color: "#f1f5f9",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            pointerEvents: "none",
-            opacity: showCard && hoveredSegment ? 1 : 0,
-            transform: showCard && hoveredSegment ? "translateY(0) scale(1)" : "translateY(4px) scale(0.97)",
-            transformOrigin: "bottom right",
-            transition: "opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)",
-            zIndex: 10,
-          }}
-        >
-          {hoveredSegment && (
-            <>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: hoveredSegment.color, boxShadow: `0 0 8px ${hoveredSegment.color}` }} />
-              <span style={{ fontSize: 12, fontWeight: 700 }}>{hoveredSegment.name}</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8" }}>{fmtTime(hoveredSegment.seconds)}</span>
-            </>
-          )}
-        </div>
+        {/* Custom Tooltip — conditionally mounted */}
+        {isMounted && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 56,
+              right: 0,
+              background: "rgba(13, 17, 28, 0.95)",
+              backdropFilter: "blur(12px)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 10,
+              padding: "8px 12px",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+              fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif",
+              color: "#f1f5f9",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              pointerEvents: "none",
+              opacity: isVisible && hoveredSegment ? 1 : 0,
+              transform: isVisible && hoveredSegment ? "translateY(0) scale(1)" : "translateY(4px) scale(0.97)",
+              transformOrigin: "bottom right",
+              transition: "opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)",
+              zIndex: 10,
+            }}
+          >
+            {hoveredSegment && (
+              <>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: hoveredSegment.color, boxShadow: `0 0 8px ${hoveredSegment.color}` }} />
+                <span style={{ fontSize: 12, fontWeight: 700 }}>{hoveredSegment.name}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8" }}>{fmtTime(hoveredSegment.seconds)}</span>
+              </>
+            )}
+          </div>
+        )}
 
         {/* The fixed-size widget bar */}
         <div

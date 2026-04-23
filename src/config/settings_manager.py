@@ -121,6 +121,7 @@ class SettingsManager(BaseSettingsManager):
             "weekly_report_verbosity": "standard",
             "weekly_report_last_sent_week": "",
             "widget_enabled": "false",
+            "widget_details_hover_enabled": "true",
             "widget_anchor_x": "0",
             "widget_anchor_y": "0"
         }

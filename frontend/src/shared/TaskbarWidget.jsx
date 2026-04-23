@@ -203,8 +203,6 @@ export default function TaskbarWidget({ BASE }) {
 
   // Show card: mount it, then trigger entry transition
   const requestShow = useCallback(() => {
-    if (!hoverEnabled) return;
-
     if (hideTimeout.current) {
       clearTimeout(hideTimeout.current);
       hideTimeout.current = null;
@@ -218,7 +216,7 @@ export default function TaskbarWidget({ BASE }) {
     setIsMounted(true);
     // Small delay to ensure React has mounted the component before we trigger the opacity transition
     setTimeout(() => setIsVisible(true), 20);
-  }, [hoverEnabled]);
+  }, []);
 
   // Hide card: trigger fade out, then unmount after transition completes
   const requestHide = useCallback(() => {
@@ -233,13 +231,6 @@ export default function TaskbarWidget({ BASE }) {
       }
     }, 400); // Match the 0.4s transition duration in DetailCard
   }, []);
-
-  // Force hide if setting is disabled while open
-  useEffect(() => {
-    if (!hoverEnabled && isMounted) {
-      requestHide();
-    }
-  }, [hoverEnabled, isMounted, requestHide]);
 
   // Cleanup timeouts on unmount
   useEffect(() => {
@@ -323,7 +314,7 @@ export default function TaskbarWidget({ BASE }) {
         onMouseLeave={requestHide}
       >
         {/* Detail Card — conditionally mounted for layout performance */}
-        {isMounted && (
+        {isMounted && hoverEnabled && (
           <DetailCard
             status={status}
             segments={segments}

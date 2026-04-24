@@ -1,7 +1,7 @@
 {
     "name":  "stasis",
     "private":  true,
-    "version":  "3.6.57-beta",
+    "version":  "3.6.58-beta",
     "type":  "module",
     "scripts":  {
                     "dev":  "vite",

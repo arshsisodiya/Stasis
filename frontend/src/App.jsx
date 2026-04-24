@@ -35,16 +35,23 @@ export default function App() {
     setInitialData(prefetchedData || null);
     setStage("entering");
 
-    // Restore widget anchor if present in settings
-    const ax = parseInt(prefetchedData?.settings?.widget_anchor_x || "0");
-    const ay = parseInt(prefetchedData?.settings?.widget_anchor_y || "0");
-    if (ax > 0 && ay > 0) {
-      await invoke("set_widget_anchor", { x: ax, y: ay });
-    }
+    // Only run Tauri-specific commands if we are actually in a Tauri environment
+    if (window.__TAURI_INTERNALS__) {
+      try {
+        // Restore widget anchor if present in settings
+        const ax = parseInt(prefetchedData?.settings?.widget_anchor_x || "0");
+        const ay = parseInt(prefetchedData?.settings?.widget_anchor_y || "0");
+        if (ax > 0 && ay > 0) {
+          await invoke("set_widget_anchor", { x: ax, y: ay });
+        }
 
-    // Restore widget visibility if enabled in settings
-    if (prefetchedData?.settings?.widget_enabled) {
-      await invoke("set_widget_visibility", { visible: true });
+        // Restore widget visibility if enabled in settings
+        if (prefetchedData?.settings?.widget_enabled) {
+          await invoke("set_widget_visibility", { visible: true });
+        }
+      } catch (err) {
+        console.warn("Failed to invoke Tauri commands:", err);
+      }
     }
 
     // Remove LoadingScreen after its ls-outro finishes (700 ms)

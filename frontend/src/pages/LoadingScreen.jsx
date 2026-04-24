@@ -588,6 +588,7 @@ export default function LoadingScreen({
         fontFamily: "'DM Sans', sans-serif",
         overflow: "hidden",
         zIndex: 9999,
+        pointerEvents: exiting ? "none" : "auto",
         animation: exiting ? "ls-outro 0.7s ease forwards" : "none",
       }}>
 

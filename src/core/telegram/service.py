@@ -200,11 +200,14 @@ class TelegramService:
                     name = app['app_name'].replace('.exe', '')
                     summary += f"\n{i}. {name} — {format_duration(app['seconds'])}"
 
+            self.logger.info(f"Starting daily digest transmission for {date_val}...")
             self.api.send_message(summary, parse_mode="HTML")
-            self.logger.info("Daily digest summary sent to Telegram.")
+            self.logger.info("Daily digest summary sent to Telegram successfully.")
             
             # Send detailed HTML report
+            self.logger.info("Generating and sending detailed HTML report...")
             self.generate_and_send_daily_report(data)
+            self.logger.info("Daily digest transmission completed.")
 
         except Exception:
             self.logger.exception("Failed to send daily digest to Telegram.")
@@ -227,7 +230,9 @@ class TelegramService:
             
             template_path = os.path.join(src_dir, "utils", "digest_template.html")
             
-            reports_dir = os.path.join(base_dir, "reports")
+            from src.config.storage import get_data_dir
+            
+            reports_dir = os.path.join(get_data_dir(), "reports")
             os.makedirs(reports_dir, exist_ok=True)
             
             report_filename = f"Stasis_Report_{date_val}.html"

@@ -153,56 +153,65 @@ def main():
             trigger_shutdown()
             break
 
-    logger.info("Shutdown event set. Waiting for threads to conclude...")
-    
-    # Stop listeners manually (from activity_logger)
-    try:
-        from src.core.activity_logger import input_tracker
-        input_tracker.stop()
-    except Exception:
-        pass
-
-    # Give threads a few seconds to finish their cleanup
-    # We join them in parallel-ish by using a short timeout and multiple passes
-    for _ in range(3): # Try 3 times
-        active_threads = [t for t in threads if t.is_alive()]
-        if not active_threads:
-            break
-        for t in active_threads:
-            t.join(timeout=0.5)
-    
-    # Finalize system lifecycle logging
+    # Finalize system lifecycle logging and Telegram notifications
     try:
         from src.core.shutdown import shutdown_status as final_status
-        # Always log the shutdown time in system_lifecycle to record 'Last Seen'
-        # Returns the total system uptime duration
-        is_actual = (final_status == 'system_shutdown')
-        uptime_duration = log_system_shutdown(is_actual_shutdown=is_actual)
-        logger.info(f"System lifecycle updated. Total Uptime: {uptime_duration}s (Actual Shutdown: {is_actual})")
-        
-        # Send Telegram shutdown notification and daily digest if enabled
+        from src.config.settings_manager import SettingsManager
+
+        # 1. SEND TELEGRAM NOTIFICATIONS (DO THIS FIRST TO AVOID TIMEOUTS)
         if app_controller.telegram_service:
-            # 1. Basic shutdown summary
+            # Basic shutdown summary
             try:
+                # We calculate a temporary uptime for the notification
+                is_actual = (final_status == 'system_shutdown')
                 app_controller.telegram_service.send_shutdown_notification(
-                    duration_seconds=uptime_duration,
+                    duration_seconds=0, # Will be 0 or estimated, but we want it fast
                     status=final_status
                 )
             except Exception:
                 logger.exception("Failed to send shutdown notification to Telegram")
             
-            # 2. Daily productivity digest (if it's the end of the day or shutdown)
+            # Daily productivity digest
             try:
-                if blocking_service:
-                    logger.info("Generating daily digest data for shutdown...")
-                    digest_data = blocking_service.get_daily_digest_data()
-                    if digest_data:
-                        logger.info("Sending daily digest via Telegram...")
-                        app_controller.telegram_service.send_daily_digest(digest_data)
-                    else:
-                        logger.info("No digest data available for today.")
+                # Check if digest is enabled in settings
+                if SettingsManager.get_bool("notifications_enable_digest_events", True):
+                    if blocking_service:
+                        logger.info("Generating daily digest data for shutdown...")
+                        digest_data = blocking_service.get_daily_digest_data()
+                        if digest_data:
+                            logger.info("Sending daily digest via Telegram...")
+                            app_controller.telegram_service.send_daily_digest(digest_data)
+                            # Give a tiny bit of time for the network request to clear the buffer
+                            time.sleep(0.5)
+                        else:
+                            logger.info("No digest data available for today.")
+                else:
+                    logger.info("Daily digest is disabled in settings.")
             except Exception:
                 logger.exception("Failed to send daily digest during shutdown teardown")
+
+        # 2. STOP LISTENERS
+        try:
+            from src.core.activity_logger import input_tracker
+            input_tracker.stop()
+        except Exception:
+            pass
+
+        # 3. JOIN THREADS
+        logger.info("Waiting for threads to conclude...")
+        for _ in range(3):
+            active_threads = [t for t in threads if t.is_alive()]
+            if not active_threads:
+                break
+            for t in active_threads:
+                t.join(timeout=0.5)
+
+        # 4. FINAL DB LOGGING
+        # Always log the shutdown time in system_lifecycle to record 'Last Seen'
+        is_actual = (final_status == 'system_shutdown')
+        uptime_duration = log_system_shutdown(is_actual_shutdown=is_actual)
+        logger.info(f"System lifecycle updated. Total Uptime: {uptime_duration}s (Actual Shutdown: {is_actual})")
+
     except Exception:
         logger.exception("Failed to finalize system lifecycle session")
 

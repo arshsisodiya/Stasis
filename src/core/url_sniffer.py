@@ -47,6 +47,8 @@ def _co_uninitialize():
 # CORE READER
 # ===============================
 def _read_url(hwnd, result):
+    # COM must be initialized on the thread that uses it
+    _co_initialize()
     try:
         uia = comtypes.client.CreateObject(
             UIAutomationClient.CUIAutomation,
@@ -57,6 +59,8 @@ def _read_url(hwnd, result):
         if not root:
             return
 
+        # Modern browsers often nest the address bar deep. 
+        # We look for Edit controls (common) or Document controls (Firefox/others)
         condition = uia.CreatePropertyCondition(
             UIA_ControlTypePropertyId,
             UIA_EditControlTypeId
@@ -69,35 +73,35 @@ def _read_url(hwnd, result):
         for i in range(edits.Length):
             try:
                 el = edits.GetElement(i)
+                
+                # Check value pattern first
+                try:
+                    vp_unknown = el.GetCurrentPattern(UIA_ValuePatternId)
+                    if vp_unknown:
+                        vp = vp_unknown.QueryInterface(UIAutomationClient.IUIAutomationValuePattern)
+                        val = (vp.CurrentValue or "").strip()
+                        if val:
+                            # Full http(s) URL
+                            match = _URL_RE.search(val)
+                            if match:
+                                result[0] = match.group(1)
+                                return
 
-                vp_unknown = el.GetCurrentPattern(UIA_ValuePatternId)
-                if not vp_unknown:
-                    continue
-
-                vp = vp_unknown.QueryInterface(
-                    UIAutomationClient.IUIAutomationValuePattern
-                )
-
-                val = (vp.CurrentValue or "").strip()
-                if not val:
-                    continue
-
-                # Full http(s) URL
-                match = _URL_RE.search(val)
-                if match:
-                    result[0] = match.group(1)
-                    return
-
-                # Chrome hides protocol sometimes
-                if "." in val and " " not in val:
-                    result[0] = "https://" + val
-                    return
+                            # Common case: browser hides protocol in address bar
+                            # Validate it looks like a domain (has dot, no spaces)
+                            if "." in val and " " not in val and "/" not in val.split(".")[0]:
+                                result[0] = "https://" + val
+                                return
+                except Exception:
+                    pass
 
             except Exception:
                 continue
 
     except Exception:
-        return
+        pass
+    finally:
+        _co_uninitialize()
 
 
 # ===============================
@@ -116,26 +120,25 @@ def get_browser_url(hwnd=None):
     except Exception:
         return None
 
+    # Supported browsers
     if not any(b in proc_name for b in [
         "chrome", "msedge", "brave", "opera",
-        "firefox", "vivaldi"
+        "firefox", "vivaldi", "arc", "thorium", 
+        "waterfox", "librewolf", "floorp", "zen"
     ]):
         return None
 
     result = [None]
 
+    # Use a thread to avoid hanging the main loop if UIA is slow
     t = threading.Thread(
         target=_read_url,
         args=(hwnd, result),
         daemon=True
     )
 
-    _co_initialize()
-    try:
-        t.start()
-        t.join(_TIMEOUT)
-    finally:
-        _co_uninitialize()
+    t.start()
+    t.join(_TIMEOUT)
 
     return result[0]
 
@@ -145,7 +148,7 @@ def get_browser_url(hwnd=None):
 # ===============================
 _URL_POLL_INTERVAL = 3  # seconds between background URL polls
 
-BROWSER_NAMES = ["chrome", "msedge", "brave", "firefox", "opera", "vivaldi"]
+BROWSER_NAMES = ["chrome", "msedge", "brave", "firefox", "opera", "vivaldi", "arc", "thorium", "waterfox", "librewolf", "floorp", "zen"]
 
 
 class BackgroundURLResolver:

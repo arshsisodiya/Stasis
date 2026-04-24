@@ -27,5 +27,8 @@ export const CATEGORY_EMOJIS = {
 
 export const BROWSER_EXES = new Set([
   "chrome.exe", "firefox.exe", "msedge.exe", "opera.exe", "brave.exe",
-  "vivaldi.exe", "arc.exe", "zen.exe", "chromium.exe", "iexplore.exe"
+  "vivaldi.exe", "arc.exe", "zen.exe", "chromium.exe", "iexplore.exe",
+  "chrome", "firefox", "msedge", "opera", "brave", "vivaldi", "arc", 
+  "zen", "chromium", "thorium", "waterfox", "librewolf", "floorp",
+  "google chrome", "microsoft edge"
 ]);

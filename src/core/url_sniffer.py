@@ -47,7 +47,6 @@ def _co_uninitialize():
 # CORE READER
 # ===============================
 def _read_url(hwnd, result):
-    # COM must be initialized on the thread that uses it
     _co_initialize()
     try:
         uia = comtypes.client.CreateObject(
@@ -59,42 +58,52 @@ def _read_url(hwnd, result):
         if not root:
             return
 
-        # Modern browsers often nest the address bar deep. 
-        # We look for Edit controls (common) or Document controls (Firefox/others)
+        # 1. Try common Edit control first (fastest)
         condition = uia.CreatePropertyCondition(
             UIA_ControlTypePropertyId,
             UIA_EditControlTypeId
         )
-
         edits = root.FindAll(TreeScope_Subtree, condition)
-        if not edits:
-            return
-
-        for i in range(edits.Length):
-            try:
-                el = edits.GetElement(i)
-                
-                # Check value pattern first
+        
+        if edits:
+            for i in range(edits.Length):
                 try:
+                    el = edits.GetElement(i)
                     vp_unknown = el.GetCurrentPattern(UIA_ValuePatternId)
                     if vp_unknown:
                         vp = vp_unknown.QueryInterface(UIAutomationClient.IUIAutomationValuePattern)
                         val = (vp.CurrentValue or "").strip()
                         if val:
-                            # Full http(s) URL
-                            match = _URL_RE.search(val)
-                            if match:
-                                result[0] = match.group(1)
+                            if _URL_RE.search(val):
+                                result[0] = _URL_RE.search(val).group(1)
                                 return
-
-                            # Common case: browser hides protocol in address bar
-                            # Validate it looks like a domain (has dot, no spaces)
                             if "." in val and " " not in val and "/" not in val.split(".")[0]:
                                 result[0] = "https://" + val
                                 return
                 except Exception:
-                    pass
+                    continue
 
+        # 2. Fallback: Search for anything that looks like a URL in any text-bearing control
+        # This is slower but handles browsers that don't use standard Edit controls for address bars
+        # such as Firefox or some Chrome versions.
+        all_elements = root.FindAll(TreeScope_Subtree, uia.CreateTrueCondition())
+        for i in range(all_elements.Length):
+            try:
+                el = all_elements.GetElement(i)
+                # Check Name/Value/Description
+                for attr_id in [30005, 30045]: # Name, Value
+                    try:
+                        val = (el.GetCurrentPropertyValue(attr_id) or "").strip()
+                        if val and ("http" in val or ("." in val and " " not in val)):
+                            match = _URL_RE.search(val)
+                            if match:
+                                result[0] = match.group(1)
+                                return
+                            if "." in val and " " not in val and "/" not in val.split(".")[0]:
+                                result[0] = "https://" + val
+                                return
+                    except Exception:
+                        continue
             except Exception:
                 continue
 

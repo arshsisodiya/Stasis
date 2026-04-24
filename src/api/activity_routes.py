@@ -525,8 +525,11 @@ def site_stats():
         params = [selected_date + "%"]
 
         if app:
-            query += " AND app_name = ?"
-            params.append(app)
+            # Handle both friendly name and executable name (case-insensitive)
+            app_clean = app.lower().replace(".exe", "")
+            query += " AND (LOWER(app_name) = ? OR LOWER(app_name) = ?)"
+            params.append(app_clean)
+            params.append(app_clean + ".exe")
 
         query += " GROUP BY url, app_name ORDER BY SUM(active_seconds) DESC"
 

@@ -457,7 +457,9 @@ class BlockingService:
                 all_apps[app_name] = all_apps.get(app_name, 0.0) + secs
                 
                 # Use category mapping for better donut split
-                _, sub_cat = get_category(app_name, main_category)
+                # Note: main_category here is likely 'productive', 'neutral', etc. from DB
+                # We try to get a more specific sub-category if possible.
+                _, sub_cat = get_category(app_name, None, None)
                 cat_name = sub_cat if sub_cat else main_category
                 categories[cat_name] = categories.get(cat_name, 0.0) + secs
                 
@@ -488,7 +490,7 @@ class BlockingService:
             # activity_logs does not have main_category, so we fetch and categorize in Python
             cursor.execute(
                 """
-                SELECT strftime('%H', timestamp) as hour, app_name,
+                SELECT strftime('%H', timestamp) as hour, app_name, exe_path,
                        SUM(active_seconds) as prod,
                        SUM(idle_seconds) as idle
                 FROM activity_logs
@@ -501,13 +503,13 @@ class BlockingService:
             hourly_raw = cursor.fetchall()
             
             hour_map = {} # hour -> {prod: 0, dist: 0, idle: 0}
-            for h_str, app_name, active, idle in hourly_raw:
+            for h_str, app_name, exe_path, active, idle in hourly_raw:
                 h_int = int(h_str)
                 h_display = f"{h_int % 12 or 12} {'AM' if h_int < 12 else 'PM'}"
                 if h_display not in hour_map:
                     hour_map[h_display] = {"prod": 0.0, "dist": 0.0, "idle": 0.0}
                 
-                cat, _ = get_category(app_name, None)
+                cat, _ = get_category(app_name, None, exe_path)
                 if cat == "productive":
                     hour_map[h_display]["prod"] += active
                 elif cat == "unproductive":
@@ -623,7 +625,7 @@ class BlockingService:
     def _compute_best_productive_streak(cursor, date: str) -> float:
         cursor.execute(
             """
-            SELECT app_name, COALESCE(active_seconds, 0)
+            SELECT app_name, COALESCE(active_seconds, 0), exe_path
             FROM activity_logs
             WHERE timestamp LIKE ?
             ORDER BY timestamp ASC
@@ -636,10 +638,10 @@ class BlockingService:
 
         best = 0.0
         current = 0.0
-        for app_name, active_seconds in rows:
+        for app_name, active_seconds, exe_path in rows:
             if is_ignored(app_name):
                 continue
-            main_category, _ = get_category(app_name, None)
+            main_category, _ = get_category(app_name, None, exe_path)
             secs = float(active_seconds or 0)
             if secs <= 0:
                 secs = 1.0

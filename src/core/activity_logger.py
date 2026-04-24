@@ -564,7 +564,7 @@ def flush_session(session: SessionState, cursor) -> bool:
             int(keys), int(clicks)
         ))
 
-        update_daily_stats(cursor, info["app_name"], info["url"], active_secs, idle_secs, keys, clicks)
+        update_daily_stats(cursor, info["app_name"], info["url"], active_secs, idle_secs, keys, clicks, info.get("exe_path"))
         # Throttled call for wellbeing calculation moved to main loop to save memory/CPU
         return True
 

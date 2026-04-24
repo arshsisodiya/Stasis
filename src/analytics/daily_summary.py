@@ -2,9 +2,9 @@ import datetime
 from src.config.category_manager import get_category
 
 
-def update_daily_stats(cursor, app_name, url, active_seconds, idle_seconds, keys, clicks):
+def update_daily_stats(cursor, app_name, url, active_seconds, idle_seconds, keys, clicks, exe_path=None):
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    main_cat, sub_cat = get_category(app_name, url)
+    main_cat, sub_cat = get_category(app_name, url, exe_path)
 
     try:
         cursor.execute("""

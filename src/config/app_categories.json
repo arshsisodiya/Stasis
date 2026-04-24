@@ -48,6 +48,10 @@
       "main": "productive",
       "sub": "coding"
     },
+    "android studio": {
+      "main": "productive",
+      "sub": "coding"
+    },
     "cmd.exe": {
       "main": "productive",
       "sub": "development_tools"
@@ -177,8 +181,16 @@
       "sub": "messaging"
     },
     "whatsapp.exe": {
-      "main": "communication",
-      "sub": "messaging"
+      "main": "productive",
+      "sub": "communication"
+    },
+    "whatsapp": {
+      "main": "productive",
+      "sub": "communication"
+    },
+    "whatsapp.root": {
+      "main": "productive",
+      "sub": "communication"
     },
     "signal.exe": {
       "main": "communication",
@@ -193,8 +205,8 @@
       "sub": "work_chat"
     },
     "teams.exe": {
-      "main": "communication",
-      "sub": "work_chat"
+      "main": "productive",
+      "sub": "communication"
     },
     "zoom.exe": {
       "main": "communication",
@@ -259,6 +271,14 @@
     "iexplore.exe": {
       "main": "neutral",
       "sub": "browser"
+    },
+    "linear.exe": {
+      "main": "productive",
+      "sub": "project_management"
+    },
+    "camo studio.exe": {
+      "main": "productive",
+      "sub": "content_creation"
     }
   },
   "url_rules": {
@@ -341,6 +361,30 @@
     "linkedin.com": {
       "main": "productive",
       "sub": "networking"
+    },
+    "linear.app": {
+      "main": "productive",
+      "sub": "project_management"
+    },
+    "web.whatsapp.com": {
+      "main": "productive",
+      "sub": "communication"
+    },
+    "teams.microsoft.com": {
+      "main": "productive",
+      "sub": "communication"
+    },
+    "meet.google.com": {
+      "main": "productive",
+      "sub": "communication"
+    },
+    "docs.google.com": {
+      "main": "productive",
+      "sub": "office"
+    },
+    "sheets.google.com": {
+      "main": "productive",
+      "sub": "office"
     },
     "youtube.com/watch?v=": {
       "main": "entertainment",

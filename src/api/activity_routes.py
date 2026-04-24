@@ -62,7 +62,7 @@ def live_status():
             usage[active_app] = usage.get(active_app, 0) + session_duration
             
             # Update category aggregation for score
-            curr_cat, _ = get_category(active_app, info.get("url"))
+            curr_cat, _ = get_category(active_app, info.get("url"), info.get("exe_path"))
             category_data[curr_cat] += session_duration
             
             # Inject duration into info for frontend
@@ -104,7 +104,7 @@ def live_status():
         # 6. Final Category for Color/Label (Current App)
         final_cat = "neutral"
         if active_app:
-            final_cat, _ = get_category(active_app, info.get("url"))
+            final_cat, _ = get_category(active_app, info.get("url"), info.get("exe_path"))
 
         return jsonify({
             "active": info,
@@ -388,6 +388,7 @@ def weekly_hourly_activity():
                 strftime('%H', timestamp) AS hour,
                 app_name,
                 url,
+                exe_path,
                 SUM(active_seconds) AS total_active
             FROM activity_logs
             WHERE timestamp >= ?
@@ -398,15 +399,15 @@ def weekly_hourly_activity():
         """, (monday, week_end_exclusive))
 
         buckets = defaultdict(lambda: {"total_seconds": 0, "productive_seconds": 0, "category_seconds": {}})
-        for log_date, hour, app_name, url, total_active in cursor.fetchall():
+        for log_date, hour, app_name, url, exe_path, total_active in cursor.fetchall():
             if is_ignored(app_name):
                 continue
-
+            
             seconds = safe(total_active)
             if seconds <= 0:
                 continue
-
-            main_category, _ = get_category(app_name, url)
+            
+            main_category, _ = get_category(app_name, url, exe_path)
             # After you compute main_category, track which category dominates the bucket
             bucket = buckets[(log_date, int(hour))]
             bucket["total_seconds"] += seconds

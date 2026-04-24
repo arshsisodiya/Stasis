@@ -65,7 +65,7 @@ def get_app_category(app_name: str) -> str:
     return categories.get(app_name.lower(), DEFAULT_CATEGORY)
 
 
-def get_category(app_name: str, url: str = None):
+def get_category(app_name: str, url: str = None, exe_path: str = None):
     data = load_categories()
     app_name = app_name.lower()
 
@@ -82,9 +82,23 @@ def get_category(app_name: str, url: str = None):
         if app_name in BROWSER_EXES or app_name.replace(".exe", "") in BROWSER_EXES:
             return "neutral", "browser"
 
-    # 2️⃣  App-based fallback
+    # 2️⃣  App-based lookup
     app_rules = data.get("apps", {})
+    
+    # Priority A: Check the actual executable name from exe_path
+    if exe_path:
+        exe_name = os.path.basename(exe_path).lower()
+        if exe_name in app_rules:
+            return app_rules[exe_name]["main"], app_rules[exe_name]["sub"]
+            
+    # Priority B: Check the app_name (could be friendly name or raw exe name)
     if app_name in app_rules:
         return app_rules[app_name]["main"], app_rules[app_name]["sub"]
+        
+    # Priority C: Check if app_name without .exe matches
+    if not app_name.endswith(".exe"):
+        app_exe = app_name + ".exe"
+        if app_exe in app_rules:
+            return app_rules[app_exe]["main"], app_rules[app_exe]["sub"]
 
     return "other", "other"

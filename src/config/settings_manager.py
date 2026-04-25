@@ -33,12 +33,23 @@ class BaseSettingsManager:
 
     @classmethod
     def set(cls, key: str, value):
+        if key == "_last_updated":
+            return
+
         conn = get_connection()
         cursor = conn.cursor()
+
+        now = datetime.now().isoformat()
 
         cursor.execute(
             f"INSERT OR REPLACE INTO {cls.TABLE_NAME} (key, value) VALUES (?, ?)",
             (key, value)
+        )
+        
+        # Also update the global last_updated timestamp for this table
+        cursor.execute(
+            f"INSERT OR REPLACE INTO {cls.TABLE_NAME} (key, value) VALUES (?, ?)",
+            ("_last_updated", now)
         )
 
         conn.commit()
@@ -47,6 +58,7 @@ class BaseSettingsManager:
         cache_key = f"{cls.TABLE_NAME}:{key}"
         with cls._cache_lock:
             cls._cache[cache_key] = str(value)
+            cls._cache[f"{cls.TABLE_NAME}:_last_updated"] = now
 
     @classmethod
     def delete(cls, key: str):

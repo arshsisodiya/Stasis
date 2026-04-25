@@ -62,9 +62,9 @@ export function interpolateColor(val, colorStops) {
 // ─── APP ICON RESOLVER ────────────────────────────────────────────────────────
 import { KNOWN_APP_EMOJIS, CATEGORY_EMOJIS, BROWSER_EXES } from "./constants";
 
-export function resolveAppIcon(appName, category) {
+export function resolveAppIcon(appName, category, customBase) {
   const key = appName.toLowerCase();
-  const BASE = "http://127.0.0.1:7432"; // Standard backend port
+  const BASE = customBase || "http://127.0.0.1:7432"; // Standard backend port
 
   // Handle common browser icons if appName is a browser EXE
   if (BROWSER_EXES.has(key)) {

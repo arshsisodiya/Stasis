@@ -73,3 +73,5 @@ htmlcov/
 *.bak
 .agents/
 skills-lock.json
+stasis.db
+reports/

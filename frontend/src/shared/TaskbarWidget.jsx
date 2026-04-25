@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
-import { fmtTime, fmtAppName } from "./utils";
+import { fmtTime, fmtAppName, resolveAppIcon } from "./utils";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 
-const POLL_INTERVAL = 2000;
+const POLL_INTERVAL_ACTIVE = 2000;
+const POLL_INTERVAL_IDLE = 10000;
 
 const getAppColor = (name) => {
   if (!name || name === "N/A") return "#94a3b8";
@@ -43,8 +44,36 @@ const getCategoryLabel = (cat) => {
   }
 };
 
+// ── App Icon Helper ────────────────────────────────────────────────────────
+const AppIconContent = ({ appName, category, BASE }) => {
+  const [imgError, setImgError] = useState(false);
+  const icon = resolveAppIcon(appName || "", category, BASE);
+
+  // Reset error state when app changes so we try loading the icon again
+  useEffect(() => {
+    setImgError(false);
+  }, [appName]);
+
+  if (!imgError && icon.type === "backend") {
+    return (
+      <img
+        src={icon.url}
+        alt=""
+        style={{ width: 22, height: 22, objectFit: "contain" }}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  return (
+    <span style={{ fontSize: 16, fontWeight: 800, color: "rgba(0,0,0,0.6)" }}>
+      {(appName || "?").charAt(0).toUpperCase()}
+    </span>
+  );
+};
+
 // ── Hover Detail Card ──────────────────────────────────────────────────────
-const DetailCard = memo(({ status, segments, todayTime, visible }) => {
+const DetailCard = memo(({ status, segments, todayTime, visible, BASE }) => {
   const top5 = segments.slice(0, 5);
   const catColor = getCategoryColor(status.category);
 
@@ -102,11 +131,11 @@ const DetailCard = memo(({ status, segments, todayTime, visible }) => {
           width: 36, height: 36, borderRadius: 10,
           background: getAppColor(status.active?.app_name || ""),
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 16, fontWeight: 800, color: "rgba(0,0,0,0.6)",
           flexShrink: 0,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+          boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+          overflow: "hidden"
         }}>
-          {(status.active?.app_name || "?").charAt(0).toUpperCase()}
+          <AppIconContent appName={status.active?.app_name} category={status.category} BASE={BASE} />
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 750, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: "-0.01em" }}>
@@ -163,7 +192,10 @@ export default function TaskbarWidget({ BASE }) {
   const [hoveredSegment, setHoveredSegment] = useState(null);
   const [hoverEnabled, setHoverEnabled] = useState(true);
   const [theme, setTheme] = useState("normal");
+  const lastSettingsUpdate = useRef("INITIAL");
+  const pollTimer = useRef(null);
   const hideTimeout = useRef(null);
+  const showTimeout = useRef(null);
 
   // Override global overflow:hidden from index.css — the widget needs visible overflow
   // so the detail card (positioned above the bar) isn't clipped when window is expanded
@@ -174,30 +206,82 @@ export default function TaskbarWidget({ BASE }) {
     if (root) root.style.overflow = "visible";
   }, []);
 
+  // Local Clock Interpolation: Keep the timer ticking smoothly every second
+  // even if the polling interval is slow (e.g. 10s)
   useEffect(() => {
-    const fetchStatus = () => {
-      fetch(`${BASE}/api/live-status`)
-        .then(r => r.json())
-        .then(d => {
-          console.log("[Widget] data received:", JSON.stringify(d).slice(0, 200));
-          setStatus(d);
+    const timer = setInterval(() => {
+      setStatus(prev => {
+        if (!prev || !prev.active || document.hidden) return prev;
+        return {
+          ...prev,
+          today_seconds: prev.today_seconds + 1,
+          active: {
+            ...prev.active,
+            duration_seconds: prev.active.duration_seconds + 1
+          }
+        };
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-          // Also fetch settings occasionally (or every poll)
-          fetch(`${BASE}/api/settings`)
-            .then(res => res.json())
-            .then(s => {
-              setHoverEnabled(s.widget_details_hover_enabled !== false);
-              setTheme(s.widget_theme || "normal");
-            })
-            .catch(() => { });
-        })
-        .catch(err => console.error("Widget fetch error:", err));
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchSettings = async () => {
+      try {
+        const r = await fetch(`${BASE}/api/settings`, { signal: controller.signal });
+        const s = await r.json();
+        setHoverEnabled(s.widget_details_hover_enabled !== false);
+        setTheme(s.widget_theme || "normal");
+      } catch (e) {
+        if (e.name !== "AbortError") console.warn("[Widget] Settings fetch failed:", e);
+      }
     };
 
-    fetchStatus();
-    const iv = setInterval(fetchStatus, POLL_INTERVAL);
-    return () => clearInterval(iv);
-  }, [BASE]);
+    const poll = async () => {
+      if (document.hidden) {
+        // If hidden, just schedule a check later instead of fetching
+        pollTimer.current = setTimeout(poll, POLL_INTERVAL_IDLE);
+        return;
+      }
+
+      try {
+        const r = await fetch(`${BASE}/api/live-status`, { signal: controller.signal });
+        const d = await r.json();
+        setStatus(d);
+
+        if (d.settings_updated_at !== lastSettingsUpdate.current) {
+          await fetchSettings();
+          lastSettingsUpdate.current = d.settings_updated_at;
+        }
+      } catch (e) {
+        if (e.name !== "AbortError") console.error("[Widget] Poll failed:", e);
+      } finally {
+        if (!controller.signal.aborted) {
+          // Adaptive interval: 2s if expanded/hovered, 10s if collapsed
+          const delay = isMounted ? POLL_INTERVAL_ACTIVE : POLL_INTERVAL_IDLE;
+          pollTimer.current = setTimeout(poll, delay);
+        }
+      }
+    };
+
+    const handleVisibility = () => {
+      if (!document.hidden && !controller.signal.aborted) {
+        if (pollTimer.current) clearTimeout(pollTimer.current);
+        poll();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    poll();
+
+    return () => {
+      controller.abort();
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (pollTimer.current) clearTimeout(pollTimer.current);
+    };
+  }, [BASE, isMounted]);
 
   const handlePointerDown = useCallback((e) => {
     if (window.__TAURI_INTERNALS__ && e.button === 0) {
@@ -219,11 +303,19 @@ export default function TaskbarWidget({ BASE }) {
 
     setIsMounted(true);
     // Small delay to ensure React has mounted the component before we trigger the opacity transition
-    setTimeout(() => setIsVisible(true), 20);
+    if (showTimeout.current) clearTimeout(showTimeout.current);
+    showTimeout.current = setTimeout(() => {
+      setIsVisible(true);
+      showTimeout.current = null;
+    }, 20);
   }, []);
 
   // Hide card: trigger fade out, then unmount after transition completes
   const requestHide = useCallback(() => {
+    if (showTimeout.current) {
+      clearTimeout(showTimeout.current);
+      showTimeout.current = null;
+    }
     setIsVisible(false);
     hideTimeout.current = setTimeout(() => {
       setIsMounted(false);
@@ -240,6 +332,7 @@ export default function TaskbarWidget({ BASE }) {
   useEffect(() => {
     return () => {
       if (hideTimeout.current) clearTimeout(hideTimeout.current);
+      if (showTimeout.current) clearTimeout(showTimeout.current);
     };
   }, []);
 
@@ -324,6 +417,7 @@ export default function TaskbarWidget({ BASE }) {
             segments={segments}
             todayTime={todayTime}
             visible={isVisible && !hoveredSegment}
+            BASE={BASE}
           />
         )}
 

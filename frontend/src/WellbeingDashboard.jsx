@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useReducer, memo, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import SettingsPage from "./pages/SettingsPage";
 import OverviewPage from "./pages/OverviewPage";
 import AppsPage from "./pages/AppsPage";

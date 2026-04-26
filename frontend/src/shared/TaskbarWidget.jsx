@@ -253,7 +253,7 @@ export default function TaskbarWidget({ BASE }) {
         unlistenHover = await s.onKeyChange("widget_details_hover_enabled", (val) => {
           if (val !== undefined) setHoverValue(val);
         });
-      } catch(e) {}
+      } catch {}
     };
 
     return () => {
@@ -360,7 +360,7 @@ export default function TaskbarWidget({ BASE }) {
       console.error("Segments calculation error:", e);
       return [];
     }
-  }, [status?.segments, status?.usage, status?.today_seconds]);
+  }, [status]);
 
   if (!status) {
     return (

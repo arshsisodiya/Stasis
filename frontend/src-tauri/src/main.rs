@@ -8,6 +8,7 @@ use std::io::Write;
 use std::net::TcpStream;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -41,7 +42,23 @@ const WIDGET_COLLAPSED_W: f64 = 200.0;
 const WIDGET_COLLAPSED_H: f64 = 44.0;
 const WIDGET_EXPANDED_W: f64 = 320.0;
 const WIDGET_EXPANDED_H: f64 = 440.0;
+const WIDGET_HTML_PATH: &str = "widget.html";
 
+fn json_bool(value: Option<&Value>) -> Option<bool> {
+    match value {
+        Some(Value::Bool(v)) => Some(*v),
+        Some(Value::String(v)) => Some(v.eq_ignore_ascii_case("true")),
+        _ => None,
+    }
+}
+
+fn json_i32(value: Option<&Value>) -> Option<i32> {
+    match value {
+        Some(Value::Number(v)) => v.as_i64().map(|n| n as i32),
+        Some(Value::String(v)) => v.parse::<i32>().ok(),
+        _ => None,
+    }
+}
 
 fn extract_deep_link(args: &[String]) -> Option<String> {
     args.iter()
@@ -121,6 +138,47 @@ fn handle_backend_only_action(url: &str) -> bool {
     false
 }
 
+fn configure_widget_window(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    apply_widget_styles(window);
+
+    let w = window.clone();
+    window.on_window_event(move |event| {
+        match event {
+            tauri::WindowEvent::Focused(_) => {
+                #[cfg(target_os = "windows")]
+                if let Ok(hwnd) = w.hwnd() {
+                    unsafe {
+                        SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                    }
+                }
+                #[cfg(not(target_os = "windows"))]
+                let _ = w.set_always_on_top(true);
+            }
+            tauri::WindowEvent::Moved(new_pos) => {
+                if !WIDGET_RESIZING.load(Ordering::SeqCst) {
+                    if let Ok(size) = w.outer_size() {
+                        let state = w.state::<WidgetAnchor>();
+                        let mut anchor = state.0.lock().unwrap();
+
+                        let ax = new_pos.x + size.width as i32;
+                        let ay = new_pos.y + size.height as i32;
+                        *anchor = Some((ax, ay));
+                    }
+                }
+
+                #[cfg(target_os = "windows")]
+                if let Ok(hwnd) = w.hwnd() {
+                    unsafe {
+                        SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                    }
+                }
+            }
+            _ => {}
+        }
+    });
+}
+
 #[tauri::command]
 fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
     if let Some(window) = app.get_webview_window("widget") {
@@ -144,7 +202,6 @@ fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
             }
 
             let _ = window.show();
-            let _ = window.set_focus();
             let _ = window.set_always_on_top(true);
         } else if !visible && current {
             let _ = window.hide();
@@ -153,7 +210,7 @@ fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
         match tauri::WebviewWindowBuilder::new(
             &app,
             "widget",
-            tauri::WebviewUrl::App("index.html".into()),
+            tauri::WebviewUrl::App(WIDGET_HTML_PATH.into()),
         )
         .title("Stasis Widget")
         .inner_size(WIDGET_COLLAPSED_W, WIDGET_COLLAPSED_H)
@@ -166,6 +223,7 @@ fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
         .visible(false) // Start hidden — position first, show after
         .build() {
             Ok(window) => {
+                configure_widget_window(&window);
                 // Check if an anchor was pre-set (from DB via set_widget_anchor)
                 let state = app.state::<WidgetAnchor>();
                 let anchor = state.0.lock().unwrap();
@@ -430,61 +488,39 @@ fn main() {
 
             // Also re-enforce on focus changes for the widget and apply initial styles
             if let Some(window) = app.get_webview_window("widget") {
-                #[cfg(target_os = "windows")]
-                apply_widget_styles(&window);
-
-                let w = window.clone();
-                window.on_window_event(move |event| {
-                    match event {
-                        tauri::WindowEvent::Focused(_) => {
-                            #[cfg(target_os = "windows")]
-                            if let Ok(hwnd) = w.hwnd() {
-                                unsafe {
-                                    SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-                                }
-                            }
-                            #[cfg(not(target_os = "windows"))]
-                            let _ = w.set_always_on_top(true);
-                        }
-                        tauri::WindowEvent::Moved(new_pos) => {
-                            // Only update anchor for user-initiated moves (drags), not programmatic resizes
-                            if !WIDGET_RESIZING.load(Ordering::SeqCst) {
-                                if let Ok(size) = w.outer_size() {
-                                    let state = w.state::<WidgetAnchor>();
-                                    let mut anchor = state.0.lock().unwrap();
-                                    
-                                    let ax = new_pos.x + size.width as i32;
-                                    let ay = new_pos.y + size.height as i32;
-                                    *anchor = Some((ax, ay));
-                                    
-                                    // NOTE: Persistence is now handled by the maintenance loop
-                                    // to avoid spawning hundreds of threads during a drag.
-                                }
-                            }
-                            // Re-enforce topmost on any move
-                            #[cfg(target_os = "windows")]
-                            if let Ok(hwnd) = w.hwnd() {
-                                unsafe {
-                                    SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                });
+                configure_widget_window(&window);
             }
 
             // -------- Persistence & Autostart --------
-            // Widget visibility is now restored by the frontend (App.jsx)
-            // after it fetches settings from the DB and pre-sets the anchor.
-            // This avoids the widget flashing at the default position before
-            // jumping to the saved coordinates.
+            if let Ok(store) = app.store("settings.json") {
+                let anchor_x = json_i32(store.get("widget_anchor_x").as_ref());
+                let anchor_y = json_i32(store.get("widget_anchor_y").as_ref());
+                if let (Some(x), Some(y)) = (anchor_x, anchor_y) {
+                    let state = app.state::<WidgetAnchor>();
+                    let mut anchor = state.0.lock().unwrap();
+                    *anchor = Some((x, y));
+                }
+
+                if json_bool(store.get("widget_enabled").as_ref()).unwrap_or(false) {
+                    set_widget_visibility(app.handle().clone(), true);
+                }
+            }
 
             // Ensure the main app starts with Windows (Production only)
             #[cfg(not(debug_assertions))]
             {
                 use tauri_plugin_autostart::ManagerExt;
-                let _ = app.autolaunch().enable();
+                let autostart_enabled = app
+                    .store("settings.json")
+                    .ok()
+                    .and_then(|store| json_bool(store.get("autostart_enabled").as_ref()).or(Some(true)))
+                    .unwrap_or(true);
+
+                if autostart_enabled {
+                    let _ = app.autolaunch().enable();
+                } else {
+                    let _ = app.autolaunch().disable();
+                }
             }
 
             start_backend(app.handle());

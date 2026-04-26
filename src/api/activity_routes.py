@@ -97,9 +97,25 @@ def live_status():
         peak_row = cursor.fetchone()
         peak_hour = f"{int(peak_row[0])}:00" if peak_row else "—"
 
-        # 5. Top App
+        # 5. Top App + Compact Segment Payload
         sorted_usage = sorted(usage.items(), key=lambda x: x[1], reverse=True)
         top_app = sorted_usage[0][0] if sorted_usage else "N/A"
+        top_usage = sorted_usage[:7]
+        others_seconds = sum(seconds for _, seconds in sorted_usage[7:])
+        segments = [
+            {
+                "name": app or "Unknown",
+                "seconds": seconds,
+                "pct": round((seconds / total_active) * 100, 2) if total_active > 0 else 0,
+            }
+            for app, seconds in top_usage
+        ]
+        if others_seconds > 0:
+            segments.append({
+                "name": "Others",
+                "seconds": others_seconds,
+                "pct": round((others_seconds / total_active) * 100, 2) if total_active > 0 else 0,
+            })
         
         # 6. Final Category for Color/Label (Current App)
         final_cat = "neutral"
@@ -110,7 +126,7 @@ def live_status():
             "active": info,
             "category": final_cat,
             "today_seconds": total_active,
-            "usage": usage,
+            "segments": segments,
             "top_app": top_app,
             "score": score,
             "sessions_today": total_sessions,

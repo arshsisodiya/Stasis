@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
 import { fmtTime, fmtAppName, resolveAppIcon } from "./utils";
+import { useVisibilityPolling } from "./hooks";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
 
 const POLL_INTERVAL = 2000;
+const WIDGET_FONT_STACK = '"Segoe UI", system-ui, sans-serif';
 
 const getAppColor = (name) => {
   if (!name || name === "N/A") return "#94a3b8";
@@ -85,12 +87,11 @@ const DetailCard = memo(({ status, segments, todayTime, visible, BASE }) => {
         right: 0,
         width: 320,
         background: "rgba(13, 17, 28, 0.98)",
-        backdropFilter: "blur(20px)",
         border: "1px solid rgba(255,255,255,0.08)",
         borderRadius: 20,
         padding: "20px",
         boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
-        fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif",
+        fontFamily: WIDGET_FONT_STACK,
         color: "#f1f5f9",
         pointerEvents: visible ? "auto" : "none",
         opacity: visible ? 1 : 0,
@@ -197,6 +198,7 @@ export default function TaskbarWidget({ BASE }) {
 
   const hideTimeout = useRef(null);
   const showTimeout = useRef(null);
+  const statusRequestInFlight = useRef(false);
 
   // Override global overflow:hidden from index.css — the widget needs visible overflow
   // so the detail card (positioned above the bar) isn't clipped when window is expanded
@@ -207,7 +209,22 @@ export default function TaskbarWidget({ BASE }) {
     if (root) root.style.overflow = "visible";
   }, []);
 
-  // Initialize store and fetch status
+  const fetchStatus = useCallback(async () => {
+    if (statusRequestInFlight.current) return;
+    statusRequestInFlight.current = true;
+
+    try {
+      const response = await fetch(`${BASE}/api/live-status`);
+      const data = await response.json();
+      setStatus(data);
+    } catch (err) {
+      console.error("Widget fetch error:", err);
+    } finally {
+      statusRequestInFlight.current = false;
+    }
+  }, [BASE]);
+
+  // Initialize store and widget settings
   useEffect(() => {
     let store;
     
@@ -226,18 +243,6 @@ export default function TaskbarWidget({ BASE }) {
     };
     loadSettings();
 
-    const fetchStatus = () => {
-      fetch(`${BASE}/api/live-status`)
-        .then(r => r.json())
-        .then(d => {
-          setStatus(d);
-        })
-        .catch(err => console.error("Widget fetch error:", err));
-    };
-
-    fetchStatus();
-    const iv = setInterval(fetchStatus, POLL_INTERVAL);
-    
     let unlisten;
     let unlistenHover;
     const setupListener = async (s) => {
@@ -252,11 +257,17 @@ export default function TaskbarWidget({ BASE }) {
     };
 
     return () => {
-      clearInterval(iv);
       if (unlisten) unlisten();
       if (unlistenHover) unlistenHover();
     };
   }, [BASE]);
+
+  useVisibilityPolling(fetchStatus, {
+    enabled: true,
+    visibleIntervalMs: POLL_INTERVAL,
+    hiddenIntervalMs: POLL_INTERVAL * 4,
+    immediate: true,
+  });
 
   const handlePointerDown = useCallback((e) => {
     if (window.__TAURI_INTERNALS__ && e.button === 0) {
@@ -315,6 +326,15 @@ export default function TaskbarWidget({ BASE }) {
   const segments = useMemo(() => {
     if (!status) return [];
     try {
+      if (Array.isArray(status?.segments)) {
+        return status.segments.map((segment) => ({
+          name: segment.name || "Unknown",
+          seconds: Number(segment.seconds) || 0,
+          pct: Number(segment.pct) || 0,
+          color: segment.color || getAppColor(segment.name),
+        }));
+      }
+
       const usage = status?.usage || {};
       const usageArray = Object.entries(usage).sort((a, b) => (Number(b[1]) || 0) - (Number(a[1]) || 0));
       const top7 = usageArray.slice(0, 7);
@@ -340,7 +360,7 @@ export default function TaskbarWidget({ BASE }) {
       console.error("Segments calculation error:", e);
       return [];
     }
-  }, [status?.usage, status?.today_seconds]);
+  }, [status?.segments, status?.usage, status?.today_seconds]);
 
   if (!status) {
     return (
@@ -351,9 +371,9 @@ export default function TaskbarWidget({ BASE }) {
         <div style={{
           width: 200, height: 44,
           background: "rgba(13, 17, 28, 0.95)",
-          backdropFilter: "blur(40px) saturate(200%)",
           borderRadius: 14,
           display: "flex", alignItems: "center", padding: "0 14px", gap: 10,
+          fontFamily: WIDGET_FONT_STACK,
         }}>
           <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#4ade80", opacity: 0.3, animation: "pulse 2s infinite" }} />
           <div style={{ width: 60, height: 12, background: "rgba(255,255,255,0.1)", borderRadius: 6 }} />
@@ -404,12 +424,11 @@ export default function TaskbarWidget({ BASE }) {
               bottom: 56,
               right: 0,
               background: "rgba(13, 17, 28, 0.95)",
-              backdropFilter: "blur(12px)",
               border: "1px solid rgba(255,255,255,0.08)",
               borderRadius: 10,
               padding: "8px 12px",
               boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
-              fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif",
+              fontFamily: WIDGET_FONT_STACK,
               color: "#f1f5f9",
               display: "flex",
               alignItems: "center",
@@ -440,16 +459,8 @@ export default function TaskbarWidget({ BASE }) {
             height: 44,
             background: 
               theme === "transparent" ? "transparent" : 
-              theme === "glass" ? "rgba(255, 255, 255, 0.08)" : 
+              theme === "glass" ? "rgba(255, 255, 255, 0.12)" : 
               "rgba(13, 17, 28, 0.95)",
-            backdropFilter: 
-              theme === "transparent" ? "none" : 
-              theme === "glass" ? "blur(24px) saturate(160%)" : 
-              "blur(40px) saturate(200%)",
-            WebkitBackdropFilter: 
-              theme === "transparent" ? "none" : 
-              theme === "glass" ? "blur(24px) saturate(160%)" : 
-              "blur(40px) saturate(200%)",
             border: 
               theme === "transparent" ? "none" : 
               theme === "glass" ? "1px solid rgba(255, 255, 255, 0.12)" : 
@@ -464,7 +475,7 @@ export default function TaskbarWidget({ BASE }) {
             overflow: "hidden",
             userSelect: "none",
             cursor: "grab",
-            fontFamily: "'Geist', 'Inter', system-ui, sans-serif",
+            fontFamily: WIDGET_FONT_STACK,
             position: "relative",
           }}
         >

@@ -247,6 +247,19 @@ function EmptyState() {
 }
 
 // ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
+const DASH_CACHE_LIMIT = 6;
+
+function trimDashboardCache(cache, keepDates = []) {
+  const pinned = new Set(keepDates.filter(Boolean));
+  const removable = Object.entries(cache)
+    .filter(([date]) => !pinned.has(date))
+    .sort((a, b) => (b[1]?.fetchedAt || 0) - (a[1]?.fetchedAt || 0));
+
+  removable.slice(Math.max(0, DASH_CACHE_LIMIT - pinned.size)).forEach(([date]) => {
+    delete cache[date];
+  });
+}
+
 export default function WellbeingDashboard({ onDisconnect, initialData = null }) {
   const BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:7432";
 
@@ -259,7 +272,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
   const [activeTab, setActiveTab] = useState("overview");
   const [activeInsightTab, setActiveInsightTab] = useState("goals");
-  const [prewarmTabs, setPrewarmTabs] = useState(false);
+  const [prewarmedTabs, setPrewarmedTabs] = useState({ apps: false, activity: false });
   const [showSettings, setShowSettings] = useState(false);
   const [selectedDate, setSelectedDate] = useState(localYMD());
   const [availableDates, setAvailableDates] = useState([]);
@@ -353,14 +366,20 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
   }, [handleDeepLink]);
 
   useEffect(() => {
-    if (loading || prewarmTabs) return;
+    if (loading || (prewarmedTabs.apps && prewarmedTabs.activity)) return;
 
     let cancelled = false;
     let timeoutId = null;
     let idleId = null;
 
     const warm = () => {
-      if (!cancelled) setPrewarmTabs(true);
+      if (!cancelled) {
+        setPrewarmedTabs((current) => (
+          current.apps && current.activity
+            ? current
+            : { ...current, apps: true, activity: true }
+        ));
+      }
     };
 
     if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
@@ -376,7 +395,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
         window.cancelIdleCallback(idleId);
       }
     };
-  }, [loading, prewarmTabs]);
+  }, [loading, prewarmedTabs.apps, prewarmedTabs.activity]);
 
   // Scroll to top on date change
   useEffect(() => {
@@ -432,6 +451,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
           fetchedAt: Date.now(),
         };
         cache.current[date] = entry;
+        trimDashboardCache(cache.current, [date, localYMD()]);
         delete inflight.current[date];
         return entry;
       })
@@ -778,7 +798,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               />
             </AnimatedTabPanel>
 
-            <AnimatedTabPanel active={activeTab === "apps"} preload={prewarmTabs}>
+            <AnimatedTabPanel active={activeTab === "apps"} preload={prewarmedTabs.apps}>
               <AppsPage
                 isActive={activeTab === "apps"}
                 BASE={BASE}
@@ -789,7 +809,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               />
             </AnimatedTabPanel>
 
-            <AnimatedTabPanel active={activeTab === "activity"} preload={prewarmTabs}>
+            <AnimatedTabPanel active={activeTab === "activity"} preload={prewarmedTabs.activity}>
               <ActivityPage
                 BASE={BASE} selectedDate={selectedDate}
                 data={data || { totalScreenTime: 0, totalSessions: 0, totalKeystrokes: 0, totalClicks: 0 }}
@@ -798,7 +818,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               />
             </AnimatedTabPanel>
 
-            <AnimatedTabPanel active={activeTab === "insights"} preload={prewarmTabs}>
+            <AnimatedTabPanel active={activeTab === "insights"}>
               {activeInsightTab === "goals" && (
                 <GoalsPage selectedDate={selectedDate} />
               )}
@@ -884,7 +904,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
       )}
 
       {showSettings && showSettings !== "drawer" && (
-        <SettingsPage initialSection={showSettings} onClose={() => setShowSettings(null)} />
+        <SettingsPage key={showSettings} initialSection={showSettings} onClose={() => setShowSettings(null)} />
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
+import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import UpdateSection from "./UpdatePage";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
@@ -793,27 +794,60 @@ function GeneralSection({ push }) {
   const [cleaningUp, setCleaningUp] = useState(false);
 
   useEffect(() => {
-    fetch(`${BASE_URL}/api/settings`)
-      .then(r => r.json())
-      .then(async d => {
-        const loaded = { ...DEFAULTS, ...d };
-        
-        // Merge with Rust Store values for UI settings
-        try {
-          const store = await load("settings.json");
-          const wEnabled = await store.get("widget_enabled");
-          if (wEnabled !== null && wEnabled !== undefined) loaded.widget_enabled = wEnabled;
-          const wHover = await store.get("widget_details_hover_enabled");
-          if (wHover !== null && wHover !== undefined) loaded.widget_details_hover_enabled = wHover;
-          const wTheme = await store.get("widget_theme");
-          if (wTheme !== null && wTheme !== undefined) loaded.widget_theme = wTheme;
-        } catch (e) { console.error("Store load error:", e); }
+    let alive = true;
 
+    const loadSettings = async () => {
+      try {
+        const d = await fetch(`${BASE_URL}/api/settings`).then(r => r.json());
+        if (!alive) return;
+
+        const loaded = { ...DEFAULTS, ...d };
         setS(loaded);
         setSaved(loaded);
         setLoading(false);
-      })
-      .catch(() => setLoading(false));
+
+        // Merge Rust Store values afterward so a slow store load never blocks the panel.
+        try {
+          const store = await Promise.race([
+            load("settings.json"),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Store load timeout")), 1500)),
+          ]);
+          if (!alive) return;
+
+          const wEnabled = await store.get("widget_enabled");
+          const wHover = await store.get("widget_details_hover_enabled");
+          const wTheme = await store.get("widget_theme");
+          const trayEnabled = await store.get("tray_enabled");
+          const autostartEnabled = window.__TAURI_INTERNALS__ ? await isAutostartEnabled() : null;
+
+          if (!alive) return;
+
+          setS((prev) => ({
+            ...prev,
+            autostart: autostartEnabled !== null && autostartEnabled !== undefined ? autostartEnabled : prev.autostart,
+            tray: trayEnabled !== null && trayEnabled !== undefined ? trayEnabled : prev.tray,
+            widget_enabled: wEnabled !== null && wEnabled !== undefined ? wEnabled : prev.widget_enabled,
+            widget_details_hover_enabled: wHover !== null && wHover !== undefined ? wHover : prev.widget_details_hover_enabled,
+            widget_theme: wTheme !== null && wTheme !== undefined ? wTheme : prev.widget_theme,
+          }));
+          setSaved((prev) => ({
+            ...prev,
+            autostart: autostartEnabled !== null && autostartEnabled !== undefined ? autostartEnabled : prev.autostart,
+            tray: trayEnabled !== null && trayEnabled !== undefined ? trayEnabled : prev.tray,
+            widget_enabled: wEnabled !== null && wEnabled !== undefined ? wEnabled : prev.widget_enabled,
+            widget_details_hover_enabled: wHover !== null && wHover !== undefined ? wHover : prev.widget_details_hover_enabled,
+            widget_theme: wTheme !== null && wTheme !== undefined ? wTheme : prev.widget_theme,
+          }));
+        } catch (e) {
+          console.error("Store load error:", e);
+        }
+      } catch {
+        if (alive) setLoading(false);
+      }
+    };
+
+    loadSettings();
+    return () => { alive = false; };
   }, []); // DEFAULTS is now static outside the component
 
   const isDirty = JSON.stringify(s) !== JSON.stringify(saved);
@@ -843,10 +877,17 @@ function GeneralSection({ push }) {
 
       // 2. Save UI settings to Rust Store
       const store = await load("settings.json");
+      await store.set("autostart_enabled", s.autostart);
+      await store.set("tray_enabled", s.tray);
       await store.set("widget_enabled", s.widget_enabled);
       await store.set("widget_details_hover_enabled", s.widget_details_hover_enabled);
       await store.set("widget_theme", s.widget_theme);
       await store.save();
+
+      if (window.__TAURI_INTERNALS__) {
+        if (s.autostart) await enableAutostart();
+        else await disableAutostart();
+      }
 
       setSaved({ ...s });
       setConfirmReset(false);
@@ -945,9 +986,15 @@ function GeneralSection({ push }) {
         <SettingRow label="Enable Taskbar Widget" desc="Show a persistent floating widget for real-time stats" control={
           <Toggle 
             on={s.widget_enabled} 
-            onChange={v => {
+            onChange={async v => {
               set("widget_enabled", v);
-              invoke("set_widget_visibility", { visible: v });
+              try {
+                await invoke("set_widget_visibility", { visible: v });
+              } catch (e) {
+                console.error(e);
+                set("widget_enabled", !v);
+                if (push) push("Failed to toggle widget", "error");
+              }
             }} 
           />
         } />
@@ -1908,6 +1955,10 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
   }, []);
 
   useEffect(() => { const h = e => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [onClose]);
+
+  useEffect(() => {
+    setSection(initialSection);
+  }, [initialSection]);
 
   useEffect(() => {
     setMountedSections(prev => (prev[section] ? prev : { ...prev, [section]: true }));

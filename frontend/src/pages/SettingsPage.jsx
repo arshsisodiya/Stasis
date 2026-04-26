@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { load } from "@tauri-apps/plugin-store";
 import UpdateSection from "./UpdatePage";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
@@ -794,8 +795,20 @@ function GeneralSection({ push }) {
   useEffect(() => {
     fetch(`${BASE_URL}/api/settings`)
       .then(r => r.json())
-      .then(d => {
+      .then(async d => {
         const loaded = { ...DEFAULTS, ...d };
+        
+        // Merge with Rust Store values for UI settings
+        try {
+          const store = await load("settings.json");
+          const wEnabled = await store.get("widget_enabled");
+          if (wEnabled !== null && wEnabled !== undefined) loaded.widget_enabled = wEnabled;
+          const wHover = await store.get("widget_details_hover_enabled");
+          if (wHover !== null && wHover !== undefined) loaded.widget_details_hover_enabled = wHover;
+          const wTheme = await store.get("widget_theme");
+          if (wTheme !== null && wTheme !== undefined) loaded.widget_theme = wTheme;
+        } catch (e) { console.error("Store load error:", e); }
+
         setS(loaded);
         setSaved(loaded);
         setLoading(false);
@@ -808,6 +821,7 @@ function GeneralSection({ push }) {
 
   const handleSave = async () => {
     try {
+      // 1. Save Backend settings
       await fetch(`${BASE_URL}/api/settings/update`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -819,15 +833,26 @@ function GeneralSection({ push }) {
           hardware_acceleration: s.hardware_acceleration,
           weekly_report_telegram: s.weekly_report_telegram,
           weekly_report_verbosity: s.weekly_report_verbosity,
+          // We still send these to backend as a fallback/sync, 
+          // but Rust store is now the primary source
           widget_enabled: s.widget_enabled,
           widget_details_hover_enabled: s.widget_details_hover_enabled,
           widget_theme: s.widget_theme
         })
       });
+
+      // 2. Save UI settings to Rust Store
+      const store = await load("settings.json");
+      await store.set("widget_enabled", s.widget_enabled);
+      await store.set("widget_details_hover_enabled", s.widget_details_hover_enabled);
+      await store.set("widget_theme", s.widget_theme);
+      await store.save();
+
       setSaved({ ...s });
       setConfirmReset(false);
       if (push) push("Settings saved", "success");
-    } catch {
+    } catch (e) {
+      console.error(e);
       if (push) push("Failed to save settings", "error");
     }
   };

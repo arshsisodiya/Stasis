@@ -101,10 +101,10 @@ def live_status():
         sorted_usage = sorted(usage.items(), key=lambda x: x[1], reverse=True)
         top_app = sorted_usage[0][0] if sorted_usage else "N/A"
         
-        # 7. Settings Update Signal
-        cursor.execute("SELECT value FROM settings WHERE key = '_last_updated'")
-        settings_row = cursor.fetchone()
-        settings_updated_at = settings_row[0] if settings_row else None
+        # 6. Final Category for Color/Label (Current App)
+        final_cat = "neutral"
+        if active_app:
+            final_cat, _ = get_category(active_app, info.get("url"), info.get("exe_path"))
 
         return jsonify({
             "active": info,
@@ -114,8 +114,7 @@ def live_status():
             "top_app": top_app,
             "score": score,
             "sessions_today": total_sessions,
-            "peak_hour": peak_hour,
-            "settings_updated_at": settings_updated_at
+            "peak_hour": peak_hour
         })
 
     finally:

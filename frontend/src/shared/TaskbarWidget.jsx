@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
 import { fmtTime, fmtAppName, resolveAppIcon } from "./utils";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
+import { load } from "@tauri-apps/plugin-store";
 
-const POLL_INTERVAL_ACTIVE = 2000;
-const POLL_INTERVAL_IDLE = 10000;
+const POLL_INTERVAL = 2000;
 
 const getAppColor = (name) => {
   if (!name || name === "N/A") return "#94a3b8";
@@ -190,10 +190,11 @@ export default function TaskbarWidget({ BASE }) {
   const [isMounted, setIsMounted] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [hoveredSegment, setHoveredSegment] = useState(null);
-  const [hoverEnabled, setHoverEnabled] = useState(true);
-  const [theme, setTheme] = useState("normal");
-  const lastSettingsUpdate = useRef("INITIAL");
-  const pollTimer = useRef(null);
+  const [themeValue, setThemeValue] = useState(null);
+  const [hoverValue, setHoverValue] = useState(null);
+  const theme = themeValue || "normal";
+  const hoverEnabled = hoverValue !== false;
+
   const hideTimeout = useRef(null);
   const showTimeout = useRef(null);
 
@@ -206,82 +207,56 @@ export default function TaskbarWidget({ BASE }) {
     if (root) root.style.overflow = "visible";
   }, []);
 
-  // Local Clock Interpolation: Keep the timer ticking smoothly every second
-  // even if the polling interval is slow (e.g. 10s)
+  // Initialize store and fetch status
   useEffect(() => {
-    const timer = setInterval(() => {
-      setStatus(prev => {
-        if (!prev || !prev.active || document.hidden) return prev;
-        return {
-          ...prev,
-          today_seconds: prev.today_seconds + 1,
-          active: {
-            ...prev.active,
-            duration_seconds: prev.active.duration_seconds + 1
-          }
-        };
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    const fetchSettings = async () => {
+    let store;
+    
+    // Initial load from store
+    const loadSettings = async () => {
       try {
-        const r = await fetch(`${BASE}/api/settings`, { signal: controller.signal });
-        const s = await r.json();
-        setHoverEnabled(s.widget_details_hover_enabled !== false);
-        setTheme(s.widget_theme || "normal");
-      } catch (e) {
-        if (e.name !== "AbortError") console.warn("[Widget] Settings fetch failed:", e);
-      }
+        store = await load("settings.json");
+        const h = await store.get("widget_details_hover_enabled");
+        if (h !== null && h !== undefined) setHoverValue(h);
+        const t = await store.get("widget_theme");
+        if (t !== null && t !== undefined) setThemeValue(t);
+        
+        // Listen for store changes (if any other part of the app updates settings)
+        setupListener(store);
+      } catch (e) { console.error("Store load error:", e); }
+    };
+    loadSettings();
+
+    const fetchStatus = () => {
+      fetch(`${BASE}/api/live-status`)
+        .then(r => r.json())
+        .then(d => {
+          setStatus(d);
+        })
+        .catch(err => console.error("Widget fetch error:", err));
     };
 
-    const poll = async () => {
-      if (document.hidden) {
-        // If hidden, just schedule a check later instead of fetching
-        pollTimer.current = setTimeout(poll, POLL_INTERVAL_IDLE);
-        return;
-      }
-
+    fetchStatus();
+    const iv = setInterval(fetchStatus, POLL_INTERVAL);
+    
+    let unlisten;
+    let unlistenHover;
+    const setupListener = async (s) => {
       try {
-        const r = await fetch(`${BASE}/api/live-status`, { signal: controller.signal });
-        const d = await r.json();
-        setStatus(d);
-
-        if (d.settings_updated_at !== lastSettingsUpdate.current) {
-          await fetchSettings();
-          lastSettingsUpdate.current = d.settings_updated_at;
-        }
-      } catch (e) {
-        if (e.name !== "AbortError") console.error("[Widget] Poll failed:", e);
-      } finally {
-        if (!controller.signal.aborted) {
-          // Adaptive interval: 2s if expanded/hovered, 10s if collapsed
-          const delay = isMounted ? POLL_INTERVAL_ACTIVE : POLL_INTERVAL_IDLE;
-          pollTimer.current = setTimeout(poll, delay);
-        }
-      }
+        unlisten = await s.onKeyChange("widget_theme", (val) => {
+          if (val !== undefined) setThemeValue(val);
+        });
+        unlistenHover = await s.onKeyChange("widget_details_hover_enabled", (val) => {
+          if (val !== undefined) setHoverValue(val);
+        });
+      } catch(e) {}
     };
-
-    const handleVisibility = () => {
-      if (!document.hidden && !controller.signal.aborted) {
-        if (pollTimer.current) clearTimeout(pollTimer.current);
-        poll();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    poll();
 
     return () => {
-      controller.abort();
-      document.removeEventListener("visibilitychange", handleVisibility);
-      if (pollTimer.current) clearTimeout(pollTimer.current);
+      clearInterval(iv);
+      if (unlisten) unlisten();
+      if (unlistenHover) unlistenHover();
     };
-  }, [BASE, isMounted]);
+  }, [BASE]);
 
   const handlePointerDown = useCallback((e) => {
     if (window.__TAURI_INTERNALS__ && e.button === 0) {

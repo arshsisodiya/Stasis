@@ -13,6 +13,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_dialog::{DialogExt, MessageDialogBuilder, MessageDialogButtons};
+use tauri_plugin_store::StoreExt;
 
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowRect, GetWindowLongW, SetWindowLongW, SetWindowPos, 
@@ -26,6 +27,9 @@ use windows_sys::Win32::Graphics::Gdi::{
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 static WIDGET_RESIZING: AtomicBool = AtomicBool::new(false);
 static WIDGET_HIDDEN_BY_FULLSCREEN: AtomicBool = AtomicBool::new(false);
+
+// Cache to avoid spamming the backend with anchor updates during drags
+static LAST_PERSISTED_ANCHOR: Mutex<Option<(i32, i32)>> = Mutex::new(None);
 
 struct BackendState(Mutex<Option<Child>>);
 
@@ -341,46 +345,74 @@ fn main() {
                 let mut show_delay_count: u32 = 0;
 
                 loop {
-                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    // Increase sleep to 500ms to reduce CPU usage and I/O pressure
+                    std::thread::sleep(std::time::Duration::from_millis(500));
                     if SHOULD_EXIT.load(Ordering::SeqCst) { break; }
 
                     if let Some(window) = app_handle.get_webview_window("widget") {
+                        // 1. Handle anchor persistence (Debounced)
+                        // This moves the persistence out of the Moved event to prevent thread explosion
+                        let current_anchor = {
+                            let state = window.state::<WidgetAnchor>();
+                            let guard = state.0.lock().unwrap();
+                            *guard
+                        };
+
+                        if let Some(anchor) = current_anchor {
+                            let mut last_guard = LAST_PERSISTED_ANCHOR.lock().unwrap();
+                            if Some(anchor) != *last_guard {
+                                *last_guard = Some(anchor);
+                                
+                                // Persist to Rust Store (Zero backend calls)
+                                let app_handle_inner = app_handle.clone();
+                                let anchor_inner = anchor;
+                                std::thread::spawn(move || {
+                                    if let Ok(store) = app_handle_inner.store("settings.json") {
+                                        store.set("widget_anchor_x", anchor_inner.0);
+                                        store.set("widget_anchor_y", anchor_inner.1);
+                                        // Store saves automatically in Tauri 2.0 when modified if not configured otherwise,
+                                        // but we can call save() to be sure
+                                        let _ = store.save();
+                                    }
+                                });
+                            }
+                        }
+
+                        // 2. Handle layering and fullscreen
                         #[cfg(target_os = "windows")]
                         {
                             let is_fullscreen = is_foreground_fullscreen();
-                            let is_visible = window.is_visible().unwrap_or(false);
-
-                            if is_fullscreen {
-                                // Reset the show-delay counter while fullscreen is active
-                                show_delay_count = 0;
-
-                                if is_visible {
-                                    // Hide immediately — no delay for hiding
-                                    let _ = window.hide();
-                                    WIDGET_HIDDEN_BY_FULLSCREEN.store(true, Ordering::SeqCst);
-                                }
-                            } else if WIDGET_HIDDEN_BY_FULLSCREEN.load(Ordering::SeqCst) {
-                                // Fullscreen ended, but debounce the show:
-                                // require 4 consecutive non-fullscreen checks (~1s)
-                                // before restoring the widget to avoid bounce
-                                show_delay_count += 1;
-                                if show_delay_count >= 4 {
-                                    let _ = window.show();
-                                    WIDGET_HIDDEN_BY_FULLSCREEN.store(false, Ordering::SeqCst);
+                            
+                            // Use a short timeout for window calls to avoid hanging the loop
+                            // window.is_visible() can block if the webview is hung
+                            if let Ok(is_visible) = window.is_visible() {
+                                if is_fullscreen {
+                                    // Reset the show-delay counter while fullscreen is active
                                     show_delay_count = 0;
-                                    // Re-enforce topmost after restoring
+
+                                    if is_visible {
+                                        let _ = window.hide();
+                                        WIDGET_HIDDEN_BY_FULLSCREEN.store(true, Ordering::SeqCst);
+                                    }
+                                } else if WIDGET_HIDDEN_BY_FULLSCREEN.load(Ordering::SeqCst) {
+                                    // Fullscreen ended, but debounce the show:
+                                    // require 2 consecutive non-fullscreen checks (~1s)
+                                    show_delay_count += 1;
+                                    if show_delay_count >= 2 {
+                                        let _ = window.show();
+                                        WIDGET_HIDDEN_BY_FULLSCREEN.store(false, Ordering::SeqCst);
+                                        show_delay_count = 0;
+                                        if let Ok(hwnd) = window.hwnd() {
+                                            unsafe {
+                                                SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                                            }
+                                        }
+                                    }
+                                } else if is_visible && !WIDGET_RESIZING.load(Ordering::SeqCst) {
                                     if let Ok(hwnd) = window.hwnd() {
                                         unsafe {
                                             SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                                         }
-                                    }
-                                }
-                            } else if is_visible && !WIDGET_RESIZING.load(Ordering::SeqCst) {
-                                // Normal desktop — keep widget on top
-                                // Skip during resize to prevent hover flicker
-                                if let Ok(hwnd) = window.hwnd() {
-                                    unsafe {
-                                        SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                                     }
                                 }
                             }
@@ -388,7 +420,7 @@ fn main() {
                         
                         #[cfg(not(target_os = "windows"))]
                         {
-                            if window.is_visible().unwrap_or(false) {
+                            if let Ok(true) = window.is_visible() {
                                 let _ = window.set_always_on_top(true);
                             }
                         }
@@ -425,14 +457,8 @@ fn main() {
                                     let ay = new_pos.y + size.height as i32;
                                     *anchor = Some((ax, ay));
                                     
-                                    // Persist to DB asynchronously
-                                    std::thread::spawn(move || {
-                                        let path = format!(
-                                            "/api/settings/update?widget_anchor_x={}&widget_anchor_y={}",
-                                            ax, ay
-                                        );
-                                        call_backend_get(&path);
-                                    });
+                                    // NOTE: Persistence is now handled by the maintenance loop
+                                    // to avoid spawning hundreds of threads during a drag.
                                 }
                             }
                             // Re-enforce topmost on any move

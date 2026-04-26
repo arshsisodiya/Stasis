@@ -3,6 +3,7 @@ import LoadingScreen from './pages/LoadingScreen';
 import TaskbarWidget from './shared/TaskbarWidget';
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
+import { load } from "@tauri-apps/plugin-store";
 import { useEffect, useState } from 'react';
 
 const BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:7432";
@@ -38,15 +39,24 @@ export default function App() {
     // Only run Tauri-specific commands if we are actually in a Tauri environment
     if (window.__TAURI_INTERNALS__) {
       try {
-        // Restore widget anchor if present in settings
-        const ax = parseInt(prefetchedData?.settings?.widget_anchor_x || "0");
-        const ay = parseInt(prefetchedData?.settings?.widget_anchor_y || "0");
+        const store = await load("settings.json");
+
+        // 1. Restore widget anchor (Priority: Store > Backend)
+        const sX = await store.get("widget_anchor_x");
+        const sY = await store.get("widget_anchor_y");
+        
+        let ax = sX !== null && sX !== undefined ? parseInt(sX) : parseInt(prefetchedData?.settings?.widget_anchor_x || "0");
+        let ay = sY !== null && sY !== undefined ? parseInt(sY) : parseInt(prefetchedData?.settings?.widget_anchor_y || "0");
+
         if (ax > 0 && ay > 0) {
           await invoke("set_widget_anchor", { x: ax, y: ay });
         }
 
-        // Restore widget visibility if enabled in settings
-        if (prefetchedData?.settings?.widget_enabled) {
+        // 2. Restore widget visibility (Priority: Store > Backend)
+        const sEnabled = await store.get("widget_enabled");
+        const isEnabled = sEnabled !== null && sEnabled !== undefined ? sEnabled : prefetchedData?.settings?.widget_enabled;
+
+        if (isEnabled) {
           await invoke("set_widget_visibility", { visible: true });
         }
       } catch (err) {

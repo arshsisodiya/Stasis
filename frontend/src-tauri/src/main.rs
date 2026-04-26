@@ -8,6 +8,7 @@ use std::io::Write;
 use std::net::TcpStream;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri::menu::{Menu, MenuItem};
@@ -28,6 +29,7 @@ use windows_sys::Win32::Graphics::Gdi::{
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 static WIDGET_RESIZING: AtomicBool = AtomicBool::new(false);
 static WIDGET_HIDDEN_BY_FULLSCREEN: AtomicBool = AtomicBool::new(false);
+static WIDGET_TARGET_VISIBLE: AtomicBool = AtomicBool::new(false);
 
 // Cache to avoid spamming the backend with anchor updates during drags
 static LAST_PERSISTED_ANCHOR: Mutex<Option<(i32, i32)>> = Mutex::new(None);
@@ -43,6 +45,8 @@ const WIDGET_COLLAPSED_H: f64 = 44.0;
 const WIDGET_EXPANDED_W: f64 = 320.0;
 const WIDGET_EXPANDED_H: f64 = 440.0;
 const WIDGET_HTML_PATH: &str = "widget.html";
+const FULLSCREEN_POLL_INTERVAL_MS: u64 = 100;
+const FULLSCREEN_SHOW_STABLE_MS: u64 = 300;
 
 fn json_bool(value: Option<&Value>) -> Option<bool> {
     match value {
@@ -181,6 +185,11 @@ fn configure_widget_window(window: &tauri::WebviewWindow) {
 
 #[tauri::command]
 fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
+    WIDGET_TARGET_VISIBLE.store(visible, Ordering::SeqCst);
+    if !visible {
+        WIDGET_HIDDEN_BY_FULLSCREEN.store(false, Ordering::SeqCst);
+    }
+
     if let Some(window) = app.get_webview_window("widget") {
         let current = window.is_visible().unwrap_or(false);
         if visible && !current {
@@ -238,6 +247,7 @@ fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
                     position_widget(&app, &window);
                 }
                 let _ = window.show();
+                WIDGET_TARGET_VISIBLE.store(true, Ordering::SeqCst);
             }
             Err(e) => {
                 eprintln!("Failed to create widget window: {}", e);
@@ -361,13 +371,23 @@ fn is_foreground_fullscreen() -> bool {
             let mut mi: MONITORINFO = std::mem::zeroed();
             mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
             if GetMonitorInfoW(monitor, &mut mi) != 0 {
-                let window_w = rect.right - rect.left;
-                let window_h = rect.bottom - rect.top;
-                let monitor_w = mi.rcMonitor.right - mi.rcMonitor.left;
-                let monitor_h = mi.rcMonitor.bottom - mi.rcMonitor.top;
-                
-                // If the foreground window covers the entire monitor, it's fullscreen
-                if window_w >= monitor_w && window_h >= monitor_h {
+                let tolerance = 2;
+                let covers_monitor =
+                    rect.left <= mi.rcMonitor.left + tolerance &&
+                    rect.top <= mi.rcMonitor.top + tolerance &&
+                    rect.right >= mi.rcMonitor.right - tolerance &&
+                    rect.bottom >= mi.rcMonitor.bottom - tolerance;
+
+                let covers_only_work_area =
+                    rect.left >= mi.rcWork.left - tolerance &&
+                    rect.top >= mi.rcWork.top - tolerance &&
+                    rect.right <= mi.rcWork.right + tolerance &&
+                    rect.bottom <= mi.rcWork.bottom + tolerance;
+
+                // Treat it as fullscreen only when the foreground window really
+                // covers the monitor, not when it's a normal maximized window
+                // that still respects the taskbar work area.
+                if covers_monitor && !covers_only_work_area {
                     return true;
                 }
             }
@@ -398,13 +418,12 @@ fn main() {
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
                 // Give the app 3 seconds to fully initialize before managing layers
-                std::thread::sleep(std::time::Duration::from_secs(3));
+                std::thread::sleep(Duration::from_secs(3));
 
-                let mut show_delay_count: u32 = 0;
+                let mut fullscreen_cleared_at: Option<Instant> = None;
 
                 loop {
-                    // Increase sleep to 500ms to reduce CPU usage and I/O pressure
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    std::thread::sleep(Duration::from_millis(FULLSCREEN_POLL_INTERVAL_MS));
                     if SHOULD_EXIT.load(Ordering::SeqCst) { break; }
 
                     if let Some(window) = app_handle.get_webview_window("widget") {
@@ -440,38 +459,43 @@ fn main() {
                         #[cfg(target_os = "windows")]
                         {
                             let is_fullscreen = is_foreground_fullscreen();
+                            let should_be_visible = WIDGET_TARGET_VISIBLE.load(Ordering::SeqCst);
                             
-                            // Use a short timeout for window calls to avoid hanging the loop
-                            // window.is_visible() can block if the webview is hung
                             if let Ok(is_visible) = window.is_visible() {
                                 if is_fullscreen {
-                                    // Reset the show-delay counter while fullscreen is active
-                                    show_delay_count = 0;
+                                    fullscreen_cleared_at = None;
 
-                                    if is_visible {
+                                    if should_be_visible && is_visible {
                                         let _ = window.hide();
                                         WIDGET_HIDDEN_BY_FULLSCREEN.store(true, Ordering::SeqCst);
                                     }
                                 } else if WIDGET_HIDDEN_BY_FULLSCREEN.load(Ordering::SeqCst) {
-                                    // Fullscreen ended, but debounce the show:
-                                    // require 2 consecutive non-fullscreen checks (~1s)
-                                    show_delay_count += 1;
-                                    if show_delay_count >= 2 {
+                                    let cleared_at = fullscreen_cleared_at.get_or_insert_with(Instant::now);
+                                    if should_be_visible
+                                        && !is_visible
+                                        && cleared_at.elapsed() >= Duration::from_millis(FULLSCREEN_SHOW_STABLE_MS)
+                                    {
                                         let _ = window.show();
                                         WIDGET_HIDDEN_BY_FULLSCREEN.store(false, Ordering::SeqCst);
-                                        show_delay_count = 0;
+                                        fullscreen_cleared_at = None;
                                         if let Ok(hwnd) = window.hwnd() {
                                             unsafe {
                                                 SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                                             }
                                         }
+                                    } else if !should_be_visible {
+                                        WIDGET_HIDDEN_BY_FULLSCREEN.store(false, Ordering::SeqCst);
+                                        fullscreen_cleared_at = None;
                                     }
-                                } else if is_visible && !WIDGET_RESIZING.load(Ordering::SeqCst) {
+                                } else if should_be_visible && is_visible && !WIDGET_RESIZING.load(Ordering::SeqCst) {
+                                    fullscreen_cleared_at = None;
                                     if let Ok(hwnd) = window.hwnd() {
                                         unsafe {
                                             SetWindowPos(hwnd.0 as isize, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                                         }
                                     }
+                                } else {
+                                    fullscreen_cleared_at = None;
                                 }
                             }
                         }

@@ -204,14 +204,66 @@ class AuthManager:
             conn.close()
 
     def _sync_orphaned_data(self, cursor, new_user_id):
-        """Assign any telemetry tracked with user_id = NULL to the active user."""
-        tables_to_sync = [
-            "activity_logs", "file_logs", "daily_stats", 
-            "limit_events", "system_lifecycle"
-        ]
-        
-        for table in tables_to_sync:
+        """
+        Assign any telemetry recorded with user_id = NULL to the active user.
+
+        Simple tables (activity_logs, file_logs, etc.) can be updated directly.
+        daily_stats has a 4-column UNIQUE PK (date, app_name, main_category, user_id),
+        so we must merge counts into any existing row before removing the NULL row —
+        otherwise a plain UPDATE would violate the constraint when a real-user-id row
+        already exists for the same key.
+        """
+        # Tables where a simple UPDATE is safe (no composite UNIQUE with user_id)
+        simple_tables = ["activity_logs", "file_logs", "limit_events", "system_lifecycle"]
+        for table in simple_tables:
             try:
-                cursor.execute(f"UPDATE {table} SET user_id = ? WHERE user_id IS NULL", (new_user_id,))
+                cursor.execute(
+                    f"UPDATE {table} SET user_id = ? WHERE user_id IS NULL",
+                    (new_user_id,)
+                )
             except sqlite3.OperationalError:
                 pass
+
+        # daily_stats: composite PK requires merge-then-delete for conflicting rows
+        try:
+            # Phase 1: find NULL rows that would collide with an existing user row
+            cursor.execute("""
+                SELECT n.rowid, n.date, n.app_name, n.main_category,
+                       n.active_seconds, n.idle_seconds, n.sessions, n.keystrokes, n.clicks
+                FROM daily_stats n
+                WHERE n.user_id IS NULL
+                  AND EXISTS (
+                      SELECT 1 FROM daily_stats e
+                      WHERE e.date = n.date
+                        AND e.app_name = n.app_name
+                        AND e.main_category = n.main_category
+                        AND e.user_id = ?
+                  )
+            """, (new_user_id,))
+            conflicts = cursor.fetchall()
+
+            for row in conflicts:
+                rowid, date, app, cat, active, idle, sessions, keys, clicks = row
+                # Accumulate the orphaned counts into the existing user row
+                cursor.execute("""
+                    UPDATE daily_stats SET
+                        active_seconds = active_seconds + ?,
+                        idle_seconds   = idle_seconds   + ?,
+                        sessions       = sessions       + ?,
+                        keystrokes     = keystrokes     + ?,
+                        clicks         = clicks         + ?
+                    WHERE date = ? AND app_name = ? AND main_category = ? AND user_id = ?
+                """, (
+                    active or 0, idle or 0, sessions or 0, keys or 0, clicks or 0,
+                    date, app, cat, new_user_id
+                ))
+                # Remove the now-merged NULL row
+                cursor.execute("DELETE FROM daily_stats WHERE rowid = ?", (rowid,))
+
+            # Phase 2: safely update any remaining NULL rows (no conflict)
+            cursor.execute(
+                "UPDATE daily_stats SET user_id = ? WHERE user_id IS NULL",
+                (new_user_id,)
+            )
+        except sqlite3.OperationalError:
+            pass

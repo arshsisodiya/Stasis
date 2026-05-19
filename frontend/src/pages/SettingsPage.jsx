@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import UpdateSection from "./UpdatePage";
+import { useAuth } from "../context/AuthContext";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const BASE_URL = "http://127.0.0.1:7432";
@@ -1843,9 +1844,114 @@ function AboutSection() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ACCOUNT SECTION
+// ═══════════════════════════════════════════════════════════════════════════════
+function AccountSection({ push }) {
+  const { user, logout, token } = useAuth();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+  };
+
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      push("All fields are required", "warn");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      push("New passwords do not match", "warn");
+      return;
+    }
+    if (newPassword.length < 6) {
+      push("New password must be at least 6 characters", "warn");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("http://127.0.0.1:7432/api/auth/change-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      const data = await res.json();
+      if (data.success) {
+        push("Password changed successfully", "success");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      } else {
+        push(data.error || "Failed to change password", "error");
+      }
+    } catch (e) {
+      push("Network error", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <SectionLabel>Active Account</SectionLabel>
+            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginTop: 4 }}>
+              {user ? user.username : "Not logged in"}
+            </div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
+              Currently logged in and syncing data to this account.
+            </div>
+          </div>
+          <Btn onClick={handleLogout} variant="danger">Logout</Btn>
+        </div>
+      </Card>
+
+      <Card>
+        <SectionLabel>Change Password</SectionLabel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+          <InputField 
+            label="Current Password" 
+            secret 
+            value={currentPassword} 
+            onChange={setCurrentPassword} 
+            placeholder="Enter current password" 
+          />
+          <InputField 
+            label="New Password" 
+            secret 
+            value={newPassword} 
+            onChange={setNewPassword} 
+            placeholder="Enter new password" 
+          />
+          <InputField 
+            label="Confirm New Password" 
+            secret 
+            value={confirmPassword} 
+            onChange={setConfirmPassword} 
+            placeholder="Confirm new password" 
+          />
+          <div style={{ marginTop: 8 }}>
+            <Btn onClick={handleChangePassword} loading={loading} variant="primary">Change Password</Btn>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SIDE NAV
 // ═══════════════════════════════════════════════════════════════════════════════
 const NAV_ITEMS = [
+  { id: "account", icon: "👤", label: "Account", sub: "User profile & session" },
   { id: "general", icon: "⚙️", label: "General", sub: "App & tracking" },
   { id: "telegram", icon: "✈️", label: "Telegram", sub: "Remote control" },
   { id: "security", icon: "🔐", label: "Security", sub: "Access & encryption" },
@@ -1988,6 +2094,7 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
   }, [section, mountedSections]);
 
   const meta = {
+    account: { label: "Account", sub: "User profile and session management" },
     general: { label: "General", sub: "App behaviour and tracking" },
     telegram: { label: "Telegram Integration", sub: "Remote control via Telegram bot" },
     security: { label: "Security", sub: "Access control and encryption" },
@@ -2066,6 +2173,7 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
                         <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 21, color: C.text, fontWeight: 400, lineHeight: 1.1 }}>{meta[id]?.label}</div>
                         <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5, lineHeight: 1.4 }}>{meta[id]?.sub}</div>
                       </div>
+                      {id === "account" && <AccountSection push={push} />}
                       {id === "general" && <GeneralSection push={push} />}
                       {id === "developer" && <DeveloperSection push={push} />}
                       {id === "telegram" && <TelegramSection push={push} />}

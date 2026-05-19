@@ -98,6 +98,14 @@ def main():
     log_system_boot()
     logger.info("System lifecycle session initialized")
 
+    # Restore the active user session from DB so the activity logger immediately
+    # uses the correct user_id without waiting for the frontend to connect.
+    restored_user = app_controller.auth_manager.restore_session_from_db()
+    if restored_user:
+        logger.info(f"Session restored for user: {restored_user['username']}")
+    else:
+        logger.info("No active session found in DB — waiting for user login")
+
     # Pre-warm settings cache so the first get() doesn't hit the DB
     from src.core.settings_cache import settings_cache
     settings_cache.warm()

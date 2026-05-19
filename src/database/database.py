@@ -20,6 +20,27 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
     # ===============================
+    # AUTHENTICATION
+    # ===============================
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        expires_at TEXT,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    """)
+
+    # ===============================
     # RAW ACTIVITY LOGS
     # ===============================
     cursor.execute("""
@@ -64,7 +85,8 @@ def init_db():
         sessions INTEGER DEFAULT 0,
         keystrokes INTEGER DEFAULT 0,
         clicks INTEGER DEFAULT 0,
-        PRIMARY KEY (date, app_name, main_category)
+        user_id TEXT,
+        PRIMARY KEY (date, app_name, main_category, user_id)
     )
     """)
     # ===============================
@@ -325,6 +347,47 @@ def init_db():
     try:
         cursor.execute("ALTER TABLE system_lifecycle ADD COLUMN total_screentime_seconds INTEGER DEFAULT 0")
     except Exception: pass
+
+    # ===============================
+    # MULTI-ACCOUNT MIGRATION
+    # ===============================
+    tables_to_migrate = [
+        "activity_logs", "file_logs", "daily_stats", "settings",
+        "telegram_settings", "app_limits", "blocked_apps",
+        "goals", "goal_logs", "limit_events", "system_lifecycle"
+    ]
+    for table in tables_to_migrate:
+        try:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN user_id TEXT")
+        except sqlite3.OperationalError:
+            pass # Column already exists
+
+    # Fix daily_stats primary key migration
+    try:
+        cursor.execute("PRAGMA table_info(daily_stats)")
+        cols = cursor.fetchall()
+        pk_cols = [c[1] for c in cols if c[5] > 0]
+        if 'user_id' not in pk_cols:
+            cursor.execute('ALTER TABLE daily_stats RENAME TO daily_stats_old')
+            cursor.execute('''
+                CREATE TABLE daily_stats (
+                    date TEXT,
+                    app_name TEXT,
+                    main_category TEXT,
+                    sub_category TEXT,
+                    active_seconds INTEGER DEFAULT 0,
+                    idle_seconds INTEGER DEFAULT 0,
+                    sessions INTEGER DEFAULT 0,
+                    keystrokes INTEGER DEFAULT 0,
+                    clicks INTEGER DEFAULT 0,
+                    user_id TEXT,
+                    PRIMARY KEY (date, app_name, main_category, user_id)
+                )
+            ''')
+            cursor.execute('INSERT INTO daily_stats (date, app_name, main_category, sub_category, active_seconds, idle_seconds, sessions, keystrokes, clicks, user_id) SELECT date, app_name, main_category, sub_category, active_seconds, idle_seconds, sessions, keystrokes, clicks, user_id FROM daily_stats_old')
+            cursor.execute('DROP TABLE daily_stats_old')
+    except Exception as e:
+        print(f"Error migrating daily_stats PK: {e}")
 
     conn.commit()
     conn.close()

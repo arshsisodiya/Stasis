@@ -6,17 +6,52 @@ from src.config.ignored_apps_manager import is_ignored
 from src.core.activity_logger import get_current_session_duration
 
 
+def _get_active_user_id():
+    """Return the active user_id from auth_manager, or None if not logged in."""
+    try:
+        from src.api.auth_routes import _app_controller
+        if _app_controller and _app_controller.auth_manager:
+            return _app_controller.auth_manager.active_user_id
+    except Exception:
+        pass
+    return None
+
+
+def _user_filter_sql(user_id, col="user_id"):
+    """
+    Return a SQL WHERE fragment and params that selects data belonging to the
+    active user.
+
+    For a single-user desktop app the correct behaviour is:
+      • If a user IS logged in  → show rows for that user AND any orphaned
+        rows where user_id IS NULL (data recorded before multi-account was
+        set up, or while the session wasn't yet restored after a restart).
+      • If NO user is logged in → show only rows where user_id IS NULL.
+
+    This prevents the dashboard from going blank just because some rows were
+    written with a NULL user_id before the session cookie was validated.
+    """
+    if user_id is not None:
+        # Logged in: own data + any unassigned (NULL) data
+        return f"({col} = ? OR {col} IS NULL)", (user_id,)
+    else:
+        # Not logged in: only unassigned data
+        return f"{col} IS NULL", ()
+
+
 @wellbeing_bp.route("/api/dashboard")
 def dashboard():
 
     selected_date = get_selected_date()
+    user_id = _get_active_user_id()
+    uid_sql, uid_params = _user_filter_sql(user_id)
 
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 app_name,
                 SUM(active_seconds),
@@ -25,9 +60,9 @@ def dashboard():
                 SUM(clicks),
                 SUM(sessions)
             FROM daily_stats
-            WHERE date = ?
+            WHERE date = ? AND {uid_sql}
             GROUP BY app_name
-        """, (selected_date,))
+        """, (selected_date, *uid_params))
 
         rows = cursor.fetchall()
 
@@ -55,7 +90,7 @@ def dashboard():
                 max_active = safe(act)
                 top_app = app
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 app_name,
                 main_category,
@@ -65,10 +100,10 @@ def dashboard():
                 SUM(keystrokes),
                 SUM(clicks)
             FROM daily_stats
-            WHERE date = ?
+            WHERE date = ? AND {uid_sql}
             GROUP BY app_name, main_category
             ORDER BY SUM(active_seconds) DESC
-        """, (selected_date,))
+        """, (selected_date, *uid_params))
 
         apps_rows = cursor.fetchall()
 
@@ -104,15 +139,15 @@ def dashboard():
             reverse=True
         )
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 strftime('%H', timestamp),
                 app_name,
                 SUM(active_seconds)
             FROM activity_logs
-            WHERE timestamp LIKE ?
+            WHERE timestamp LIKE ? AND {uid_sql}
             GROUP BY 1,2
-        """, (selected_date + "%",))
+        """, (selected_date + "%", *uid_params))
 
         rows = cursor.fetchall()
 
@@ -152,6 +187,8 @@ def dashboard():
 def wellbeing():
 
     selected_date = get_selected_date()
+    user_id = _get_active_user_id()
+    uid_sql, uid_params = _user_filter_sql(user_id)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -160,12 +197,12 @@ def wellbeing():
 
     try:
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT main_category, SUM(active_seconds), app_name
             FROM daily_stats
-            WHERE date = ?
+            WHERE date = ? AND {uid_sql}
             GROUP BY app_name, main_category
-        """, (selected_date,))
+        """, (selected_date, *uid_params))
 
         category_rows = cursor.fetchall()
 
@@ -200,7 +237,7 @@ def wellbeing():
         # Screen time = ALL non-ignored usage (entertainment, communication, system, etc.)
         total_active = sum(category_data.values())
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 SUM(idle_seconds),
                 SUM(keystrokes),
@@ -208,9 +245,9 @@ def wellbeing():
                 SUM(sessions),
                 app_name
             FROM daily_stats
-            WHERE date = ?
+            WHERE date = ? AND {uid_sql}
             GROUP BY app_name
-        """, (selected_date,))
+        """, (selected_date, *uid_params))
 
         rows = cursor.fetchall()
 

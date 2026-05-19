@@ -2,38 +2,51 @@ import WellbeingDashboard from './WellbeingDashboard';
 import LoadingScreen from './pages/LoadingScreen';
 import { invoke } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
-import { useState } from 'react';
-
-const BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:7432";
+import { useState, useEffect, useRef } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import AuthScreen from './pages/AuthScreen';
 
 /**
- * Transition flow:
+ * Startup transition flow:
  *  "idle"     → only LoadingScreen shown
  *  "entering" → Dashboard mounts underneath with pre-fetched data,
  *               LoadingScreen plays ls-outro (blur+fade) on top (zIndex 9999)
  *  "done"     → LoadingScreen unmounted, only Dashboard visible
  *
- * Result: the ls-outro animation plays over an already-rendered dashboard,
- * so there is never a white screen or skeleton flash between the two.
+ * Auth + Backend coordination:
+ *  - LoadingScreen polls the backend health endpoint.
+ *  - AuthContext simultaneously retries token validation with retry on network errors.
+ *  - We wait for BOTH to resolve before deciding what to show:
+ *      user is set   → transition to dashboard
+ *      user is null  → show AuthScreen
  */
 export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
+
+function AppContent() {
   const [stage, setStage] = useState("idle");
   const [initialData, setInitialData] = useState(null);
+  // Tracks whether the backend health check has succeeded
+  const [backendReady, setBackendReady] = useState(false);
+  // Ref to hold prefetched data from the LoadingScreen during the auth-loading phase
+  const cachedDataRef = useRef(null);
+  const { user, loading: authLoading } = useAuth();
 
-  const handleReady = async (prefetchedData) => {
-    // Dashboard mounts right now with real data already available
+  const doTransition = async (prefetchedData) => {
     setInitialData(prefetchedData || null);
     setStage("entering");
 
-    // Only run Tauri-specific commands if we are actually in a Tauri environment
     if (window.__TAURI_INTERNALS__) {
       try {
         const store = await load("settings.json");
 
-        // 1. Restore widget anchor (Priority: Store > Backend)
         const sX = await store.get("widget_anchor_x");
         const sY = await store.get("widget_anchor_y");
-        
         let ax = sX !== null && sX !== undefined ? parseInt(sX) : parseInt(prefetchedData?.settings?.widget_anchor_x || "0");
         let ay = sY !== null && sY !== undefined ? parseInt(sY) : parseInt(prefetchedData?.settings?.widget_anchor_y || "0");
 
@@ -41,10 +54,8 @@ export default function App() {
           await invoke("set_widget_anchor", { x: ax, y: ay });
         }
 
-        // 2. Restore widget visibility (Priority: Store > Backend)
         const sEnabled = await store.get("widget_enabled");
         const isEnabled = sEnabled !== null && sEnabled !== undefined ? sEnabled : prefetchedData?.settings?.widget_enabled;
-
         if (isEnabled) {
           await invoke("set_widget_visibility", { visible: true });
         }
@@ -53,10 +64,39 @@ export default function App() {
       }
     }
 
-    // Remove LoadingScreen after its ls-outro finishes (700 ms)
     setTimeout(() => setStage("done"), 750);
   };
 
+  // ── Effect: When authLoading flips to false AND backend is already ready,
+  //    immediately start the dashboard transition (no second health-check needed).
+  useEffect(() => {
+    if (!authLoading && user && backendReady && stage === "idle") {
+      doTransition(cachedDataRef.current);
+    }
+  }, [authLoading, user, backendReady]);
+
+  // ── Show LoadingScreen while auth is still resolving ──
+  // This runs the backend health-check polling concurrently with auth validation.
+  if (authLoading) {
+    return (
+      <LoadingScreen
+        onReady={(data) => {
+          // Backend is healthy — cache the data. We'll use it once auth resolves.
+          cachedDataRef.current = data;
+          setBackendReady(true);
+          // Note: we do NOT call doTransition here because we don't know yet
+          // whether auth will succeed (user) or fail (show AuthScreen).
+        }}
+      />
+    );
+  }
+
+  // ── Auth resolved: no valid user → show login screen ──
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  // ── Auth resolved: valid user present ──
   return (
     <>
       {/* Dashboard renders underneath as soon as the API is ready */}
@@ -68,9 +108,16 @@ export default function App() {
       )}
 
       {/* LoadingScreen sits on top (zIndex 9999). When ready it plays
-          ls-outro (blur+scale+fade) over the already-visible dashboard. */}
+          ls-outro (blur+scale+fade) over the already-visible dashboard.
+          
+          If backend was already confirmed healthy during the auth-loading phase
+          (backendReady=true), the useEffect above already called doTransition,
+          so stage won't be "idle" anymore and this LoadingScreen is skipped.
+          
+          If we somehow get here with stage="idle" (e.g. fast auth resolve before
+          health check), let the LoadingScreen do a fresh health check. */}
       {stage !== "done" && (
-        <LoadingScreen onReady={handleReady} />
+        <LoadingScreen onReady={doTransition} />
       )}
     </>
   );

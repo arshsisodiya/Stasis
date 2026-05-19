@@ -541,6 +541,8 @@ class SessionState:
 # ===============================
 # SESSION FLUSH
 # ===============================
+from src.api.auth_routes import _app_controller
+
 def flush_session(session: SessionState, cursor) -> bool:
     active_secs, idle_secs = session.finalize()
 
@@ -551,20 +553,28 @@ def flush_session(session: SessionState, cursor) -> bool:
     timestamp    = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     info         = session.info
 
+    user_id = None
+    try:
+        from src.api.auth_routes import _app_controller
+        if _app_controller and _app_controller.auth_manager:
+            user_id = _app_controller.auth_manager.active_user_id
+    except Exception:
+        pass
+
     try:
         cursor.execute("""
             INSERT INTO activity_logs
                 (timestamp, app_name, exe_path, pid, window_title, url,
-                 active_seconds, idle_seconds, keystrokes, clicks)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 active_seconds, idle_seconds, keystrokes, clicks, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             timestamp,
             info["app_name"], info.get("exe_path"), info["pid"], info["title"], info["url"],
             int(active_secs), int(idle_secs),
-            int(keys), int(clicks)
+            int(keys), int(clicks), user_id
         ))
 
-        update_daily_stats(cursor, info["app_name"], info["url"], active_secs, idle_secs, keys, clicks, info.get("exe_path"))
+        update_daily_stats(cursor, info["app_name"], info["url"], active_secs, idle_secs, keys, clicks, info.get("exe_path"), user_id)
         # Throttled call for wellbeing calculation moved to main loop to save memory/CPU
         return True
 

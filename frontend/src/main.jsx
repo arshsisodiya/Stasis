@@ -17,6 +17,31 @@ if (typeof window !== "undefined" && window.__TAURI_INTERNALS__) {
     });
 }
 
+// Global fetch override to inject Auth token
+const originalFetch = window.fetch;
+window.fetch = async function(...args) {
+  let [resource, config] = args;
+  
+  const token = localStorage.getItem('stasis_auth_token');
+  if (token) {
+    if (!config) config = {};
+    if (!config.headers) config.headers = {};
+    
+    // Handle both Headers object and plain object
+    if (config.headers instanceof Headers) {
+      if (!config.headers.has('Authorization')) {
+        config.headers.set('Authorization', `Bearer ${token}`);
+      }
+    } else {
+      if (!config.headers['Authorization'] && !config.headers.Authorization) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+  }
+  
+  return originalFetch(resource, config);
+};
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />

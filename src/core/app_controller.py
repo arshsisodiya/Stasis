@@ -2,11 +2,13 @@
 
 from src.config.settings_manager import SettingsManager, TelegramSettingsManager
 from src.config.crypto import decrypt, encrypt
+from src.core.auth_manager import AuthManager
 
 class AppController:
 
     def __init__(self):
         self.telegram_service = None
+        self.auth_manager = AuthManager()
 
     # -------------------------
     # STARTUP INITIALIZATION

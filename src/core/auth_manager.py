@@ -37,8 +37,8 @@ class AuthManager:
                 VALUES (?, ?, ?, ?)
             """, (user_id, username, password_hash, created_at))
             
-            # Sync orphaned data
-            self._sync_orphaned_data(cursor, user_id)
+            # Note: We do NOT sync orphaned data here anymore.
+            # It's explicitly merged via /api/auth/sync-guest when user confirms.
             
             conn.commit()
             return {"success": True, "user": {"id": user_id, "username": username}}
@@ -73,8 +73,8 @@ class AuthManager:
             # Set global active user
             self.active_user_id = user_id
             
-            # Sync orphaned data created while logged out
-            self._sync_orphaned_data(cursor, user_id)
+            # Note: We do NOT sync orphaned data here anymore.
+            # It's explicitly merged via /api/auth/sync-guest when user confirms.
             
             conn.commit()
             return {"success": True, "token": token, "user": {"id": user_id, "username": user[1]}}
@@ -195,6 +195,85 @@ class AuthManager:
             # Optional: invalidate other sessions here if desired, 
             # but for now we just change the password.
             
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            conn.rollback()
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_guest_summary(self):
+        """Get summary of unsynced (guest) data for popup display"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            # Get total seconds and date range
+            cursor.execute("""
+                SELECT 
+                    SUM(active_seconds) as total_seconds,
+                    MIN(date) as min_date,
+                    MAX(date) as max_date,
+                    COUNT(*) as record_count
+                FROM daily_stats 
+                WHERE user_id IS NULL
+            """)
+            stats = cursor.fetchone()
+            
+            total_seconds = stats[0] or 0
+            if total_seconds == 0:
+                return None
+                
+            min_date = stats[1]
+            max_date = stats[2]
+            record_count = stats[3] or 0
+            
+            # Get top 3 apps
+            cursor.execute("""
+                SELECT app_name, SUM(active_seconds) as total_active
+                FROM daily_stats
+                WHERE user_id IS NULL
+                GROUP BY app_name
+                ORDER BY total_active DESC
+                LIMIT 3
+            """)
+            top_apps = [{"name": row[0], "seconds": row[1]} for row in cursor.fetchall()]
+            
+            return {
+                "total_seconds": total_seconds,
+                "min_date": min_date,
+                "max_date": max_date,
+                "record_count": record_count,
+                "top_apps": top_apps
+            }
+        finally:
+            conn.close()
+
+    def discard_guest_data(self):
+        """Delete all NULL-user rows from DB"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            tables = ["activity_logs", "file_logs", "daily_stats", "limit_events", "system_lifecycle"]
+            for table in tables:
+                try:
+                    cursor.execute(f"DELETE FROM {table} WHERE user_id IS NULL")
+                except sqlite3.OperationalError:
+                    pass
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            conn.rollback()
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def sync_guest_data_for_user(self, user_id):
+        """Explicitly merge guest data for a user"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            self._sync_orphaned_data(cursor, user_id)
             conn.commit()
             return {"success": True}
         except Exception as e:

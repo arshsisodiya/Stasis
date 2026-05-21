@@ -1,50 +1,17 @@
 from flask import jsonify, request
 
-from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date
+from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date, get_active_user_id, user_filter_sql
 from src.database.database import get_connection
 from src.config.ignored_apps_manager import is_ignored
 from src.core.activity_logger import get_current_session_duration
-
-
-def _get_active_user_id():
-    """Return the active user_id from auth_manager, or None if not logged in."""
-    try:
-        from src.api.auth_routes import _app_controller
-        if _app_controller and _app_controller.auth_manager:
-            return _app_controller.auth_manager.active_user_id
-    except Exception:
-        pass
-    return None
-
-
-def _user_filter_sql(user_id, col="user_id"):
-    """
-    Return a SQL WHERE fragment and params that selects data belonging to the
-    active user.
-
-    For a single-user desktop app the correct behaviour is:
-      • If a user IS logged in  → show rows for that user AND any orphaned
-        rows where user_id IS NULL (data recorded before multi-account was
-        set up, or while the session wasn't yet restored after a restart).
-      • If NO user is logged in → show only rows where user_id IS NULL.
-
-    This prevents the dashboard from going blank just because some rows were
-    written with a NULL user_id before the session cookie was validated.
-    """
-    if user_id is not None:
-        # Logged in: own data + any unassigned (NULL) data
-        return f"({col} = ? OR {col} IS NULL)", (user_id,)
-    else:
-        # Not logged in: only unassigned data
-        return f"{col} IS NULL", ()
 
 
 @wellbeing_bp.route("/api/dashboard")
 def dashboard():
 
     selected_date = get_selected_date()
-    user_id = _get_active_user_id()
-    uid_sql, uid_params = _user_filter_sql(user_id)
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -187,8 +154,8 @@ def dashboard():
 def wellbeing():
 
     selected_date = get_selected_date()
-    user_id = _get_active_user_id()
-    uid_sql, uid_params = _user_filter_sql(user_id)
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -337,9 +304,15 @@ def dashboard_bundle():
         "prev":   f"/api/daily-stats?date={yd}",
         "prevWb": f"/api/wellbeing?date={yd}",
     }
+    
+    headers = {}
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
     for key, path in endpoints.items():
         try:
-            resp = client.get(path)
+            resp = client.get(path, headers=headers)
             results[key] = resp.get_json()
         except Exception:
             results[key] = None
@@ -347,7 +320,8 @@ def dashboard_bundle():
     # Limits don't depend on date
     try:
         from src.database.database import get_all_limits
-        limits = get_all_limits()
+        user_id = get_active_user_id()
+        limits = get_all_limits(user_id)
         results["lim"] = [
             {
                 "id": row[0],

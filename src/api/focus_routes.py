@@ -1,14 +1,15 @@
 from flask import jsonify
 import time
 
-from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date
+from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date, get_active_user_id, user_filter_sql
 from src.database.database import get_connection
 from src.config.ignored_apps_manager import is_ignored
 
 # ── Focus score cache ─────────────────────────────────────────────────────────
 # Today's date is cached for up to _TTL seconds; historical dates are cached
 # permanently (they can never change).
-_focus_cache: dict = {}  # date -> (result_dict, timestamp)
+# Now partitioned per user as (date, user_id) -> (result_dict, timestamp)
+_focus_cache: dict = {}  # (date, user_id) -> (result_dict, timestamp)
 _FOCUS_TTL = 45          # seconds — today's score refreshes this often
 
 
@@ -16,12 +17,15 @@ _FOCUS_TTL = 45          # seconds — today's score refreshes this often
 def focus():
 
     selected_date = get_selected_date()
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id)
 
     # Check cache
     import datetime as _dt
     today = _dt.date.today().isoformat()
-    if selected_date in _focus_cache:
-        cached_result, cached_at = _focus_cache[selected_date]
+    cache_key = (selected_date, user_id)
+    if cache_key in _focus_cache:
+        cached_result, cached_at = _focus_cache[cache_key]
         if selected_date != today or (time.monotonic() - cached_at) < _FOCUS_TTL:
             return jsonify(cached_result)
 
@@ -32,16 +36,16 @@ def focus():
 
     try:
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 app_name,
                 main_category,
                 SUM(active_seconds),
                 SUM(sessions)
             FROM daily_stats
-            WHERE date = ?
+            WHERE date = ? AND {uid_sql}
             GROUP BY app_name, main_category
-        """, (selected_date,))
+        """, (selected_date, *uid_params))
 
         productive_seconds = 0
         productive_sessions = 0
@@ -70,12 +74,12 @@ def focus():
         if total_active <= 0:
             return jsonify({"score": 0})
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT timestamp, app_name
             FROM activity_logs
-            WHERE timestamp >= ? AND timestamp < date(?, '+1 day')
+            WHERE timestamp >= ? AND timestamp < date(?, '+1 day') AND {uid_sql}
             ORDER BY timestamp ASC
-        """, (selected_date, selected_date))
+        """, (selected_date, selected_date, *uid_params))
 
         logs = [
             (ts, app)
@@ -141,12 +145,12 @@ def focus():
 
         flow_bonus = min(15, flow_bonus)
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT SUM(keystrokes), SUM(idle_seconds), app_name
             FROM daily_stats
-            WHERE date = ?
+            WHERE date = ? AND {uid_sql}
             GROUP BY app_name
-        """, (selected_date,))
+        """, (selected_date, *uid_params))
 
         total_keys = 0
         idle_seconds = 0
@@ -195,7 +199,7 @@ def focus():
         }
 
         # Store in cache
-        _focus_cache[selected_date] = (result, time.monotonic())
+        _focus_cache[cache_key] = (result, time.monotonic())
 
         return jsonify(result)
 

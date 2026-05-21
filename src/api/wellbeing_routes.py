@@ -1,4 +1,4 @@
-﻿"""
+"""
 Wellbeing API Core
 ------------------
 Contains:
@@ -44,6 +44,37 @@ def get_selected_date():
             pass
 
     return datetime.date.today().isoformat()
+
+
+def get_active_user_id():
+    """Return the active user_id from auth_manager, or None if not logged in."""
+    try:
+        from flask import request
+        from src.api.auth_routes import _app_controller
+        if _app_controller and _app_controller.auth_manager:
+            auth_header = request.headers.get('Authorization')
+            if auth_header and auth_header.startswith('Bearer '):
+                token = auth_header.split(' ')[1]
+                user = _app_controller.auth_manager.validate_token(token)
+                if user:
+                    _app_controller.auth_manager.active_user_id = user["id"]
+                    return user["id"]
+            return _app_controller.auth_manager.active_user_id
+    except Exception:
+        pass
+    return None
+
+
+def user_filter_sql(user_id, col="user_id"):
+    """
+    Return a SQL WHERE fragment and params that selects data belonging to the
+    active user.
+    """
+    if user_id is not None:
+        return f"({col} = ? OR {col} IS NULL)", (user_id,)
+    else:
+        return f"{col} IS NULL", ()
+
 
 
 # =====================================

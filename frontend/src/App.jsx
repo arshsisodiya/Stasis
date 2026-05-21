@@ -35,7 +35,7 @@ function AppContent() {
   const [backendReady, setBackendReady] = useState(false);
   // Ref to hold prefetched data from the LoadingScreen during the auth-loading phase
   const cachedDataRef = useRef(null);
-  const { user, loading: authLoading } = useAuth();
+  const { user, isGuest, loading: authLoading } = useAuth();
 
   const doTransition = async (prefetchedData) => {
     setInitialData(prefetchedData || null);
@@ -70,10 +70,10 @@ function AppContent() {
   // ── Effect: When authLoading flips to false AND backend is already ready,
   //    immediately start the dashboard transition (no second health-check needed).
   useEffect(() => {
-    if (!authLoading && user && backendReady && stage === "idle") {
+    if (!authLoading && (user || isGuest) && backendReady && stage === "idle") {
       doTransition(cachedDataRef.current);
     }
-  }, [authLoading, user, backendReady]);
+  }, [authLoading, user, isGuest, backendReady]);
 
   // ── Show LoadingScreen while auth is still resolving ──
   // This runs the backend health-check polling concurrently with auth validation.
@@ -91,12 +91,12 @@ function AppContent() {
     );
   }
 
-  // ── Auth resolved: no valid user → show login screen ──
-  if (!user) {
+  // ── Auth resolved: no valid user and not guest → show login screen ──
+  if (!user && !isGuest) {
     return <AuthScreen />;
   }
 
-  // ── Auth resolved: valid user present ──
+  // ── Auth resolved: valid user or guest present ──
   return (
     <>
       {/* Dashboard renders underneath as soon as the API is ready */}

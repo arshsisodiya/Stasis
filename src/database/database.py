@@ -397,7 +397,7 @@ def init_db():
 # ================= LIMIT FUNCTIONS ========================
 # ==========================================================
 
-def set_app_limit(app_name: str, limit_seconds: int):
+def set_app_limit(app_name: str, limit_seconds: int, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -405,39 +405,55 @@ def set_app_limit(app_name: str, limit_seconds: int):
 
     cursor.execute("""
         INSERT INTO app_limits
-        (app_name, daily_limit_seconds, is_enabled, created_at)
-        VALUES (?, ?, 1, ?)
+        (app_name, daily_limit_seconds, is_enabled, created_at, user_id)
+        VALUES (?, ?, 1, ?, ?)
         ON CONFLICT(app_name)
-        DO UPDATE SET daily_limit_seconds = excluded.daily_limit_seconds
-    """, (app_name, limit_seconds, now))
+        DO UPDATE SET daily_limit_seconds = excluded.daily_limit_seconds,
+                      user_id = COALESCE(excluded.user_id, app_limits.user_id)
+    """, (app_name, limit_seconds, now, user_id))
 
     conn.commit()
     conn.close()
 
 
-def get_all_limits():
+def get_all_limits(user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-                   SELECT id, app_name, daily_limit_seconds, is_enabled, unblock_until, is_blocked, blocked_at
-                   FROM app_limits
-                   """)
+    if user_id is not None:
+        cursor.execute("""
+                       SELECT id, app_name, daily_limit_seconds, is_enabled, unblock_until, is_blocked, blocked_at
+                       FROM app_limits
+                       WHERE user_id = ? OR user_id IS NULL
+                       """, (user_id,))
+    else:
+        cursor.execute("""
+                       SELECT id, app_name, daily_limit_seconds, is_enabled, unblock_until, is_blocked, blocked_at
+                       FROM app_limits
+                       WHERE user_id IS NULL
+                       """)
 
     rows = cursor.fetchall()
     conn.close()
     return rows
 
 
-def get_limit_for_app(app_name: str):
+def get_limit_for_app(app_name: str, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT daily_limit_seconds, is_enabled
-        FROM app_limits
-        WHERE app_name = ?
-    """, (app_name,))
+    if user_id is not None:
+        cursor.execute("""
+            SELECT daily_limit_seconds, is_enabled
+            FROM app_limits
+            WHERE app_name = ? AND (user_id = ? OR user_id IS NULL)
+        """, (app_name, user_id))
+    else:
+        cursor.execute("""
+            SELECT daily_limit_seconds, is_enabled
+            FROM app_limits
+            WHERE app_name = ?
+        """, (app_name,))
 
     result = cursor.fetchone()
     conn.close()
@@ -511,31 +527,46 @@ def remove_blocked_app(app_name: str):
     conn.close()
 
 
-def get_blocked_apps():
+def get_blocked_apps(user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT app_name, blocked_at
-        FROM app_limits
-        WHERE is_blocked = 1 AND is_enabled = 1
-        ORDER BY COALESCE(blocked_at, created_at) DESC, app_name ASC
-    """)
+    if user_id is not None:
+        cursor.execute("""
+            SELECT app_name, blocked_at
+            FROM app_limits
+            WHERE is_blocked = 1 AND is_enabled = 1 AND (user_id = ? OR user_id IS NULL)
+            ORDER BY COALESCE(blocked_at, created_at) DESC, app_name ASC
+        """, (user_id,))
+    else:
+        cursor.execute("""
+            SELECT app_name, blocked_at
+            FROM app_limits
+            WHERE is_blocked = 1 AND is_enabled = 1 AND user_id IS NULL
+            ORDER BY COALESCE(blocked_at, created_at) DESC, app_name ASC
+        """)
     rows = cursor.fetchall()
 
     conn.close()
     return [{"app_name": r[0], "blocked_at": r[1]} for r in rows]
 
 
-def get_blocked_app_names():
+def get_blocked_app_names(user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT app_name
-        FROM app_limits
-        WHERE is_blocked = 1 AND is_enabled = 1
-    """)
+    if user_id is not None:
+        cursor.execute("""
+            SELECT app_name
+            FROM app_limits
+            WHERE is_blocked = 1 AND is_enabled = 1 AND (user_id = ? OR user_id IS NULL)
+        """, (user_id,))
+    else:
+        cursor.execute("""
+            SELECT app_name
+            FROM app_limits
+            WHERE is_blocked = 1 AND is_enabled = 1 AND user_id IS NULL
+        """)
     rows = cursor.fetchall()
 
     conn.close()
@@ -555,7 +586,7 @@ def delete_app_limit(app_name: str):
 # ================= USAGE HELPER ===========================
 # ==========================================================
 
-def get_today_usage(app_name: str):
+def get_today_usage(app_name: str, user_id: str = None):
     """
     Fetch total active seconds for app today (local system time)
     """
@@ -564,12 +595,22 @@ def get_today_usage(app_name: str):
 
     today = datetime.now().date().isoformat()  # YYYY-MM-DD
 
-    cursor.execute("""
-        SELECT SUM(active_seconds)
-        FROM activity_logs
-        WHERE app_name = ?
-        AND timestamp LIKE ?
-    """, (app_name, f"{today}%"))
+    if user_id is not None:
+        cursor.execute("""
+            SELECT SUM(active_seconds)
+            FROM activity_logs
+            WHERE app_name = ?
+            AND timestamp LIKE ?
+            AND (user_id = ? OR user_id IS NULL)
+        """, (app_name, f"{today}%", user_id))
+    else:
+        cursor.execute("""
+            SELECT SUM(active_seconds)
+            FROM activity_logs
+            WHERE app_name = ?
+            AND timestamp LIKE ?
+            AND user_id IS NULL
+        """, (app_name, f"{today}%"))
 
     result = cursor.fetchone()
     conn.close()
@@ -787,24 +828,35 @@ def run_retention_cleanup():
 # ==========================================================
 
 def create_goal(goal_type: str, target_value: float, target_unit: str = "seconds",
-                direction: str = "under", label: str = None):
+                direction: str = "under", label: str = None, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
     now = datetime.now().isoformat()
     cursor.execute("""
-        INSERT INTO goals (goal_type, label, target_value, target_unit, direction, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-    """, (goal_type, label, target_value, target_unit, direction, now, now))
+        INSERT INTO goals (goal_type, label, target_value, target_unit, direction, is_active, created_at, updated_at, user_id)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+    """, (goal_type, label, target_value, target_unit, direction, now, now, user_id))
     goal_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return goal_id
 
 
-def get_all_goals():
+def get_all_goals(user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, goal_type, label, target_value, target_unit, direction, is_active, created_at, updated_at FROM goals")
+    if user_id is not None:
+        cursor.execute("""
+            SELECT id, goal_type, label, target_value, target_unit, direction, is_active, created_at, updated_at 
+            FROM goals
+            WHERE user_id = ? OR user_id IS NULL
+        """, (user_id,))
+    else:
+        cursor.execute("""
+            SELECT id, goal_type, label, target_value, target_unit, direction, is_active, created_at, updated_at 
+            FROM goals
+            WHERE user_id IS NULL
+        """)
     rows = cursor.fetchall()
     conn.close()
     return rows
@@ -837,15 +889,16 @@ def delete_goal(goal_id: int):
     conn.close()
 
 
-def log_goal_progress(goal_id: int, date: str, actual_value: float, target_value: float, met: bool):
+def log_goal_progress(goal_id: int, date: str, actual_value: float, target_value: float, met: bool, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO goal_logs (goal_id, date, actual_value, target_value, met)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO goal_logs (goal_id, date, actual_value, target_value, met, user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(goal_id, date)
-        DO UPDATE SET actual_value = excluded.actual_value, target_value = excluded.target_value, met = excluded.met
-    """, (goal_id, date, actual_value, target_value, 1 if met else 0))
+        DO UPDATE SET actual_value = excluded.actual_value, target_value = excluded.target_value, met = excluded.met,
+                      user_id = COALESCE(excluded.user_id, goal_logs.user_id)
+    """, (goal_id, date, actual_value, target_value, 1 if met else 0, user_id))
     conn.commit()
     conn.close()
 
@@ -864,17 +917,27 @@ def get_goal_logs(goal_id: int, days: int = 7):
     return rows
 
 
-def get_all_goal_logs_range(start_date: str, end_date: str):
+def get_all_goal_logs_range(start_date: str, end_date: str, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT gl.goal_id, gl.date, gl.actual_value, gl.target_value, gl.met,
-               g.goal_type, g.label, g.target_unit, g.direction
-        FROM goal_logs gl
-        JOIN goals g ON g.id = gl.goal_id
-        WHERE gl.date >= ? AND gl.date <= ?
-        ORDER BY gl.date
-    """, (start_date, end_date))
+    if user_id is not None:
+        cursor.execute("""
+            SELECT gl.goal_id, gl.date, gl.actual_value, gl.target_value, gl.met,
+                   g.goal_type, g.label, g.target_unit, g.direction
+            FROM goal_logs gl
+            JOIN goals g ON g.id = gl.goal_id
+            WHERE gl.date >= ? AND gl.date <= ? AND (g.user_id = ? OR g.user_id IS NULL)
+            ORDER BY gl.date
+        """, (start_date, end_date, user_id))
+    else:
+        cursor.execute("""
+            SELECT gl.goal_id, gl.date, gl.actual_value, gl.target_value, gl.met,
+                   g.goal_type, g.label, g.target_unit, g.direction
+            FROM goal_logs gl
+            JOIN goals g ON g.id = gl.goal_id
+            WHERE gl.date >= ? AND gl.date <= ? AND g.user_id IS NULL
+            ORDER BY gl.date
+        """, (start_date, end_date))
     rows = cursor.fetchall()
     conn.close()
     return rows
@@ -884,14 +947,14 @@ def get_all_goal_logs_range(start_date: str, end_date: str):
 # ================= LIMIT EVENTS ===========================
 # ==========================================================
 
-def log_limit_event(app_name: str, event_type: str, old_value: int = None, new_value: int = None):
+def log_limit_event(app_name: str, event_type: str, old_value: int = None, new_value: int = None, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
     now = datetime.now()
     cursor.execute("""
-        INSERT INTO limit_events (app_name, event_type, old_value, new_value, timestamp, date)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (app_name, event_type, old_value, new_value, now.isoformat(), now.strftime("%Y-%m-%d")))
+        INSERT INTO limit_events (app_name, event_type, old_value, new_value, timestamp, date, user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (app_name, event_type, old_value, new_value, now.isoformat(), now.strftime("%Y-%m-%d"), user_id))
     conn.commit()
     conn.close()
 

@@ -28,7 +28,7 @@ export default function AuthScreen() {
   const [btnHovered, setBtnHovered] = useState(false);
   const [btnActive, setBtnActive] = useState(false);
   
-  const { login, register } = useAuth();
+  const { login, register, continueAsGuest } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -253,6 +253,35 @@ export default function AuthScreen() {
             onMouseLeave={e => e.target.style.color = C.green}
           >
             {isLogin ? 'Sign Up' : 'Sign In'}
+          </button>
+        </div>
+        
+        {/* Guest Mode Toggle */}
+        <div style={{ textAlign: 'center', marginTop: '16px' }}>
+          <button 
+            onClick={continueAsGuest}
+            style={{ 
+              background: 'rgba(255,255,255,0.03)', 
+              border: `1px solid ${C.border}`,
+              color: C.textSub, 
+              cursor: 'pointer', 
+              padding: '8px 16px', 
+              fontSize: '12px', 
+              fontWeight: 500,
+              borderRadius: '8px',
+              transition: 'all 0.2s ease',
+              fontFamily: "'DM Sans', sans-serif"
+            }}
+            onMouseEnter={e => {
+              e.target.style.background = 'rgba(255,255,255,0.06)';
+              e.target.style.color = C.text;
+            }}
+            onMouseLeave={e => {
+              e.target.style.background = 'rgba(255,255,255,0.03)';
+              e.target.style.color = C.textSub;
+            }}
+          >
+            Continue as Guest
           </button>
         </div>
       </div>

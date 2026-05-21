@@ -1,29 +1,8 @@
 from flask import jsonify
 
-from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date
+from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date, get_active_user_id, user_filter_sql
 from src.database.database import get_connection
 from src.config.ignored_apps_manager import is_ignored
-
-
-def _get_active_user_id():
-    try:
-        from src.api.auth_routes import _app_controller
-        if _app_controller and _app_controller.auth_manager:
-            return _app_controller.auth_manager.active_user_id
-    except Exception:
-        pass
-    return None
-
-
-def _user_filter_sql(user_id, col="user_id"):
-    """
-    When logged in: show this user's rows AND any NULL-user orphaned rows.
-    When not logged in: show only NULL-user rows.
-    """
-    if user_id is not None:
-        return f"({col} = ? OR {col} IS NULL)", (user_id,)
-    else:
-        return f"{col} IS NULL", ()
 
 
 # =====================================
@@ -34,8 +13,8 @@ def _user_filter_sql(user_id, col="user_id"):
 def daily_stats():
 
     selected_date = get_selected_date()
-    user_id = _get_active_user_id()
-    uid_sql, uid_params = _user_filter_sql(user_id)
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id)
 
     conn = get_connection()
     cursor = conn.cursor()

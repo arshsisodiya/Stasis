@@ -18,6 +18,10 @@ export function AuthProvider({ children }) {
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef(null);
 
+  // Guest state
+  const [isGuest, setIsGuest] = useState(() => localStorage.getItem('stasis_guest_mode') === 'true');
+  const [guestData, setGuestData] = useState(null);
+
   // ── Token validation with retry on network errors ─────────────────────────
   // Separates two failure modes:
   //   1. Network error  → backend not ready yet  → RETRY (keep loading=true)
@@ -95,6 +99,11 @@ export function AuthProvider({ children }) {
       setToken(data.token);
       localStorage.setItem('stasis_auth_token', data.token);
       setUser(data.user);
+      setIsGuest(false);
+      localStorage.removeItem('stasis_guest_mode');
+      if (data.has_guest_data && data.guest_summary) {
+        setGuestData(data.guest_summary);
+      }
       return { success: true };
     }
     return { success: false, error: data.error };
@@ -111,6 +120,11 @@ export function AuthProvider({ children }) {
       setToken(data.token);
       localStorage.setItem('stasis_auth_token', data.token);
       setUser(data.user);
+      setIsGuest(false);
+      localStorage.removeItem('stasis_guest_mode');
+      if (data.has_guest_data && data.guest_summary) {
+        setGuestData(data.guest_summary);
+      }
       return { success: true };
     }
     return { success: false, error: data.error };
@@ -134,8 +148,49 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('stasis_auth_token');
   };
 
+  const continueAsGuest = () => {
+    setIsGuest(true);
+    localStorage.setItem('stasis_guest_mode', 'true');
+  };
+
+  const syncGuestData = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${BASE}/api/auth/sync-guest`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGuestData(null);
+      }
+      return data;
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const discardGuestData = async () => {
+    try {
+      const res = await fetch(`${BASE}/api/auth/discard-guest`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGuestData(null);
+      }
+      return data;
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ 
+      user, token, loading, login, register, logout,
+      isGuest, guestData, setGuestData, continueAsGuest,
+      syncGuestData, discardGuestData
+    }}>
       {children}
     </AuthContext.Provider>
   );

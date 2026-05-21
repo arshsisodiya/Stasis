@@ -91,6 +91,7 @@ class BlockingService:
         which raced with Flask API writes and caused 'database is locked'.
         """
         from src.database.database import get_connection
+        from src.api.auth_routes import _app_controller
 
         while self.running:
             try:
@@ -98,23 +99,45 @@ class BlockingService:
                 now_iso = now.isoformat()
                 today = now.date().isoformat()
 
+                active_user_id = None
+                if _app_controller and _app_controller.auth_manager:
+                    active_user_id = _app_controller.auth_manager.active_user_id
+
                 conn = get_connection()
                 try:
                     cursor = conn.cursor()
 
                     # 1. Expire any temporary unblocks in one shot
-                    cursor.execute("""
-                        UPDATE app_limits
-                        SET unblock_until = NULL
-                        WHERE unblock_until IS NOT NULL
-                          AND unblock_until <= ?
-                    """, (now_iso,))
+                    if active_user_id is not None:
+                        cursor.execute("""
+                            UPDATE app_limits
+                            SET unblock_until = NULL
+                            WHERE unblock_until IS NOT NULL
+                              AND unblock_until <= ?
+                              AND (user_id = ? OR user_id IS NULL)
+                        """, (now_iso, active_user_id))
+                    else:
+                        cursor.execute("""
+                            UPDATE app_limits
+                            SET unblock_until = NULL
+                            WHERE unblock_until IS NOT NULL
+                              AND unblock_until <= ?
+                              AND user_id IS NULL
+                        """, (now_iso,))
 
                     # 2. Fetch all limits (single read)
-                    cursor.execute("""
-                        SELECT app_name, daily_limit_seconds, is_enabled, unblock_until
-                        FROM app_limits
-                    """)
+                    if active_user_id is not None:
+                        cursor.execute("""
+                            SELECT app_name, daily_limit_seconds, is_enabled, unblock_until
+                            FROM app_limits
+                            WHERE user_id = ? OR user_id IS NULL
+                        """, (active_user_id,))
+                    else:
+                        cursor.execute("""
+                            SELECT app_name, daily_limit_seconds, is_enabled, unblock_until
+                            FROM app_limits
+                            WHERE user_id IS NULL
+                        """)
                     limits = cursor.fetchall()
 
                     new_blocked = set()
@@ -154,11 +177,18 @@ class BlockingService:
                                 pass
 
                         # 3. Today's usage for this app (same connection, no extra open/close)
-                        cursor.execute("""
-                            SELECT COALESCE(SUM(active_seconds), 0)
-                            FROM activity_logs
-                            WHERE app_name = ? AND timestamp LIKE ?
-                        """, (app_name, f"{today}%"))
+                        if active_user_id is not None:
+                            cursor.execute("""
+                                SELECT COALESCE(SUM(active_seconds), 0)
+                                FROM activity_logs
+                                WHERE app_name = ? AND timestamp LIKE ? AND (user_id = ? OR user_id IS NULL)
+                            """, (app_name, f"{today}%", active_user_id))
+                        else:
+                            cursor.execute("""
+                                SELECT COALESCE(SUM(active_seconds), 0)
+                                FROM activity_logs
+                                WHERE app_name = ? AND timestamp LIKE ? AND user_id IS NULL
+                            """, (app_name, f"{today}%"))
                         usage = cursor.fetchone()[0] or 0
 
                         if usage >= daily_limit:
@@ -182,7 +212,7 @@ class BlockingService:
                             if not was_blocked:
                                 try:
                                     from src.database.database import log_limit_event
-                                    log_limit_event(app_name, "hit", old_value=daily_limit, new_value=usage)
+                                    log_limit_event(app_name, "hit", old_value=daily_limit, new_value=usage, user_id=active_user_id)
                                 except Exception:
                                     pass
                                 over_by = max(0, int(usage - daily_limit))
@@ -222,8 +252,8 @@ class BlockingService:
                     # Evaluate goal thresholds at most once per minute (same DB connection).
                     now_ts = time.time()
                     if now_ts - self.last_goal_check_ts >= 60:
-                        self._check_goal_notifications(cursor, today)
-                        self._check_daily_digest(cursor, now, today)
+                        self._check_goal_notifications(cursor, today, active_user_id)
+                        self._check_daily_digest(cursor, now, today, active_user_id)
                         self.last_goal_check_ts = now_ts
 
                     with self._blocked_apps_lock:
@@ -239,21 +269,30 @@ class BlockingService:
                 print("LimitMonitor error:", e)
             time.sleep(LIMIT_CHECK_INTERVAL)
 
-    def _check_goal_notifications(self, cursor, date: str):
-        cursor.execute(
-            """
-            SELECT id, goal_type, COALESCE(label, ''), target_value, target_unit, direction
-            FROM goals
-            WHERE is_active = 1
-            """
-        )
+    def _check_goal_notifications(self, cursor, date: str, user_id: str = None):
+        if user_id is not None:
+            cursor.execute(
+                """
+                SELECT id, goal_type, COALESCE(label, ''), target_value, target_unit, direction
+                FROM goals
+                WHERE is_active = 1 AND (user_id = ? OR user_id IS NULL)
+                """, (user_id,)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT id, goal_type, COALESCE(label, ''), target_value, target_unit, direction
+                FROM goals
+                WHERE is_active = 1 AND user_id IS NULL
+                """
+            )
         goals = cursor.fetchall()
 
         if not goals:
             return
 
         for goal_id, goal_type, label, target_value, target_unit, direction in goals:
-            actual = self._compute_goal_actual(cursor, date, goal_type)
+            actual = self._compute_goal_actual(cursor, date, goal_type, user_id)
             threshold_reached = actual >= target_value
 
             state_key = (goal_id, date)
@@ -310,41 +349,74 @@ class BlockingService:
         self.goal_state = {k: v for k, v in self.goal_state.items() if k[1] == date}
 
     @staticmethod
-    def _compute_goal_actual(cursor, date: str, goal_type: str) -> float:
+    def _compute_goal_actual(cursor, date: str, goal_type: str, user_id: str = None) -> float:
         if goal_type == "daily_screen_time":
-            cursor.execute(
-                """
-                SELECT app_name, COALESCE(SUM(active_seconds), 0)
-                FROM daily_stats
-                WHERE date = ?
-                GROUP BY app_name
-                """,
-                (date,),
-            )
+            if user_id is not None:
+                cursor.execute(
+                    """
+                    SELECT app_name, COALESCE(SUM(active_seconds), 0)
+                    FROM daily_stats
+                    WHERE date = ? AND (user_id = ? OR user_id IS NULL)
+                    GROUP BY app_name
+                    """,
+                    (date, user_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT app_name, COALESCE(SUM(active_seconds), 0)
+                    FROM daily_stats
+                    WHERE date = ? AND user_id IS NULL
+                    GROUP BY app_name
+                    """,
+                    (date,),
+                )
             return float(sum(active for app_name, active in cursor.fetchall() if not is_ignored(app_name)))
 
         if goal_type == "daily_productive_time":
-            cursor.execute(
-                """
-                SELECT app_name, COALESCE(SUM(active_seconds), 0)
-                FROM daily_stats
-                WHERE date = ? AND main_category = 'productive'
-                GROUP BY app_name
-                """,
-                (date,),
-            )
+            if user_id is not None:
+                cursor.execute(
+                    """
+                    SELECT app_name, COALESCE(SUM(active_seconds), 0)
+                    FROM daily_stats
+                    WHERE date = ? AND main_category = 'productive' AND (user_id = ? OR user_id IS NULL)
+                    GROUP BY app_name
+                    """,
+                    (date, user_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT app_name, COALESCE(SUM(active_seconds), 0)
+                    FROM daily_stats
+                    WHERE date = ? AND main_category = 'productive' AND user_id IS NULL
+                    GROUP BY app_name
+                    """,
+                    (date,),
+                )
             return float(sum(active for app_name, active in cursor.fetchall() if not is_ignored(app_name)))
 
         if goal_type == "daily_productivity_pct":
-            cursor.execute(
-                """
-                SELECT app_name, main_category, COALESCE(SUM(active_seconds), 0)
-                FROM daily_stats
-                WHERE date = ?
-                GROUP BY app_name, main_category
-                """,
-                (date,),
-            )
+            if user_id is not None:
+                cursor.execute(
+                    """
+                    SELECT app_name, main_category, COALESCE(SUM(active_seconds), 0)
+                    FROM daily_stats
+                    WHERE date = ? AND (user_id = ? OR user_id IS NULL)
+                    GROUP BY app_name, main_category
+                    """,
+                    (date, user_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT app_name, main_category, COALESCE(SUM(active_seconds), 0)
+                    FROM daily_stats
+                    WHERE date = ? AND user_id IS NULL
+                    GROUP BY app_name, main_category
+                    """,
+                    (date,),
+                )
             total = 0.0
             productive = 0.0
             for app_name, category, active in cursor.fetchall():
@@ -359,16 +431,28 @@ class BlockingService:
 
         if goal_type == "daily_focus_score":
             try:
-                cursor.execute(
-                    """
-                    SELECT focus_score
-                    FROM focus_sessions
-                    WHERE date = ?
-                    ORDER BY id DESC
-                    LIMIT 1
-                    """,
-                    (date,),
-                )
+                if user_id is not None:
+                    cursor.execute(
+                        """
+                        SELECT focus_score
+                        FROM focus_sessions
+                        WHERE date = ? AND (user_id = ? OR user_id IS NULL)
+                        ORDER BY id DESC
+                        LIMIT 1
+                        """,
+                        (date, user_id),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT focus_score
+                        FROM focus_sessions
+                        WHERE date = ? AND user_id IS NULL
+                        ORDER BY id DESC
+                        LIMIT 1
+                        """,
+                        (date,),
+                    )
                 row = cursor.fetchone()
                 return float(row[0]) if row and row[0] is not None else 0.0
             except Exception:
@@ -384,7 +468,7 @@ class BlockingService:
             return f"{round(value, 1)}%"
         return str(round(value, 1))
 
-    def _check_daily_digest(self, cursor, now: datetime, date: str):
+    def _check_daily_digest(self, cursor, now: datetime, date: str, user_id: str = None):
         if not SettingsManager.get_bool("notifications_enable_digest_events", True):
             return
 
@@ -400,7 +484,7 @@ class BlockingService:
         if (SettingsManager.get("notifications_digest_last_sent_date") or "") == date:
             return
 
-        summary = self._build_daily_digest_summary(cursor, date)
+        summary = self._build_daily_digest_summary(cursor, date, user_id)
         if not summary:
             return
 
@@ -416,7 +500,7 @@ class BlockingService:
         if sent:
             SettingsManager.set("notifications_digest_last_sent_date", date)
 
-    def get_daily_digest_data(self, date: str = None) -> dict | None:
+    def get_daily_digest_data(self, date: str = None, user_id: str = None) -> dict | None:
         """
         Returns structured data for the daily digest.
         """
@@ -424,20 +508,36 @@ class BlockingService:
         if not date:
             date = datetime.now().date().isoformat()
 
+        if not user_id:
+            from src.api.auth_routes import _app_controller
+            if _app_controller and _app_controller.auth_manager:
+                user_id = _app_controller.auth_manager.active_user_id
+
         conn = get_connection()
         try:
             cursor = conn.cursor()
             
             # 1. Basic Stats & Categories
-            cursor.execute(
-                """
-                SELECT app_name, main_category, COALESCE(SUM(active_seconds), 0)
-                FROM daily_stats
-                WHERE date = ?
-                GROUP BY app_name, main_category
-                """,
-                (date,),
-            )
+            if user_id is not None:
+                cursor.execute(
+                    """
+                    SELECT app_name, main_category, COALESCE(SUM(active_seconds), 0)
+                    FROM daily_stats
+                    WHERE date = ? AND (user_id = ? OR user_id IS NULL)
+                    GROUP BY app_name, main_category
+                    """,
+                    (date, user_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT app_name, main_category, COALESCE(SUM(active_seconds), 0)
+                    FROM daily_stats
+                    WHERE date = ? AND user_id IS NULL
+                    GROUP BY app_name, main_category
+                    """,
+                    (date,),
+                )
             rows = cursor.fetchall()
             if not rows:
                 return None
@@ -473,33 +573,62 @@ class BlockingService:
                 return None
 
             # 2. Daily goal
-            cursor.execute(
-                """
-                SELECT target_value
-                FROM goals
-                WHERE is_active = 1
-                  AND goal_type = 'daily_screen_time'
-                ORDER BY updated_at DESC, id DESC
-                LIMIT 1
-                """
-            )
+            if user_id is not None:
+                cursor.execute(
+                    """
+                    SELECT target_value
+                    FROM goals
+                    WHERE is_active = 1
+                      AND goal_type = 'daily_screen_time'
+                      AND (user_id = ? OR user_id IS NULL)
+                    ORDER BY updated_at DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (user_id,)
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT target_value
+                    FROM goals
+                    WHERE is_active = 1
+                      AND goal_type = 'daily_screen_time'
+                      AND user_id IS NULL
+                    ORDER BY updated_at DESC, id DESC
+                    LIMIT 1
+                    """
+                )
             goal_row = cursor.fetchone()
             goal_secs = float(goal_row[0]) if goal_row and goal_row[0] is not None else None
 
             # 3. Hourly Activity (Last 24h)
             # activity_logs does not have main_category, so we fetch and categorize in Python
-            cursor.execute(
-                """
-                SELECT strftime('%H', timestamp) as hour, app_name, exe_path,
-                       SUM(active_seconds) as prod,
-                       SUM(idle_seconds) as idle
-                FROM activity_logs
-                WHERE timestamp LIKE ?
-                GROUP BY hour, app_name
-                ORDER BY hour ASC
-                """,
-                (f"{date}%",),
-            )
+            if user_id is not None:
+                cursor.execute(
+                    """
+                    SELECT strftime('%H', timestamp) as hour, app_name, exe_path,
+                           SUM(active_seconds) as prod,
+                           SUM(idle_seconds) as idle
+                    FROM activity_logs
+                    WHERE timestamp LIKE ? AND (user_id = ? OR user_id IS NULL)
+                    GROUP BY hour, app_name
+                    ORDER BY hour ASC
+                    """,
+                    (f"{date}%", user_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT strftime('%H', timestamp) as hour, app_name, exe_path,
+                           SUM(active_seconds) as prod,
+                           SUM(idle_seconds) as idle
+                    FROM activity_logs
+                    WHERE timestamp LIKE ? AND user_id IS NULL
+                    GROUP BY hour, app_name
+                    ORDER BY hour ASC
+                    """,
+                    (f"{date}%",),
+                )
             hourly_raw = cursor.fetchall()
             
             hour_map = {} # hour -> {prod: 0, dist: 0, idle: 0}
@@ -539,12 +668,30 @@ class BlockingService:
             streak_days = []
             for i in range(6, -1, -1):
                 d_past = (datetime.fromisoformat(date) - timedelta(days=i)).date().isoformat()
-                cursor.execute("SELECT SUM(active_seconds) FROM daily_stats WHERE date = ?", (d_past,))
+                if user_id is not None:
+                    cursor.execute(
+                        "SELECT SUM(active_seconds) FROM daily_stats WHERE date = ? AND (user_id = ? OR user_id IS NULL)",
+                        (d_past, user_id)
+                    )
+                else:
+                    cursor.execute(
+                        "SELECT SUM(active_seconds) FROM daily_stats WHERE date = ? AND user_id IS NULL",
+                        (d_past,)
+                    )
                 r = cursor.fetchone()
                 val = float(r[0]) if r and r[0] else 0
                 state = "empty"
                 if val > 0:
-                    cursor.execute("SELECT SUM(active_seconds) FROM daily_stats WHERE date = ? AND main_category='productive'", (d_past,))
+                    if user_id is not None:
+                        cursor.execute(
+                            "SELECT SUM(active_seconds) FROM daily_stats WHERE date = ? AND main_category='productive' AND (user_id = ? OR user_id IS NULL)",
+                            (d_past, user_id)
+                        )
+                    else:
+                        cursor.execute(
+                            "SELECT SUM(active_seconds) FROM daily_stats WHERE date = ? AND main_category='productive' AND user_id IS NULL",
+                            (d_past,)
+                        )
                     rp = cursor.fetchone()
                     prod_val = float(rp[0]) if rp and rp[0] else 0
                     ratio = (prod_val / val) * 100 if val > 0 else 0
@@ -569,7 +716,7 @@ class BlockingService:
             top_5_apps = [{"app_name": name, "seconds": secs} for name, secs in top_5]
 
             productive_ratio = round((productive / total_active) * 100, 1)
-            best_streak = self._compute_best_productive_streak(cursor, date)
+            best_streak = self._compute_best_productive_streak(cursor, date, user_id)
 
             return {
                 "date": date,
@@ -590,10 +737,10 @@ class BlockingService:
         finally:
             conn.close()
 
-    def _build_daily_digest_summary(self, cursor, date: str) -> str | None:
+    def _build_daily_digest_summary(self, cursor, date: str, user_id: str = None) -> str | None:
         # Note: cursor is passed but we don't strictly need it if we call get_daily_digest_data
         # but to keep it consistent with the existing loop pattern we'll just use the data.
-        data = self.get_daily_digest_data(date)
+        data = self.get_daily_digest_data(date, user_id)
         if not data:
             return None
  
@@ -622,16 +769,27 @@ class BlockingService:
         )
 
     @staticmethod
-    def _compute_best_productive_streak(cursor, date: str) -> float:
-        cursor.execute(
-            """
-            SELECT app_name, COALESCE(active_seconds, 0), exe_path
-            FROM activity_logs
-            WHERE timestamp LIKE ?
-            ORDER BY timestamp ASC
-            """,
-            (f"{date}%",),
-        )
+    def _compute_best_productive_streak(cursor, date: str, user_id: str = None) -> float:
+        if user_id is not None:
+            cursor.execute(
+                """
+                SELECT app_name, COALESCE(active_seconds, 0), exe_path
+                FROM activity_logs
+                WHERE timestamp LIKE ? AND (user_id = ? OR user_id IS NULL)
+                ORDER BY timestamp ASC
+                """,
+                (f"{date}%", user_id),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT app_name, COALESCE(active_seconds, 0), exe_path
+                FROM activity_logs
+                WHERE timestamp LIKE ? AND user_id IS NULL
+                ORDER BY timestamp ASC
+                """,
+                (f"{date}%",),
+            )
         rows = cursor.fetchall()
         if not rows:
             return 0.0

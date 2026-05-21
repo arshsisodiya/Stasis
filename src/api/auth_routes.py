@@ -21,6 +21,13 @@ def register():
     if result["success"]:
         # Log them in automatically
         login_result = _app_controller.auth_manager.login(username, password)
+        if login_result["success"]:
+            guest_summary = _app_controller.auth_manager.get_guest_summary()
+            if guest_summary:
+                login_result["has_guest_data"] = True
+                login_result["guest_summary"] = guest_summary
+            else:
+                login_result["has_guest_data"] = False
         return jsonify(login_result)
     else:
         return jsonify(result), 400
@@ -33,6 +40,12 @@ def login():
     
     result = _app_controller.auth_manager.login(username, password)
     if result["success"]:
+        guest_summary = _app_controller.auth_manager.get_guest_summary()
+        if guest_summary:
+            result["has_guest_data"] = True
+            result["guest_summary"] = guest_summary
+        else:
+            result["has_guest_data"] = False
         return jsonify(result)
     else:
         return jsonify(result), 401
@@ -76,3 +89,26 @@ def change_password():
                 return jsonify({"success": False, "error": result["error"]}), 400
     
     return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+@auth_bp.route('/guest-stats', methods=['GET'])
+def guest_stats():
+    summary = _app_controller.auth_manager.get_guest_summary()
+    return jsonify({"success": True, "summary": summary})
+
+@auth_bp.route('/sync-guest', methods=['POST'])
+def sync_guest():
+    auth_header = request.headers.get('Authorization')
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        user = _app_controller.auth_manager.validate_token(token)
+        if user:
+            result = _app_controller.auth_manager.sync_guest_data_for_user(user["id"])
+            return jsonify(result)
+    return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+@auth_bp.route('/discard-guest', methods=['POST'])
+def discard_guest():
+    # Can be called without auth
+    result = _app_controller.auth_manager.discard_guest_data()
+    return jsonify(result)
+

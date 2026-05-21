@@ -3,7 +3,7 @@ from collections import defaultdict
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
 
-from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date
+from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date, get_active_user_id, user_filter_sql
 from src.database.database import get_connection
 from src.config.category_manager import get_category
 from src.config.ignored_apps_manager import is_ignored
@@ -27,6 +27,8 @@ def _week_bounds(date_str=None):
 @wellbeing_bp.route("/api/live-status")
 def live_status():
     selected_date = get_selected_date()
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id)
     info = get_active_window_info()
     session_duration = int(get_current_session_duration())
 
@@ -35,12 +37,12 @@ def live_status():
 
     try:
         # 1. Total usage from Daily Stats
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT app_name, main_category, SUM(active_seconds), SUM(keystrokes), SUM(sessions)
             FROM daily_stats
-            WHERE date = ?
+            WHERE date = ? AND {uid_sql}
             GROUP BY app_name, main_category
-        """, (selected_date,))
+        """, (selected_date, *uid_params))
         rows = cursor.fetchall()
 
         usage = {}
@@ -86,18 +88,18 @@ def live_status():
             score = round((weighted_time / total_active) * 100)
 
         # 4. Find Peak Hour
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT strftime('%H', timestamp) as hr, SUM(active_seconds) as act
             FROM activity_logs
-            WHERE timestamp LIKE ?
+            WHERE timestamp LIKE ? AND {uid_sql}
             GROUP BY 1
             ORDER BY act DESC
             LIMIT 1
-        """, (selected_date + "%",))
+        """, (selected_date + "%", *uid_params))
         peak_row = cursor.fetchone()
         peak_hour = f"{int(peak_row[0])}:00" if peak_row else "—"
 
-        # 5. Top App + Compact Segment Payload
+        # 5. Top App + Compact Payload
         sorted_usage = sorted(usage.items(), key=lambda x: x[1], reverse=True)
         top_app = sorted_usage[0][0] if sorted_usage else "N/A"
         top_usage = sorted_usage[:7]
@@ -143,13 +145,15 @@ def live_status():
 
 @wellbeing_bp.route("/api/available-dates")
 def available_dates():
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id)
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        cursor.execute(
-            "SELECT DISTINCT date FROM daily_stats ORDER BY date DESC"
-        )
+        cursor.execute(f"""
+            SELECT DISTINCT date FROM daily_stats WHERE {uid_sql} ORDER BY date DESC
+        """, uid_params)
 
         dates = [row[0] for row in cursor.fetchall()]
 
@@ -165,11 +169,13 @@ def available_dates():
 
 @wellbeing_bp.route("/api/heatmap")
 def heatmap():
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id)
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 date,
                 app_name,
@@ -180,9 +186,9 @@ def heatmap():
                     ELSE 0
                 END
             FROM daily_stats
-            WHERE date >= date('now', '-60 days')
+            WHERE date >= date('now', '-60 days') AND {uid_sql}
             ORDER BY date DESC
-        """)
+        """, uid_params)
 
         rows = cursor.fetchall()
 
@@ -229,12 +235,14 @@ def heatmap():
 @wellbeing_bp.route("/api/sessions")
 def sessions():
     selected_date = get_selected_date()
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id, col="al.user_id")
 
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 al.timestamp,
                 al.app_name,
@@ -247,10 +255,12 @@ def sessions():
             LEFT JOIN daily_stats ds
                 ON ds.date = ?
                 AND ds.app_name = al.app_name
+                AND (ds.user_id = al.user_id OR (ds.user_id IS NULL AND al.user_id IS NULL))
             WHERE al.timestamp LIKE ?
               AND al.active_seconds > 0
+              AND {uid_sql}
             ORDER BY al.timestamp ASC
-        """, (selected_date, selected_date + "%"))
+        """, (selected_date, selected_date + "%", *uid_params))
 
         rows = cursor.fetchall()
 
@@ -277,11 +287,13 @@ def sessions():
 
 @wellbeing_bp.route("/api/weekly-trend")
 def weekly_trend():
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id)
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 date,
                 app_name,
@@ -292,9 +304,9 @@ def weekly_trend():
                     ELSE 0
                 END
             FROM daily_stats
-            WHERE date >= date('now', '-14 days')
+            WHERE date >= date('now', '-14 days') AND {uid_sql}
             ORDER BY date DESC
-        """)
+        """, uid_params)
 
         rows = cursor.fetchall()
 
@@ -344,20 +356,22 @@ def weekly_trend():
 @wellbeing_bp.route("/api/hourly")
 def hourly():
     selected_date = get_selected_date()
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id)
 
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 strftime('%H', timestamp),
                 app_name,
                 SUM(active_seconds)
             FROM activity_logs
-            WHERE timestamp LIKE ?
+            WHERE timestamp LIKE ? AND {uid_sql}
             GROUP BY 1,2
-        """, (selected_date + "%",))
+        """, (selected_date + "%", *uid_params))
 
         rows = cursor.fetchall()
 
@@ -394,11 +408,14 @@ def weekly_hourly_activity():
         datetime.strptime(sunday, "%Y-%m-%d") + timedelta(days=1)
     ).strftime("%Y-%m-%d")
 
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id)
+
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 substr(timestamp, 1, 10) AS log_date,
                 strftime('%H', timestamp) AS hour,
@@ -410,9 +427,10 @@ def weekly_hourly_activity():
             WHERE timestamp >= ?
               AND timestamp < ?
               AND active_seconds > 0
+              AND {uid_sql}
             GROUP BY log_date, hour, app_name, url
             ORDER BY log_date ASC, hour ASC
-        """, (monday, week_end_exclusive))
+        """, (monday, week_end_exclusive, *uid_params))
 
         buckets = defaultdict(lambda: {"total_seconds": 0, "productive_seconds": 0, "category_seconds": {}})
         for log_date, hour, app_name, url, exe_path, total_active in cursor.fetchall():
@@ -468,21 +486,23 @@ def weekly_hourly_activity():
 def hourly_stats():
 
     selected_date = get_selected_date()
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id)
 
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 strftime('%H', timestamp),
                 app_name,
                 SUM(active_seconds)
             FROM activity_logs
-            WHERE timestamp LIKE ?
+            WHERE timestamp LIKE ? AND {uid_sql}
             GROUP BY 1,2
             HAVING SUM(active_seconds) > 0
-        """, (selected_date + "%",))
+        """, (selected_date + "%", *uid_params))
 
         rows = cursor.fetchall()
 
@@ -524,21 +544,24 @@ def site_stats():
 
     selected_date = get_selected_date()
     app = request.args.get("app")
+    user_id = get_active_user_id()
+    uid_sql, uid_params = user_filter_sql(user_id)
 
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
 
-        query = """
+        query = f"""
             SELECT url, app_name, SUM(active_seconds)
             FROM activity_logs
             WHERE timestamp LIKE ?
               AND url IS NOT NULL
               AND url != 'N/A'
+              AND {uid_sql}
         """
 
-        params = [selected_date + "%"]
+        params = [selected_date + "%", *uid_params]
 
         if app:
             # Handle both friendly name and executable name (case-insensitive)

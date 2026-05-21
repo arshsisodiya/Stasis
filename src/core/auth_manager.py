@@ -50,6 +50,7 @@ class AuthManager:
 
     def login(self, username, password):
         """Login user, set active user, and create session"""
+        import hashlib
         conn = get_connection()
         cursor = conn.cursor()
         
@@ -62,13 +63,14 @@ class AuthManager:
                 
             user_id = user[0]
             token = secrets.token_hex(32)
+            hashed_token = hashlib.sha256(token.encode()).hexdigest()
             # Session valid for 30 days
             expires_at = (datetime.now() + timedelta(days=30)).isoformat()
             
             cursor.execute("""
                 INSERT INTO sessions (token, user_id, expires_at)
                 VALUES (?, ?, ?)
-            """, (token, user_id, expires_at))
+            """, (hashed_token, user_id, expires_at))
             
             # Set global active user
             self.active_user_id = user_id
@@ -86,10 +88,12 @@ class AuthManager:
 
     def logout(self, token):
         """Logout user and destroy session"""
+        import hashlib
         conn = get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            hashed_token = hashlib.sha256(token.encode()).hexdigest()
+            cursor.execute("DELETE FROM sessions WHERE token = ?", (hashed_token,))
             conn.commit()
             
             # Clear active user state if the current active session matches
@@ -104,6 +108,7 @@ class AuthManager:
         if not token:
             return None
             
+        import hashlib
         conn = get_connection()
         cursor = conn.cursor()
         
@@ -115,12 +120,13 @@ class AuthManager:
             cursor.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
             conn.commit()
             
+            hashed_token = hashlib.sha256(token.encode()).hexdigest()
             cursor.execute("""
                 SELECT u.id, u.username 
                 FROM sessions s
                 JOIN users u ON s.user_id = u.id
                 WHERE s.token = ? AND s.expires_at >= ?
-            """, (token, now))
+            """, (hashed_token, now))
             
             user = cursor.fetchone()
             if user:

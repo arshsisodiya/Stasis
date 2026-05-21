@@ -46,9 +46,13 @@ class BlockingService:
 
         self.running = True
 
-        # Load initial blocked apps into memory cache
+        # Load initial blocked apps into memory cache scoped to active user
         try:
-            self.blocked_apps = set(get_blocked_app_names())
+            from src.api.auth_routes import _app_controller
+            active_user_id = None
+            if _app_controller and _app_controller.auth_manager:
+                active_user_id = _app_controller.auth_manager.active_user_id
+            self.blocked_apps = set(get_blocked_app_names(user_id=active_user_id))
         except Exception:
             self.blocked_apps = set()
 
@@ -469,10 +473,10 @@ class BlockingService:
         return str(round(value, 1))
 
     def _check_daily_digest(self, cursor, now: datetime, date: str, user_id: str = None):
-        if not SettingsManager.get_bool("notifications_enable_digest_events", True):
+        if not SettingsManager.get_bool("notifications_enable_digest_events", True, user_id=user_id):
             return
 
-        digest_time = (SettingsManager.get("notifications_daily_digest_time") or "21:00").strip()
+        digest_time = (SettingsManager.get("notifications_daily_digest_time", user_id=user_id) or "21:00").strip()
         try:
             digest_h, digest_m = [int(x) for x in digest_time.split(":", 1)]
         except Exception:
@@ -481,7 +485,7 @@ class BlockingService:
         if (now.hour, now.minute) < (digest_h, digest_m):
             return
 
-        if (SettingsManager.get("notifications_digest_last_sent_date") or "") == date:
+        if (SettingsManager.get("notifications_digest_last_sent_date", user_id=user_id) or "") == date:
             return
 
         summary = self._build_daily_digest_summary(cursor, date, user_id)
@@ -498,7 +502,7 @@ class BlockingService:
             launch_url=desktop_notifier.build_action_url("open-review-day"),
         )
         if sent:
-            SettingsManager.set("notifications_digest_last_sent_date", date)
+            SettingsManager.set("notifications_digest_last_sent_date", date, user_id=user_id)
 
     def get_daily_digest_data(self, date: str = None, user_id: str = None) -> dict | None:
         """

@@ -1,5 +1,5 @@
 from flask import jsonify, request
-from src.api.wellbeing_routes import wellbeing_bp
+from src.api.wellbeing_routes import wellbeing_bp, get_active_user_id
 from src.database.database import (
     get_connection, get_all_goals, get_all_goal_logs_range,
     get_limit_events_range, get_limit_events_summary
@@ -24,13 +24,16 @@ def _normalize_verbosity(value):
     return "standard"
 
 
-def _get_cache_path(week_of, verbosity):
-    filename = f"report_{week_of}_{verbosity}.json"
+def _get_cache_path(week_of, verbosity, user_id=None):
+    if user_id is not None:
+        filename = f"user_{user_id}_report_{week_of}_{verbosity}.json"
+    else:
+        filename = f"report_{week_of}_{verbosity}.json"
     return os.path.join(get_reports_cache_dir(), filename)
 
 
-def _load_cache(week_of, verbosity, ttl_minutes=None):
-    path = _get_cache_path(week_of, verbosity)
+def _load_cache(week_of, verbosity, ttl_minutes=None, user_id=None):
+    path = _get_cache_path(week_of, verbosity, user_id=user_id)
     if not os.path.exists(path):
         return None
     
@@ -48,8 +51,8 @@ def _load_cache(week_of, verbosity, ttl_minutes=None):
         return None
 
 
-def _save_cache(week_of, verbosity, data):
-    path = _get_cache_path(week_of, verbosity)
+def _save_cache(week_of, verbosity, data, user_id=None):
+    path = _get_cache_path(week_of, verbosity, user_id=user_id)
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
@@ -57,14 +60,22 @@ def _save_cache(week_of, verbosity, data):
         logger.error(f"Failed to save cache {path}: {e}")
 
 
-def _range_app_totals(conn, start_date, end_date):
+def _range_app_totals(conn, start_date, end_date, user_id=None):
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT app_name, SUM(active_seconds)
-        FROM daily_stats
-        WHERE date >= ? AND date <= ?
-        GROUP BY app_name
-    """, (start_date, end_date))
+    if user_id is not None:
+        cursor.execute("""
+            SELECT app_name, SUM(active_seconds)
+            FROM daily_stats
+            WHERE date >= ? AND date <= ? AND (user_id = ? OR user_id IS NULL)
+            GROUP BY app_name
+        """, (start_date, end_date, user_id))
+    else:
+        cursor.execute("""
+            SELECT app_name, SUM(active_seconds)
+            FROM daily_stats
+            WHERE date >= ? AND date <= ? AND user_id IS NULL
+            GROUP BY app_name
+        """, (start_date, end_date))
     totals = {}
     for app_name, secs in cursor.fetchall():
         if is_ignored(app_name):
@@ -73,14 +84,22 @@ def _range_app_totals(conn, start_date, end_date):
     return totals
 
 
-def _range_category_totals(conn, start_date, end_date):
+def _range_category_totals(conn, start_date, end_date, user_id=None):
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT main_category, app_name, SUM(active_seconds)
-        FROM daily_stats
-        WHERE date >= ? AND date <= ?
-        GROUP BY main_category, app_name
-    """, (start_date, end_date))
+    if user_id is not None:
+        cursor.execute("""
+            SELECT main_category, app_name, SUM(active_seconds)
+            FROM daily_stats
+            WHERE date >= ? AND date <= ? AND (user_id = ? OR user_id IS NULL)
+            GROUP BY main_category, app_name
+        """, (start_date, end_date, user_id))
+    else:
+        cursor.execute("""
+            SELECT main_category, app_name, SUM(active_seconds)
+            FROM daily_stats
+            WHERE date >= ? AND date <= ? AND user_id IS NULL
+            GROUP BY main_category, app_name
+        """, (start_date, end_date))
     totals = {}
     for cat, app_name, secs in cursor.fetchall():
         if is_ignored(app_name):
@@ -135,7 +154,7 @@ def _generate_ascii_bar(pct, width=10):
     return "█" * filled + "░" * empty
 
 
-def _weekly_trend_series(conn, week_of, weeks=6):
+def _weekly_trend_series(conn, week_of, weeks=6, user_id=None):
     """Build compact trend series for recent weeks ending at week_of."""
     end_monday, _ = _week_bounds(week_of)
     end_monday_date = datetime.strptime(end_monday, "%Y-%m-%d").date()
@@ -145,13 +164,22 @@ def _weekly_trend_series(conn, week_of, weeks=6):
         mon = end_monday_date - timedelta(days=7 * i)
         sun = mon + timedelta(days=6)
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT date, app_name, main_category, SUM(active_seconds)
-            FROM daily_stats
-            WHERE date >= ? AND date <= ?
-            GROUP BY date, app_name, main_category
-            ORDER BY date
-        """, (mon.isoformat(), sun.isoformat()))
+        if user_id is not None:
+            cursor.execute("""
+                SELECT date, app_name, main_category, SUM(active_seconds)
+                FROM daily_stats
+                WHERE date >= ? AND date <= ? AND (user_id = ? OR user_id IS NULL)
+                GROUP BY date, app_name, main_category
+                ORDER BY date
+            """, (mon.isoformat(), sun.isoformat(), user_id))
+        else:
+            cursor.execute("""
+                SELECT date, app_name, main_category, SUM(active_seconds)
+                FROM daily_stats
+                WHERE date >= ? AND date <= ? AND user_id IS NULL
+                GROUP BY date, app_name, main_category
+                ORDER BY date
+            """, (mon.isoformat(), sun.isoformat()))
         rows = cursor.fetchall()
 
         total = 0
@@ -181,9 +209,9 @@ def _weekly_trend_series(conn, week_of, weeks=6):
     return series
 
 
-def _generate_report(week_of=None, verbosity=None, include_previous=True):
+def _generate_report(week_of=None, verbosity=None, include_previous=True, user_id=None):
     """Generate the full weekly report data dict."""
-    verbosity = _normalize_verbosity(verbosity or SettingsManager.get("weekly_report_verbosity") or "standard")
+    verbosity = _normalize_verbosity(verbosity or SettingsManager.get("weekly_report_verbosity", user_id=user_id) or "standard")
     monday, sunday = _week_bounds(week_of)
     monday_date = datetime.strptime(monday, "%Y-%m-%d").date()
 
@@ -196,7 +224,7 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True):
     
     # 10 minute TTL for the week that is still in progress
     ttl = 10 if is_current_week else None
-    cached_data = _load_cache(monday, verbosity, ttl_minutes=ttl)
+    cached_data = _load_cache(monday, verbosity, ttl_minutes=ttl, user_id=user_id)
     if cached_data:
         return cached_data
 
@@ -207,13 +235,22 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True):
 
     try:
         # 1. Daily breakdown
-        cursor.execute("""
-            SELECT date, app_name, main_category, SUM(active_seconds), SUM(keystrokes), SUM(clicks)
-            FROM daily_stats
-            WHERE date >= ? AND date <= ?
-            GROUP BY date, app_name, main_category
-            ORDER BY date
-        """, (monday, sunday))
+        if user_id is not None:
+            cursor.execute("""
+                SELECT date, app_name, main_category, SUM(active_seconds), SUM(keystrokes), SUM(clicks)
+                FROM daily_stats
+                WHERE date >= ? AND date <= ? AND (user_id = ? OR user_id IS NULL)
+                GROUP BY date, app_name, main_category
+                ORDER BY date
+            """, (monday, sunday, user_id))
+        else:
+            cursor.execute("""
+                SELECT date, app_name, main_category, SUM(active_seconds), SUM(keystrokes), SUM(clicks)
+                FROM daily_stats
+                WHERE date >= ? AND date <= ? AND user_id IS NULL
+                GROUP BY date, app_name, main_category
+                ORDER BY date
+            """, (monday, sunday))
         rows = cursor.fetchall()
 
         daily = {}
@@ -247,7 +284,7 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True):
         # Top apps
         top_apps = sorted(app_totals.items(), key=lambda x: -x[1])[:8]
 
-        prev_app_totals = _range_app_totals(conn, prev_monday, prev_sunday)
+        prev_app_totals = _range_app_totals(conn, prev_monday, prev_sunday, user_id=user_id)
 
         # Average daily screen time
         active_days = len(daily) if daily else 1
@@ -270,14 +307,14 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True):
             lightest_day = None
 
         # 2. App limit stats
-        limit_summary = get_limit_events_summary(monday, sunday)
-        limit_events = get_limit_events_range(monday, sunday)
+        limit_summary = get_limit_events_summary(monday, sunday, user_id=user_id)
+        limit_events = get_limit_events_range(monday, sunday, user_id=user_id)
 
         total_hits = sum(v["hits"] for v in limit_summary.values())
         total_edits = sum(v["edits"] for v in limit_summary.values())
 
         # 3. Goals progress
-        goal_logs = get_all_goal_logs_range(monday, sunday)
+        goal_logs = get_all_goal_logs_range(monday, sunday, user_id=user_id)
         goals_by_id = {}
         for gl_id, gl_date, actual, target, met, g_type, g_label, g_unit, g_dir in goal_logs:
             if gl_id not in goals_by_id:
@@ -297,20 +334,32 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True):
             lightest_day["date"] if lightest_day else None
         )
 
-        prev_cat_totals = _range_category_totals(conn, prev_monday, prev_sunday)
+        prev_cat_totals = _range_category_totals(conn, prev_monday, prev_sunday, user_id=user_id)
         category_insights = _build_category_insights(cat_totals, prev_cat_totals)
 
         # 5. Focus score average (from daily_stats)
-        cursor.execute("""
-            SELECT AVG(focus_score) FROM (
-                SELECT date, CASE WHEN SUM(active_seconds) > 0
-                    THEN ROUND(100.0 * MAX(active_seconds) / SUM(active_seconds))
-                    ELSE 0 END as focus_score
-                FROM daily_stats
-                WHERE date >= ? AND date <= ?
-                GROUP BY date
-            )
-        """, (monday, sunday))
+        if user_id is not None:
+            cursor.execute("""
+                SELECT AVG(focus_score) FROM (
+                    SELECT date, CASE WHEN SUM(active_seconds) > 0
+                        THEN ROUND(100.0 * MAX(active_seconds) / SUM(active_seconds))
+                        ELSE 0 END as focus_score
+                    FROM daily_stats
+                    WHERE date >= ? AND date <= ? AND (user_id = ? OR user_id IS NULL)
+                    GROUP BY date
+                )
+            """, (monday, sunday, user_id))
+        else:
+            cursor.execute("""
+                SELECT AVG(focus_score) FROM (
+                    SELECT date, CASE WHEN SUM(active_seconds) > 0
+                        THEN ROUND(100.0 * MAX(active_seconds) / SUM(active_seconds))
+                        ELSE 0 END as focus_score
+                    FROM daily_stats
+                    WHERE date >= ? AND date <= ? AND user_id IS NULL
+                    GROUP BY date
+                )
+            """, (monday, sunday))
         avg_focus = cursor.fetchone()[0] or 0
 
         # Build daily breakdown array (always Mon-Sun, including empty days)
@@ -328,7 +377,7 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True):
                 "productive_pct": ppct,
             })
 
-        trends = _weekly_trend_series(conn, week_of, weeks=6)
+        trends = _weekly_trend_series(conn, week_of, weeks=6, user_id=user_id)
 
         # Goal drift alerts + goal impact correlation
         date_goal_met = {}
@@ -375,7 +424,7 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True):
         }
 
         # What changed this week
-        prev_report = _generate_report(prev_monday, verbosity="compact", include_previous=False) if (include_previous and total_screen > 0) else None
+        prev_report = _generate_report(prev_monday, verbosity="compact", include_previous=False, user_id=user_id) if (include_previous and total_screen > 0) else None
         changed = []
         if prev_report:
             prev_summary = prev_report.get("summary", {})
@@ -462,7 +511,7 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True):
         }
         
         # --- SAVE TO CACHE ---
-        _save_cache(monday, verbosity, report_data)
+        _save_cache(monday, verbosity, report_data, user_id=user_id)
         return report_data
     finally:
         conn.close()
@@ -626,7 +675,8 @@ def _report_to_telegram_html(report):
 def api_weekly_report():
     week_of = request.args.get("week_of")
     verbosity = request.args.get("verbosity")
-    report = _generate_report(week_of, verbosity=verbosity)
+    user_id = get_active_user_id()
+    report = _generate_report(week_of, verbosity=verbosity, user_id=user_id)
     return jsonify(report)
 
 
@@ -637,8 +687,9 @@ def api_weekly_report_compare():
     if not week_a or not week_b:
         return jsonify({"error": "week_a and week_b are required"}), 400
 
-    a = _generate_report(week_a, verbosity="compact")
-    b = _generate_report(week_b, verbosity="compact")
+    user_id = get_active_user_id()
+    a = _generate_report(week_a, verbosity="compact", user_id=user_id)
+    b = _generate_report(week_b, verbosity="compact", user_id=user_id)
     sa = a.get("summary", {})
     sb = b.get("summary", {})
     diff = {
@@ -654,8 +705,12 @@ def api_weekly_report_compare():
 def api_weekly_report_available_weeks():
     conn = get_connection()
     cursor = conn.cursor()
+    user_id = get_active_user_id()
     try:
-        cursor.execute("SELECT DISTINCT date FROM daily_stats ORDER BY date DESC")
+        if user_id is not None:
+            cursor.execute("SELECT DISTINCT date FROM daily_stats WHERE (user_id = ? OR user_id IS NULL) ORDER BY date DESC", (user_id,))
+        else:
+            cursor.execute("SELECT DISTINCT date FROM daily_stats WHERE user_id IS NULL ORDER BY date DESC")
         rows = [r[0] for r in cursor.fetchall() if r and r[0]]
         weeks = set()
         for date_str in rows:
@@ -1515,16 +1570,18 @@ def api_send_weekly_report_telegram():
     from src.config.crypto import decrypt
     from src.config.storage import get_data_dir
 
-    enabled = SettingsManager.get_bool("weekly_report_telegram", False)
+    user_id = get_active_user_id()
+
+    enabled = SettingsManager.get_bool("weekly_report_telegram", False, user_id=user_id)
     if not enabled:
         return jsonify({"error": "Telegram weekly reports are disabled in settings"}), 400
 
-    tg_enabled = TelegramSettingsManager.get("telegram_enabled")
+    tg_enabled = TelegramSettingsManager.get("telegram_enabled", user_id=user_id)
     if tg_enabled != "true":
         return jsonify({"error": "Telegram is not enabled"}), 400
 
-    token_enc = TelegramSettingsManager.get("telegram_token")
-    chat_id_enc = TelegramSettingsManager.get("telegram_chat_id")
+    token_enc = TelegramSettingsManager.get("telegram_token", user_id=user_id)
+    chat_id_enc = TelegramSettingsManager.get("telegram_chat_id", user_id=user_id)
     if not token_enc or not chat_id_enc:
         return jsonify({"error": "Telegram credentials not configured"}), 400
 
@@ -1536,10 +1593,10 @@ def api_send_weekly_report_telegram():
         chat_id = chat_id_enc
 
     week_of = request.json.get("week_of") if request.json else None
-    verbosity = _normalize_verbosity(SettingsManager.get("weekly_report_verbosity") or "standard")
+    verbosity = _normalize_verbosity(SettingsManager.get("weekly_report_verbosity", user_id=user_id) or "standard")
     logger.info(f"Generating weekly report for week_of={week_of}...")
     try:
-        report = _generate_report(week_of, verbosity=verbosity)
+        report = _generate_report(week_of, verbosity=verbosity, user_id=user_id)
         logger.info("Report data generated successfully.")
     except Exception as e:
         logger.error(f"Failed to generate report data: {e}")
@@ -1594,22 +1651,27 @@ def run_weekly_report_scheduler(stop_event=None, check_interval_sec=300):
     from src.config.settings_manager import TelegramSettingsManager
     from src.config.crypto import decrypt
     from src.config.storage import get_data_dir
+    from src.api.auth_routes import _app_controller
 
     while True:
         if stop_event and stop_event.is_set():
             return
         try:
-            enabled = SettingsManager.get_bool("weekly_report_telegram", False)
-            tg_enabled = TelegramSettingsManager.get("telegram_enabled") == "true"
+            active_user_id = None
+            if _app_controller and _app_controller.auth_manager:
+                active_user_id = _app_controller.auth_manager.active_user_id
+
+            enabled = SettingsManager.get_bool("weekly_report_telegram", False, user_id=active_user_id)
+            tg_enabled = TelegramSettingsManager.get("telegram_enabled", user_id=active_user_id) == "true"
 
             now = datetime.now()
             is_sunday = now.weekday() == 6
             monday, _ = _week_bounds(now.date().isoformat())
-            sent_week = SettingsManager.get("weekly_report_last_sent_week") or ""
+            sent_week = SettingsManager.get("weekly_report_last_sent_week", user_id=active_user_id) or ""
 
             if enabled and tg_enabled and is_sunday and sent_week != monday:
-                token_enc = TelegramSettingsManager.get("telegram_token")
-                chat_id_enc = TelegramSettingsManager.get("telegram_chat_id")
+                token_enc = TelegramSettingsManager.get("telegram_token", user_id=active_user_id)
+                chat_id_enc = TelegramSettingsManager.get("telegram_chat_id", user_id=active_user_id)
                 if token_enc and chat_id_enc:
                     try:
                         token = decrypt(token_enc)
@@ -1618,8 +1680,8 @@ def run_weekly_report_scheduler(stop_event=None, check_interval_sec=300):
                         token = token_enc
                         chat_id = chat_id_enc
 
-                    verbosity = _normalize_verbosity(SettingsManager.get("weekly_report_verbosity") or "standard")
-                    report = _generate_report(now.date().isoformat(), verbosity=verbosity)
+                    verbosity = _normalize_verbosity(SettingsManager.get("weekly_report_verbosity", user_id=active_user_id) or "standard")
+                    report = _generate_report(now.date().isoformat(), verbosity=verbosity, user_id=active_user_id)
                     
                     text = _report_to_telegram_html(report)
                     report_html = _generate_report_html(report)
@@ -1635,7 +1697,7 @@ def run_weekly_report_scheduler(stop_event=None, check_interval_sec=300):
                     api = TelegramAPI(token, chat_id)
                     if api.send_message(text):
                         api.send_document(file_path, caption=f"📄 Full Interactive Report ({monday})")
-                        SettingsManager.set("weekly_report_last_sent_week", monday)
+                        SettingsManager.set("weekly_report_last_sent_week", monday, user_id=active_user_id)
                     
                     try: os.remove(file_path)
                     except: pass
@@ -1661,7 +1723,8 @@ def api_limit_events():
         today = date.today()
         start = (today - timedelta(days=today.weekday())).isoformat()
         end = today.isoformat()
-    events = get_limit_events_range(start, end)
+    user_id = get_active_user_id()
+    events = get_limit_events_range(start, end, user_id=user_id)
     return jsonify([
         {"app": e[0], "type": e[1], "old_value": e[2], "new_value": e[3], "timestamp": e[4], "date": e[5]}
         for e in events

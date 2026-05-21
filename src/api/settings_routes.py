@@ -1,7 +1,7 @@
 import os
 import logging
 from flask import jsonify, request
-from src.api.wellbeing_routes import wellbeing_bp
+from src.api.wellbeing_routes import wellbeing_bp, get_active_user_id
 from src.config.settings_manager import SettingsManager
 from src.config.storage import get_base_dir
 from src.core.desktop_notifications import desktop_notifier
@@ -21,32 +21,33 @@ def _send_test_notification(title: str, message: str, source: str, actions=None)
 
 @wellbeing_bp.route("/api/settings", methods=["GET"])
 def get_settings():
+    user_id = get_active_user_id()
     return jsonify({
-        "notifications": SettingsManager.get_bool("notifications", False),
-        "notifications_enable_goal_events": SettingsManager.get_bool("notifications_enable_goal_events", True),
-        "notifications_enable_limit_events": SettingsManager.get_bool("notifications_enable_limit_events", True),
-        "notifications_enable_test_events": SettingsManager.get_bool("notifications_enable_test_events", True),
-        "notifications_enable_digest_events": SettingsManager.get_bool("notifications_enable_digest_events", True),
-        "notifications_quiet_hours_enabled": SettingsManager.get_bool("notifications_quiet_hours_enabled", False),
-        "notifications_quiet_start": SettingsManager.get("notifications_quiet_start") or "22:00",
-        "notifications_quiet_end": SettingsManager.get("notifications_quiet_end") or "07:00",
-        "notifications_context_quiet_mode_enabled": SettingsManager.get_bool("notifications_context_quiet_mode_enabled", True),
-        "notifications_daily_digest_time": SettingsManager.get("notifications_daily_digest_time") or "21:00",
-        "notifications_digest_last_sent_date": SettingsManager.get("notifications_digest_last_sent_date") or "",
-        "notifications_limit_snooze_until": SettingsManager.get("notifications_limit_snooze_until") or "",
-        "file_logging_enabled": SettingsManager.get_bool("file_logging_enabled", False),
-        "file_logging_essential_only": SettingsManager.get_bool("file_logging_essential_only", False),
-        "show_yesterday_comparison": SettingsManager.get_bool("show_yesterday_comparison", True),
-        "show_goals_in_overview": SettingsManager.get_bool("show_goals_in_overview", True),
-        "hardware_acceleration": SettingsManager.get_bool("hardware_acceleration", True),
-        "idle_detection": SettingsManager.get_bool("idle_detection", True),
-        "browser_tracking": SettingsManager.get_bool("browser_tracking", True),
-        "weekly_report_verbosity": SettingsManager.get("weekly_report_verbosity") or "standard",
-        "widget_enabled": SettingsManager.get_bool("widget_enabled", False),
-        "widget_details_hover_enabled": SettingsManager.get_bool("widget_details_hover_enabled", True),
-        "widget_theme": SettingsManager.get("widget_theme") or "normal",
-        "widget_anchor_x": SettingsManager.get("widget_anchor_x") or "0",
-        "widget_anchor_y": SettingsManager.get("widget_anchor_y") or "0"
+        "notifications": SettingsManager.get_bool("notifications", False, user_id=user_id),
+        "notifications_enable_goal_events": SettingsManager.get_bool("notifications_enable_goal_events", True, user_id=user_id),
+        "notifications_enable_limit_events": SettingsManager.get_bool("notifications_enable_limit_events", True, user_id=user_id),
+        "notifications_enable_test_events": SettingsManager.get_bool("notifications_enable_test_events", True, user_id=user_id),
+        "notifications_enable_digest_events": SettingsManager.get_bool("notifications_enable_digest_events", True, user_id=user_id),
+        "notifications_quiet_hours_enabled": SettingsManager.get_bool("notifications_quiet_hours_enabled", False, user_id=user_id),
+        "notifications_quiet_start": SettingsManager.get("notifications_quiet_start", user_id=user_id) or "22:00",
+        "notifications_quiet_end": SettingsManager.get("notifications_quiet_end", user_id=user_id) or "07:00",
+        "notifications_context_quiet_mode_enabled": SettingsManager.get_bool("notifications_context_quiet_mode_enabled", True, user_id=user_id),
+        "notifications_daily_digest_time": SettingsManager.get("notifications_daily_digest_time", user_id=user_id) or "21:00",
+        "notifications_digest_last_sent_date": SettingsManager.get("notifications_digest_last_sent_date", user_id=user_id) or "",
+        "notifications_limit_snooze_until": SettingsManager.get("notifications_limit_snooze_until", user_id=user_id) or "",
+        "file_logging_enabled": SettingsManager.get_bool("file_logging_enabled", False, user_id=user_id),
+        "file_logging_essential_only": SettingsManager.get_bool("file_logging_essential_only", False, user_id=user_id),
+        "show_yesterday_comparison": SettingsManager.get_bool("show_yesterday_comparison", True, user_id=user_id),
+        "show_goals_in_overview": SettingsManager.get_bool("show_goals_in_overview", True, user_id=user_id),
+        "hardware_acceleration": SettingsManager.get_bool("hardware_acceleration", True, user_id=user_id),
+        "idle_detection": SettingsManager.get_bool("idle_detection", True, user_id=user_id),
+        "browser_tracking": SettingsManager.get_bool("browser_tracking", True, user_id=user_id),
+        "weekly_report_verbosity": SettingsManager.get("weekly_report_verbosity", user_id=user_id) or "standard",
+        "widget_enabled": SettingsManager.get_bool("widget_enabled", False, user_id=user_id),
+        "widget_details_hover_enabled": SettingsManager.get_bool("widget_details_hover_enabled", True, user_id=user_id),
+        "widget_theme": SettingsManager.get("widget_theme", user_id=user_id) or "normal",
+        "widget_anchor_x": SettingsManager.get("widget_anchor_x", user_id=user_id) or "0",
+        "widget_anchor_y": SettingsManager.get("widget_anchor_y", user_id=user_id) or "0"
     })
 
 
@@ -56,6 +57,7 @@ def update_settings():
     Updates application settings. 
     Accepts JSON body (POST) or Query Parameters (GET).
     """
+    user_id = get_active_user_id()
     if request.method == "POST":
         data = request.get_json() or {}
     else:
@@ -69,49 +71,49 @@ def update_settings():
 
     if "notifications" in data:
         val = "true" if str(data["notifications"]).lower() == "true" else "false"
-        SettingsManager.set("notifications", val)
+        SettingsManager.set("notifications", val, user_id=user_id)
 
     if "notifications_enable_goal_events" in data:
-        SettingsManager.set("notifications_enable_goal_events", "true" if data["notifications_enable_goal_events"] else "false")
+        SettingsManager.set("notifications_enable_goal_events", "true" if data["notifications_enable_goal_events"] else "false", user_id=user_id)
 
     if "notifications_enable_limit_events" in data:
-        SettingsManager.set("notifications_enable_limit_events", "true" if data["notifications_enable_limit_events"] else "false")
+        SettingsManager.set("notifications_enable_limit_events", "true" if data["notifications_enable_limit_events"] else "false", user_id=user_id)
 
     if "notifications_enable_test_events" in data:
-        SettingsManager.set("notifications_enable_test_events", "true" if data["notifications_enable_test_events"] else "false")
+        SettingsManager.set("notifications_enable_test_events", "true" if data["notifications_enable_test_events"] else "false", user_id=user_id)
 
     if "notifications_enable_digest_events" in data:
-        SettingsManager.set("notifications_enable_digest_events", "true" if data["notifications_enable_digest_events"] else "false")
+        SettingsManager.set("notifications_enable_digest_events", "true" if data["notifications_enable_digest_events"] else "false", user_id=user_id)
 
     if "notifications_quiet_hours_enabled" in data:
-        SettingsManager.set("notifications_quiet_hours_enabled", "true" if data["notifications_quiet_hours_enabled"] else "false")
+        SettingsManager.set("notifications_quiet_hours_enabled", "true" if data["notifications_quiet_hours_enabled"] else "false", user_id=user_id)
 
     if "notifications_quiet_start" in data:
-        SettingsManager.set("notifications_quiet_start", str(data["notifications_quiet_start"]).strip())
+        SettingsManager.set("notifications_quiet_start", str(data["notifications_quiet_start"]).strip(), user_id=user_id)
 
     if "notifications_quiet_end" in data:
-        SettingsManager.set("notifications_quiet_end", str(data["notifications_quiet_end"]).strip())
+        SettingsManager.set("notifications_quiet_end", str(data["notifications_quiet_end"]).strip(), user_id=user_id)
 
     if "notifications_context_quiet_mode_enabled" in data:
-        SettingsManager.set("notifications_context_quiet_mode_enabled", "true" if data["notifications_context_quiet_mode_enabled"] else "false")
+        SettingsManager.set("notifications_context_quiet_mode_enabled", "true" if data["notifications_context_quiet_mode_enabled"] else "false", user_id=user_id)
 
     if "notifications_daily_digest_time" in data:
-        SettingsManager.set("notifications_daily_digest_time", str(data["notifications_daily_digest_time"]).strip())
+        SettingsManager.set("notifications_daily_digest_time", str(data["notifications_daily_digest_time"]).strip(), user_id=user_id)
 
     if "notifications_digest_last_sent_date" in data:
-        SettingsManager.set("notifications_digest_last_sent_date", str(data["notifications_digest_last_sent_date"]).strip())
+        SettingsManager.set("notifications_digest_last_sent_date", str(data["notifications_digest_last_sent_date"]).strip(), user_id=user_id)
 
     if "notifications_limit_snooze_until" in data:
-        SettingsManager.set("notifications_limit_snooze_until", str(data["notifications_limit_snooze_until"]).strip())
+        SettingsManager.set("notifications_limit_snooze_until", str(data["notifications_limit_snooze_until"]).strip(), user_id=user_id)
 
     if "file_logging_enabled" in data:
         val = "true" if data["file_logging_enabled"] else "false"
-        SettingsManager.set("file_logging_enabled", val)
+        SettingsManager.set("file_logging_enabled", val, user_id=user_id)
         _file_monitor_changed = True
 
     if "file_logging_essential_only" in data:
         val = "true" if data["file_logging_essential_only"] else "false"
-        SettingsManager.set("file_logging_essential_only", val)
+        SettingsManager.set("file_logging_essential_only", val, user_id=user_id)
         _file_monitor_changed = True
 
     if _file_monitor_changed:
@@ -125,15 +127,15 @@ def update_settings():
 
     if "show_yesterday_comparison" in data:
         val = "true" if data["show_yesterday_comparison"] else "false"
-        SettingsManager.set("show_yesterday_comparison", val)
+        SettingsManager.set("show_yesterday_comparison", val, user_id=user_id)
 
     if "show_goals_in_overview" in data:
         val = "true" if data["show_goals_in_overview"] else "false"
-        SettingsManager.set("show_goals_in_overview", val)
+        SettingsManager.set("show_goals_in_overview", val, user_id=user_id)
 
     if "hardware_acceleration" in data:
         val = "true" if data["hardware_acceleration"] else "false"
-        SettingsManager.set("hardware_acceleration", val)
+        SettingsManager.set("hardware_acceleration", val, user_id=user_id)
 
         flag_file = os.path.join(
             get_base_dir(),
@@ -149,33 +151,33 @@ def update_settings():
 
     if "weekly_report_telegram" in data:
         val = "true" if data["weekly_report_telegram"] else "false"
-        SettingsManager.set("weekly_report_telegram", val)
+        SettingsManager.set("weekly_report_telegram", val, user_id=user_id)
 
     if "weekly_report_verbosity" in data:
         val = str(data["weekly_report_verbosity"]).strip().lower()
         if val not in ("compact", "standard", "detailed"):
             val = "standard"
-        SettingsManager.set("weekly_report_verbosity", val)
+        SettingsManager.set("weekly_report_verbosity", val, user_id=user_id)
     
     if "widget_enabled" in data:
         val = "true" if data["widget_enabled"] else "false"
-        SettingsManager.set("widget_enabled", val)
+        SettingsManager.set("widget_enabled", val, user_id=user_id)
 
     if "widget_details_hover_enabled" in data:
         val = "true" if data["widget_details_hover_enabled"] else "false"
-        SettingsManager.set("widget_details_hover_enabled", val)
+        SettingsManager.set("widget_details_hover_enabled", val, user_id=user_id)
 
     if "widget_theme" in data:
         val = str(data["widget_theme"]).strip().lower()
         if val not in ("normal", "transparent", "glass"):
             val = "normal"
-        SettingsManager.set("widget_theme", val)
+        SettingsManager.set("widget_theme", val, user_id=user_id)
 
     if "widget_anchor_x" in data:
-        SettingsManager.set("widget_anchor_x", str(data["widget_anchor_x"]))
+        SettingsManager.set("widget_anchor_x", str(data["widget_anchor_x"]), user_id=user_id)
 
     if "widget_anchor_y" in data:
-        SettingsManager.set("widget_anchor_y", str(data["widget_anchor_y"]))
+        SettingsManager.set("widget_anchor_y", str(data["widget_anchor_y"]), user_id=user_id)
 
     return jsonify({"status": "updated"})
 
@@ -251,7 +253,8 @@ def notification_action(action):
         try:
             from src.database.database import set_temporary_unblock
             from src.services.blocking_service import BlockingService
-            set_temporary_unblock(app_name, max(1, minutes))
+            user_id = get_active_user_id()
+            set_temporary_unblock(app_name, max(1, minutes), user_id=user_id)
             BlockingService().force_unblock(app_name)
             return f"<p>Extended {app_name} by {max(1, minutes)} minute(s).</p>", 200, {"Content-Type": "text/html; charset=utf-8"}
         except Exception as exc:
@@ -264,7 +267,8 @@ def notification_action(action):
         try:
             from src.database.database import force_reblock_app
             from src.services.blocking_service import BlockingService
-            force_reblock_app(app_name)
+            user_id = get_active_user_id()
+            force_reblock_app(app_name, user_id=user_id)
             BlockingService().force_reblock(app_name)
             return f"<p>{app_name} remains blocked.</p>", 200, {"Content-Type": "text/html; charset=utf-8"}
         except Exception as exc:

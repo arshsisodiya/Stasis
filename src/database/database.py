@@ -90,22 +90,122 @@ def init_db():
     )
     """)
     # ===============================
-    # GLOBAL SETTINGS
+    # TABLE SCHEMA RECREATION / MIGRATION FOR MULTI-ACCOUNT SCOPING
+    # ===============================
+    def check_old_constraint(table, marker):
+        try:
+            cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,))
+            row = cursor.fetchone()
+            return marker in row[0] if row and row[0] else False
+        except Exception:
+            return False
+
+    # Migrate settings
+    if check_old_constraint("settings", "PRIMARY KEY"):
+        try:
+            cursor.execute("ALTER TABLE settings RENAME TO settings_old")
+            cursor.execute("""
+                CREATE TABLE settings (
+                    key TEXT,
+                    value TEXT,
+                    user_id TEXT
+                )
+            """)
+            cursor.execute("INSERT INTO settings (key, value, user_id) SELECT key, value, user_id FROM settings_old")
+            cursor.execute("DROP TABLE settings_old")
+        except Exception as e:
+            print(f"Migration settings error: {e}")
+
+    # Migrate telegram_settings
+    if check_old_constraint("telegram_settings", "PRIMARY KEY"):
+        try:
+            cursor.execute("ALTER TABLE telegram_settings RENAME TO telegram_settings_old")
+            cursor.execute("""
+                CREATE TABLE telegram_settings (
+                    key TEXT,
+                    value TEXT,
+                    user_id TEXT
+                )
+            """)
+            cursor.execute("INSERT INTO telegram_settings (key, value, user_id) SELECT key, value, user_id FROM telegram_settings_old")
+            cursor.execute("DROP TABLE telegram_settings_old")
+        except Exception as e:
+            print(f"Migration telegram_settings error: {e}")
+
+    # Migrate app_limits
+    if check_old_constraint("app_limits", "UNIQUE"):
+        try:
+            cursor.execute("ALTER TABLE app_limits RENAME TO app_limits_old")
+            cursor.execute("""
+                CREATE TABLE app_limits (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    app_name TEXT NOT NULL,
+                    daily_limit_seconds INTEGER NOT NULL,
+                    is_enabled INTEGER DEFAULT 1,
+                    is_blocked INTEGER DEFAULT 0,
+                    blocked_at TEXT,
+                    created_at TEXT,
+                    unblock_until TEXT,
+                    user_id TEXT
+                )
+            """)
+            # Verify columns before select to handle legacy DB cases safely
+            cursor.execute("PRAGMA table_info(app_limits_old)")
+            old_cols = [c[1] for c in cursor.fetchall()]
+            
+            select_cols = ["id", "app_name", "daily_limit_seconds", "is_enabled", "is_blocked", "blocked_at", "created_at"]
+            if "unblock_until" in old_cols:
+                select_cols.append("unblock_until")
+            else:
+                select_cols.append("NULL as unblock_until")
+            if "user_id" in old_cols:
+                select_cols.append("user_id")
+            else:
+                select_cols.append("NULL as user_id")
+                
+            cursor.execute(f"""
+                INSERT INTO app_limits (id, app_name, daily_limit_seconds, is_enabled, is_blocked, blocked_at, created_at, unblock_until, user_id)
+                SELECT id, app_name, daily_limit_seconds, is_enabled, is_blocked, blocked_at, created_at, {select_cols[-2]}, {select_cols[-1]} FROM app_limits_old
+            """)
+            cursor.execute("DROP TABLE app_limits_old")
+        except Exception as e:
+            print(f"Migration app_limits error: {e}")
+
+    # Migrate blocked_apps
+    if check_old_constraint("blocked_apps", "PRIMARY KEY"):
+        try:
+            cursor.execute("ALTER TABLE blocked_apps RENAME TO blocked_apps_old")
+            cursor.execute("""
+                CREATE TABLE blocked_apps (
+                    app_name TEXT,
+                    blocked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    user_id TEXT
+                )
+            """)
+            cursor.execute("INSERT INTO blocked_apps (app_name, blocked_at, user_id) SELECT app_name, blocked_at, user_id FROM blocked_apps_old")
+            cursor.execute("DROP TABLE blocked_apps_old")
+        except Exception as e:
+            print(f"Migration blocked_apps error: {e}")
+
+    # ===============================
+    # GLOBAL SETTINGS (NEW SCHEMA)
     # ===============================
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
+        key TEXT,
+        value TEXT,
+        user_id TEXT
     )
     """)
 
     # ===============================
-    # TELEGRAM SETTINGS
+    # TELEGRAM SETTINGS (NEW SCHEMA)
     # ===============================
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS telegram_settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
+        key TEXT,
+        value TEXT,
+        user_id TEXT
     )
     """)
 
@@ -115,7 +215,6 @@ def init_db():
     try:
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='app_settings'")
         if cursor.fetchone():
-            # Migrate Telegram settings
             telegram_keys = [
                 'telegram_enabled', 'telegram_token', 'telegram_chat_id',
                 'telegram_bot_username', 'telegram_recent_commands'
@@ -125,11 +224,10 @@ def init_db():
                 row = cursor.fetchone()
                 if row:
                     cursor.execute(
-                        "INSERT OR IGNORE INTO telegram_settings (key, value) VALUES (?, ?)",
+                        "INSERT INTO telegram_settings (key, value, user_id) VALUES (?, ?, NULL)",
                         (key, row[0])
                     )
 
-            # Migrate other settings to general settings table
             general_keys = [
                 'file_logging_enabled', 'file_logging_essential_only',
                 'show_yesterday_comparison', 'hardware_acceleration'
@@ -139,11 +237,10 @@ def init_db():
                 row = cursor.fetchone()
                 if row:
                     cursor.execute(
-                        "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+                        "INSERT INTO settings (key, value, user_id) VALUES (?, ?, NULL)",
                         (key, row[0])
                     )
 
-            # Drop the old table
             cursor.execute("DROP TABLE app_settings")
     except Exception as e:
         print(f"Migration error: {e}")
@@ -152,7 +249,6 @@ def init_db():
     try:
         cursor.execute("PRAGMA table_info(daily_stats)")
         cols = [r[1] for r in cursor.fetchall()]
-        # Check the current PK columns via the index list
         cursor.execute("PRAGMA index_list(daily_stats)")
         indexes = cursor.fetchall()
         pk_cols = []
@@ -161,7 +257,6 @@ def init_db():
                 cursor.execute(f"PRAGMA index_info('{idx[1]}')") 
                 pk_cols = [r[2] for r in cursor.fetchall()]
                 break
-        # If old PK was only (date, app_name) (2 cols) migrate to 3-col PK
         if set(pk_cols) == {"date", "app_name"}:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS daily_stats_new (
@@ -190,58 +285,37 @@ def init_db():
             cursor.execute("DROP TABLE daily_stats")
             cursor.execute("ALTER TABLE daily_stats_new RENAME TO daily_stats")
     except Exception as _mig_err:
-        pass  # migration is best-effort; new installs are already correct
+        pass
 
     # ===============================
-    # APP USAGE LIMITS
+    # APP USAGE LIMITS (NEW SCHEMA)
     # ===============================
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS app_limits (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        app_name TEXT UNIQUE NOT NULL,
+        app_name TEXT NOT NULL,
         daily_limit_seconds INTEGER NOT NULL,
         is_enabled INTEGER DEFAULT 1,
         is_blocked INTEGER DEFAULT 0,
         blocked_at TEXT,
         created_at TEXT,
-        unblock_until TEXT
+        unblock_until TEXT,
+        user_id TEXT
     )
     """)
 
-    # Add unblock_until column if not exists (for backwards compatibility)
-    try:
-        cursor.execute("ALTER TABLE app_limits ADD COLUMN unblock_until TEXT")
-    except sqlite3.OperationalError:
-        pass
-
-    # Add blocked-state columns if not present (migration-safe)
-    try:
-        cursor.execute("ALTER TABLE app_limits ADD COLUMN is_blocked INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        cursor.execute("ALTER TABLE app_limits ADD COLUMN blocked_at TEXT")
-    except sqlite3.OperationalError:
-        pass
-
-    # Add exe_path column to activity_logs if not exists
-    try:
-        cursor.execute("ALTER TABLE activity_logs ADD COLUMN exe_path TEXT")
-    except sqlite3.OperationalError:
-        pass
-
     # ===============================
-    # BLOCKED APPS
+    # BLOCKED APPS (NEW SCHEMA)
     # ===============================
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS blocked_apps (
-        app_name TEXT PRIMARY KEY,
-        blocked_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        app_name TEXT,
+        blocked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        user_id TEXT
     )
     """)
 
     # Backfill legacy blocked_apps state into app_limits.is_blocked once per startup.
-    # This keeps existing user data intact while moving to app_limits as the source of truth.
     try:
         cursor.execute("""
             UPDATE app_limits
@@ -249,15 +323,18 @@ def init_db():
                 blocked_at = COALESCE(blocked_at, (
                     SELECT blocked_at
                     FROM blocked_apps b
-                    WHERE b.app_name = app_limits.app_name
+                    WHERE b.app_name = app_limits.app_name AND (b.user_id = app_limits.user_id OR (b.user_id IS NULL AND app_limits.user_id IS NULL))
                 ))
-            WHERE app_name IN (SELECT app_name FROM blocked_apps)
+            WHERE EXISTS (
+                SELECT 1 FROM blocked_apps b
+                WHERE b.app_name = app_limits.app_name AND (b.user_id = app_limits.user_id OR (b.user_id IS NULL AND app_limits.user_id IS NULL))
+            )
         """)
     except Exception:
         pass
 
     # ===============================
-    # INDEXES (Performance)
+    # INDEXES (Performance & Uniqueness)
     # ===============================
 
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_time ON activity_logs(timestamp)")
@@ -268,6 +345,19 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_limit_app ON app_limits(app_name)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_limit_blocked ON app_limits(is_blocked)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blocked_app ON blocked_apps(app_name)")
+
+    # Partial indexes for multi-account uniqueness
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_app_limits_user ON app_limits(app_name, user_id) WHERE user_id IS NOT NULL")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_app_limits_guest ON app_limits(app_name) WHERE user_id IS NULL")
+
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_blocked_apps_user ON blocked_apps(app_name, user_id) WHERE user_id IS NOT NULL")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_blocked_apps_guest ON blocked_apps(app_name) WHERE user_id IS NULL")
+
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_user ON settings(key, user_id) WHERE user_id IS NOT NULL")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_guest ON settings(key) WHERE user_id IS NULL")
+
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_telegram_settings_user ON telegram_settings(key, user_id) WHERE user_id IS NOT NULL")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_telegram_settings_guest ON telegram_settings(key) WHERE user_id IS NULL")
 
     # ===============================
     # GOALS & TARGETS
@@ -318,7 +408,7 @@ def init_db():
 
     # ===============================
     # SYSTEM LIFECYCLE (Unified Tracking)
-    # =============-==================
+    # =================================
     # Merged functionality: Tracks both system uptime and tracking events.
     cursor.execute("DROP TABLE IF EXISTS app_sessions")
 
@@ -403,17 +493,29 @@ def set_app_limit(app_name: str, limit_seconds: int, user_id: str = None):
 
     now = datetime.now().isoformat()
 
-    cursor.execute("""
-        INSERT INTO app_limits
-        (app_name, daily_limit_seconds, is_enabled, created_at, user_id)
-        VALUES (?, ?, 1, ?, ?)
-        ON CONFLICT(app_name)
-        DO UPDATE SET daily_limit_seconds = excluded.daily_limit_seconds,
-                      user_id = COALESCE(excluded.user_id, app_limits.user_id)
-    """, (app_name, limit_seconds, now, user_id))
-
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute("BEGIN")
+        # Python-level transaction-safe upsert: delete existing matching limit first
+        if user_id is not None:
+            cursor.execute("DELETE FROM app_limits WHERE app_name = ? AND user_id = ?", (app_name, user_id))
+            cursor.execute("""
+                INSERT INTO app_limits
+                (app_name, daily_limit_seconds, is_enabled, created_at, user_id)
+                VALUES (?, ?, 1, ?, ?)
+            """, (app_name, limit_seconds, now, user_id))
+        else:
+            cursor.execute("DELETE FROM app_limits WHERE app_name = ? AND user_id IS NULL", (app_name,))
+            cursor.execute("""
+                INSERT INTO app_limits
+                (app_name, daily_limit_seconds, is_enabled, created_at, user_id)
+                VALUES (?, ?, 1, ?, NULL)
+            """, (app_name, limit_seconds, now))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 
 def get_all_limits(user_id: str = None):
@@ -452,7 +554,7 @@ def get_limit_for_app(app_name: str, user_id: str = None):
         cursor.execute("""
             SELECT daily_limit_seconds, is_enabled
             FROM app_limits
-            WHERE app_name = ?
+            WHERE app_name = ? AND user_id IS NULL
         """, (app_name,))
 
     result = cursor.fetchone()
@@ -460,71 +562,126 @@ def get_limit_for_app(app_name: str, user_id: str = None):
     return result
 
 
-def toggle_limit(app_name: str, enabled: bool):
+def toggle_limit(app_name: str, enabled: bool, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
 
-    if enabled:
-        cursor.execute("""
-            UPDATE app_limits
-            SET is_enabled = 1
-            WHERE app_name = ?
-        """, (app_name,))
-    else:
-        cursor.execute("""
-            UPDATE app_limits
-            SET is_enabled = 0,
-                is_blocked = 0,
-                blocked_at = NULL,
-                unblock_until = NULL
-            WHERE app_name = ?
-        """, (app_name,))
-        cursor.execute("DELETE FROM blocked_apps WHERE app_name = ?", (app_name,))
-
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute("BEGIN")
+        if enabled:
+            if user_id is not None:
+                cursor.execute("""
+                    UPDATE app_limits
+                    SET is_enabled = 1
+                    WHERE app_name = ? AND user_id = ?
+                """, (app_name, user_id))
+            else:
+                cursor.execute("""
+                    UPDATE app_limits
+                    SET is_enabled = 1
+                    WHERE app_name = ? AND user_id IS NULL
+                """, (app_name,))
+        else:
+            if user_id is not None:
+                cursor.execute("""
+                    UPDATE app_limits
+                    SET is_enabled = 0,
+                        is_blocked = 0,
+                        blocked_at = NULL,
+                        unblock_until = NULL
+                    WHERE app_name = ? AND user_id = ?
+                """, (app_name, user_id))
+                cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id = ?", (app_name, user_id))
+            else:
+                cursor.execute("""
+                    UPDATE app_limits
+                    SET is_enabled = 0,
+                        is_blocked = 0,
+                        blocked_at = NULL,
+                        unblock_until = NULL
+                    WHERE app_name = ? AND user_id IS NULL
+                """, (app_name,))
+                cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id IS NULL", (app_name,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 
 # ==========================================================
 # ================= BLOCK FUNCTIONS ========================
 # ==========================================================
 
-def add_blocked_app(app_name: str):
+def add_blocked_app(app_name: str, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
 
     now = datetime.now().isoformat()
 
-    cursor.execute("""
-        UPDATE app_limits
-        SET is_blocked = 1,
-            blocked_at = ?
-        WHERE app_name = ?
-    """, (now, app_name))
+    try:
+        cursor.execute("BEGIN")
+        if user_id is not None:
+            cursor.execute("""
+                UPDATE app_limits
+                SET is_blocked = 1,
+                    blocked_at = ?
+                WHERE app_name = ? AND user_id = ?
+            """, (now, app_name, user_id))
+            cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id = ?", (app_name, user_id))
+            cursor.execute("""
+                INSERT INTO blocked_apps (app_name, blocked_at, user_id)
+                VALUES (?, ?, ?)
+            """, (app_name, now, user_id))
+        else:
+            cursor.execute("""
+                UPDATE app_limits
+                SET is_blocked = 1,
+                    blocked_at = ?
+                WHERE app_name = ? AND user_id IS NULL
+            """, (now, app_name))
+            cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id IS NULL", (app_name,))
+            cursor.execute("""
+                INSERT INTO blocked_apps (app_name, blocked_at, user_id)
+                VALUES (?, ?, NULL)
+            """, (app_name, now))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
-    # Keep legacy table in sync for backwards compatibility.
-    cursor.execute("""
-        INSERT OR REPLACE INTO blocked_apps (app_name, blocked_at)
-        VALUES (?, ?)
-    """, (app_name, now))
 
-    conn.commit()
-    conn.close()
-
-
-def remove_blocked_app(app_name: str):
+def remove_blocked_app(app_name: str, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        UPDATE app_limits
-        SET is_blocked = 0,
-            blocked_at = NULL
-        WHERE app_name = ?
-    """, (app_name,))
-    cursor.execute("DELETE FROM blocked_apps WHERE app_name = ?", (app_name,))
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute("BEGIN")
+        if user_id is not None:
+            cursor.execute("""
+                UPDATE app_limits
+                SET is_blocked = 0,
+                    blocked_at = NULL
+                WHERE app_name = ? AND user_id = ?
+            """, (app_name, user_id))
+            cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id = ?", (app_name, user_id))
+        else:
+            cursor.execute("""
+                UPDATE app_limits
+                SET is_blocked = 0,
+                    blocked_at = NULL
+                WHERE app_name = ? AND user_id IS NULL
+            """, (app_name,))
+            cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id IS NULL", (app_name,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 
 def get_blocked_apps(user_id: str = None):
@@ -572,15 +729,24 @@ def get_blocked_app_names(user_id: str = None):
     conn.close()
     return [r[0] for r in rows]
 
-def delete_app_limit(app_name: str):
+def delete_app_limit(app_name: str, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("DELETE FROM app_limits WHERE app_name = ?", (app_name,))
-    cursor.execute("DELETE FROM blocked_apps WHERE app_name = ?", (app_name,))
-
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute("BEGIN")
+        if user_id is not None:
+            cursor.execute("DELETE FROM app_limits WHERE app_name = ? AND user_id = ?", (app_name, user_id))
+            cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id = ?", (app_name, user_id))
+        else:
+            cursor.execute("DELETE FROM app_limits WHERE app_name = ? AND user_id IS NULL", (app_name,))
+            cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id IS NULL", (app_name,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 # ==========================================================
 # ================= USAGE HELPER ===========================
@@ -618,50 +784,80 @@ def get_today_usage(app_name: str, user_id: str = None):
     return result[0] if result[0] else 0
 
 
-def set_temporary_unblock(app_name: str, minutes: int):
+def set_temporary_unblock(app_name: str, minutes: int, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
 
     unblock_until = datetime.now() + timedelta(minutes=minutes)
 
-    cursor.execute("""
-        UPDATE app_limits
-        SET unblock_until = ?,
-            is_blocked = 0,
-            blocked_at = NULL
-        WHERE app_name = ?
-    """, (unblock_until.isoformat(), app_name))
+    try:
+        cursor.execute("BEGIN")
+        if user_id is not None:
+            cursor.execute("""
+                UPDATE app_limits
+                SET unblock_until = ?,
+                    is_blocked = 0,
+                    blocked_at = NULL
+                WHERE app_name = ? AND user_id = ?
+            """, (unblock_until.isoformat(), app_name, user_id))
+            cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id = ?", (app_name, user_id))
+        else:
+            cursor.execute("""
+                UPDATE app_limits
+                SET unblock_until = ?,
+                    is_blocked = 0,
+                    blocked_at = NULL
+                WHERE app_name = ? AND user_id IS NULL
+            """, (unblock_until.isoformat(), app_name))
+            cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id IS NULL", (app_name,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
-    cursor.execute(
-        "DELETE FROM blocked_apps WHERE app_name = ?",
-        (app_name,)
-    )
 
-    conn.commit()
-    conn.close()
-
-
-def force_reblock_app(app_name: str):
+def force_reblock_app(app_name: str, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
 
     now_iso = datetime.now().isoformat()
 
-    cursor.execute("""
-        UPDATE app_limits
-        SET unblock_until = NULL,
-            is_blocked = 1,
-            blocked_at = ?
-        WHERE app_name = ?
-    """, (now_iso, app_name))
-
-    cursor.execute("""
-        INSERT OR REPLACE INTO blocked_apps (app_name, blocked_at)
-        VALUES (?, ?)
-    """, (app_name, now_iso))
-
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute("BEGIN")
+        if user_id is not None:
+            cursor.execute("""
+                UPDATE app_limits
+                SET unblock_until = NULL,
+                    is_blocked = 1,
+                    blocked_at = ?
+                WHERE app_name = ? AND user_id = ?
+            """, (now_iso, app_name, user_id))
+            cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id = ?", (app_name, user_id))
+            cursor.execute("""
+                INSERT INTO blocked_apps (app_name, blocked_at, user_id)
+                VALUES (?, ?, ?)
+            """, (app_name, now_iso, user_id))
+        else:
+            cursor.execute("""
+                UPDATE app_limits
+                SET unblock_until = NULL,
+                    is_blocked = 1,
+                    blocked_at = ?
+                WHERE app_name = ? AND user_id IS NULL
+            """, (now_iso, app_name))
+            cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id IS NULL", (app_name,))
+            cursor.execute("""
+                INSERT INTO blocked_apps (app_name, blocked_at, user_id)
+                VALUES (?, ?, NULL)
+            """, (app_name, now_iso))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 def clear_expired_unblocks():
     """
@@ -894,7 +1090,7 @@ def log_goal_progress(goal_id: int, date: str, actual_value: float, target_value
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO goal_logs (goal_id, date, actual_value, target_value, met, user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(goal_id, date)
         DO UPDATE SET actual_value = excluded.actual_value, target_value = excluded.target_value, met = excluded.met,
                       user_id = COALESCE(excluded.user_id, goal_logs.user_id)
@@ -959,30 +1155,46 @@ def log_limit_event(app_name: str, event_type: str, old_value: int = None, new_v
     conn.close()
 
 
-def get_limit_events_range(start_date: str, end_date: str):
+def get_limit_events_range(start_date: str, end_date: str, user_id: str = None):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT app_name, event_type, old_value, new_value, timestamp, date
-        FROM limit_events
-        WHERE date >= ? AND date <= ?
-        ORDER BY timestamp
-    """, (start_date, end_date))
+    if user_id is not None:
+        cursor.execute("""
+            SELECT app_name, event_type, old_value, new_value, timestamp, date
+            FROM limit_events
+            WHERE date >= ? AND date <= ? AND (user_id = ? OR user_id IS NULL)
+            ORDER BY timestamp
+        """, (start_date, end_date, user_id))
+    else:
+        cursor.execute("""
+            SELECT app_name, event_type, old_value, new_value, timestamp, date
+            FROM limit_events
+            WHERE date >= ? AND date <= ? AND user_id IS NULL
+            ORDER BY timestamp
+        """, (start_date, end_date))
     rows = cursor.fetchall()
     conn.close()
     return rows
 
 
-def get_limit_events_summary(start_date: str, end_date: str):
+def get_limit_events_summary(start_date: str, end_date: str, user_id: str = None):
     """Returns per-app summary of limit hits and edits in a date range."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT app_name, event_type, COUNT(*) as cnt
-        FROM limit_events
-        WHERE date >= ? AND date <= ?
-        GROUP BY app_name, event_type
-    """, (start_date, end_date))
+    if user_id is not None:
+        cursor.execute("""
+            SELECT app_name, event_type, COUNT(*) as cnt
+            FROM limit_events
+            WHERE date >= ? AND date <= ? AND (user_id = ? OR user_id IS NULL)
+            GROUP BY app_name, event_type
+        """, (start_date, end_date, user_id))
+    else:
+        cursor.execute("""
+            SELECT app_name, event_type, COUNT(*) as cnt
+            FROM limit_events
+            WHERE date >= ? AND date <= ? AND user_id IS NULL
+            GROUP BY app_name, event_type
+        """, (start_date, end_date))
     rows = cursor.fetchall()
     conn.close()
     summary = {}

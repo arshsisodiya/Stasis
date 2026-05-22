@@ -290,15 +290,9 @@ class AuthManager:
 
     def _sync_orphaned_data(self, cursor, new_user_id):
         """
-        Assign any telemetry recorded with user_id = NULL to the active user.
-
-        Simple tables (activity_logs, file_logs, etc.) can be updated directly.
-        daily_stats has a 4-column UNIQUE PK (date, app_name, main_category, user_id),
-        so we must merge counts into any existing row before removing the NULL row —
-        otherwise a plain UPDATE would violate the constraint when a real-user-id row
-        already exists for the same key.
+        Assign any telemetry and configurations recorded with user_id = NULL to the active user.
         """
-        # Tables where a simple UPDATE is safe (no composite UNIQUE with user_id)
+        # 1. Simple tables (activity_logs, file_logs, limit_events, system_lifecycle)
         simple_tables = ["activity_logs", "file_logs", "limit_events", "system_lifecycle"]
         for table in simple_tables:
             try:
@@ -309,7 +303,119 @@ class AuthManager:
             except sqlite3.OperationalError:
                 pass
 
-        # daily_stats: composite PK requires merge-then-delete for conflicting rows
+        # 2. Settings & Telegram Settings: merge then migrate safely
+        for table in ["settings", "telegram_settings"]:
+            try:
+                # Find guest rows that collide with existing user rows
+                cursor.execute(f"""
+                    SELECT key FROM {table} n
+                    WHERE n.user_id IS NULL
+                      AND EXISTS (
+                          SELECT 1 FROM {table} e
+                          WHERE e.key = n.key AND e.user_id = ?
+                      )
+                """, (new_user_id,))
+                colliding_keys = [r[0] for r in cursor.fetchall()]
+                
+                # For colliding keys, delete the guest settings (prefer user's existing settings)
+                for key in colliding_keys:
+                    cursor.execute(f"DELETE FROM {table} WHERE key = ? AND user_id IS NULL", (key,))
+                
+                # Migrate remaining non-colliding guest settings to the user
+                cursor.execute(
+                    f"UPDATE {table} SET user_id = ? WHERE user_id IS NULL",
+                    (new_user_id,)
+                )
+            except sqlite3.OperationalError:
+                pass
+
+        # 3. App Limits & Blocked Apps: merge then migrate safely
+        try:
+            # app_limits collisions
+            cursor.execute("""
+                SELECT app_name FROM app_limits n
+                WHERE n.user_id IS NULL
+                  AND EXISTS (
+                      SELECT 1 FROM app_limits e
+                      WHERE e.app_name = n.app_name AND e.user_id = ?
+                  )
+            """, (new_user_id,))
+            colliding_limits = [r[0] for r in cursor.fetchall()]
+            
+            for app in colliding_limits:
+                cursor.execute("DELETE FROM app_limits WHERE app_name = ? AND user_id IS NULL", (app,))
+                
+            cursor.execute(
+                "UPDATE app_limits SET user_id = ? WHERE user_id IS NULL",
+                (new_user_id,)
+            )
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            # blocked_apps collisions
+            cursor.execute("""
+                SELECT app_name FROM blocked_apps n
+                WHERE n.user_id IS NULL
+                  AND EXISTS (
+                      SELECT 1 FROM blocked_apps e
+                      WHERE e.app_name = n.app_name AND e.user_id = ?
+                  )
+            """, (new_user_id,))
+            colliding_blocked = [r[0] for r in cursor.fetchall()]
+            
+            for app in colliding_blocked:
+                cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id IS NULL", (app,))
+                
+            cursor.execute(
+                "UPDATE blocked_apps SET user_id = ? WHERE user_id IS NULL",
+                (new_user_id,)
+            )
+        except sqlite3.OperationalError:
+            pass
+
+        # 4. Goals & Goal Logs: merge goals and migrate goal logs carefully
+        try:
+            # Find goals by goal_type to handle conflicts
+            cursor.execute("SELECT id, goal_type FROM goals WHERE user_id IS NULL")
+            guest_goals = cursor.fetchall()
+            
+            for g_id, g_type in guest_goals:
+                # Check if user already has a goal of this type
+                cursor.execute("SELECT id FROM goals WHERE goal_type = ? AND user_id = ?", (g_type, new_user_id))
+                user_goal = cursor.fetchone()
+                
+                if user_goal:
+                    user_goal_id = user_goal[0]
+                    # Collision! Migrate guest goal_logs to the existing user_goal_id
+                    cursor.execute("SELECT date FROM goal_logs WHERE goal_id = ?", (g_id,))
+                    guest_log_dates = [r[0] for r in cursor.fetchall()]
+                    
+                    for date in guest_log_dates:
+                        # Check if user goal already has a log on this date
+                        cursor.execute("SELECT 1 FROM goal_logs WHERE goal_id = ? AND date = ?", (user_goal_id, date))
+                        if cursor.fetchone():
+                            # Collision in logs, delete the guest log
+                            cursor.execute("DELETE FROM goal_logs WHERE goal_id = ? AND date = ?", (g_id, date))
+                        else:
+                            # Update guest log to match user goal_id and set user_id
+                            cursor.execute("""
+                                UPDATE goal_logs 
+                                SET goal_id = ?, user_id = ? 
+                                WHERE goal_id = ? AND date = ?
+                            """, (user_goal_id, new_user_id, g_id, date))
+                    
+                    # Delete guest goal
+                    cursor.execute("DELETE FROM goals WHERE id = ?", (g_id,))
+                else:
+                    # No collision! Simply update goal to the user
+                    cursor.execute("UPDATE goals SET user_id = ? WHERE id = ?", (new_user_id, g_id))
+                    # And set user_id for all goal_logs belonging to this goal
+                    cursor.execute("UPDATE goal_logs SET user_id = ? WHERE goal_id = ?", (new_user_id, g_id))
+        except sqlite3.OperationalError:
+            pass
+
+        # 5. daily_stats: composite PK requires merge-then-delete for conflicting rows
         try:
             # Phase 1: find NULL rows that would collide with an existing user row
             cursor.execute("""

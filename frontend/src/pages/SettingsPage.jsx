@@ -1536,16 +1536,28 @@ function TypedConfirmModal({ title, subtitle, bullets, confirmWord, confirmLabel
 // SECURITY SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 function SecuritySection({ push }) {
-  // "clearData" | "factoryReset" | null
+  const { token } = useAuth();
+  // "clearData" | "factoryReset" | "exportBackup" | "restoreBackup" | null
   const [activeModal, setActiveModal] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Export states
+  const [exportPassword, setExportPassword] = useState("");
+
+  // Restore states
+  const [restoreFile, setRestoreFile] = useState(null);
+  const [restorePassword, setRestorePassword] = useState("");
+  const fileInputRef = useRef(null);
 
   const handleClearData = async () => {
     setLoading(true);
     try {
       const r = await fetch(`${BASE_URL}/api/clear-data`, {
         method: "DELETE",
-        headers: { "X-Confirm-Clear": "true" },
+        headers: { 
+          "X-Confirm-Clear": "true",
+          "Authorization": `Bearer ${token}`
+        },
       });
       const d = await r.json();
       if (d.success) {
@@ -1565,7 +1577,10 @@ function SecuritySection({ push }) {
     try {
       const r = await fetch(`${BASE_URL}/api/factory-reset`, {
         method: "DELETE",
-        headers: { "X-Confirm-Reset": "RESET_ALL" },
+        headers: { 
+          "X-Confirm-Reset": "RESET_ALL",
+          "Authorization": `Bearer ${token}`
+        },
       });
       const d = await r.json();
       if (d.success) {
@@ -1578,6 +1593,82 @@ function SecuritySection({ push }) {
       push("Network error — is the API server running?", "error");
     }
     setLoading(false);
+  };
+
+  const handleExportBackup = async () => {
+    if (!exportPassword.trim()) {
+      push("Please enter a password to secure your backup.", "warn");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/backup/export`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ password: exportPassword })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || "Export failed");
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `stasis_backup_${new Date().toISOString().split('T')[0]}.stasisbak`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      push("Backup file generated and downloaded successfully", "success");
+      setActiveModal(null);
+      setExportPassword("");
+    } catch (e) {
+      push(e.message || "Export failed", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    if (!restoreFile) {
+      push("Please select a .stasisbak backup file to restore.", "warn");
+      return;
+    }
+    if (!restorePassword.trim()) {
+      push("Please enter the decryption password.", "warn");
+      return;
+    }
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", restoreFile);
+      formData.append("password", restorePassword);
+
+      const res = await fetch(`${BASE_URL}/api/backup/import`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        },
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok && data.status === "success") {
+        push("Telemetry and settings restored successfully!", "success");
+        setActiveModal(null);
+        setRestoreFile(null);
+        setRestorePassword("");
+      } else {
+        throw new Error(data.message || "Restore failed");
+      }
+    } catch (e) {
+      push(e.message || "Restore failed", "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -1599,6 +1690,7 @@ function SecuritySection({ push }) {
           </div>
         </div>
       </Card>
+      
       <Card>
         <SectionLabel>Access Control</SectionLabel>
         <SettingRow label="Require password to access settings" control={<Toggle on={false} onChange={() => { }} />} />
@@ -1606,6 +1698,37 @@ function SecuritySection({ push }) {
         <SettingRow borderless label="Log access attempts" control={<Toggle on={true} onChange={() => { }} />} />
       </Card>
 
+      {/* Backup & Restore */}
+      <Card accent={C.blue}>
+        <div style={{ display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 12 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 12, background: C.blueGlow, border: "1px solid rgba(96,165,250,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>📦</div>
+          <div style={{ flex: 1 }}>
+            <SectionLabel>Backup &amp; Restore</SectionLabel>
+            <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.55 }}>
+              Securely export your telemetry, limits, goals, and configuration to a portable password-encrypted backup file, or restore it on any device.
+            </div>
+          </div>
+        </div>
+        <SettingRow 
+          label="Export Encrypted Backup" 
+          desc="Generate a secure, device-portable backup file (.stasisbak) encrypted with a custom password."
+          control={
+            <Btn onClick={() => { setActiveModal("exportBackup"); setExportPassword(""); }} variant="secondary" size="sm">
+              Export
+            </Btn>
+          }
+        />
+        <SettingRow 
+          borderless
+          label="Restore from Backup" 
+          desc="Decrypt and import data from a .stasisbak backup. This will safely overwrite your active profile settings and logs."
+          control={
+            <Btn onClick={() => { setActiveModal("restoreBackup"); setRestorePassword(""); setRestoreFile(null); }} variant="secondary" size="sm">
+              Restore
+            </Btn>
+          }
+        />
+      </Card>
 
       {/* ── DANGER ZONE ── extra top margin + labeled header */}
       <div style={{ marginTop: 16 }}>
@@ -1680,6 +1803,110 @@ function SecuritySection({ push }) {
         </Card>
       </div>
 
+      {/* ── EXPORT BACKUP MODAL ── */}
+      {activeModal === "exportBackup" && (
+        <Modal onClose={() => setActiveModal(null)} maxW={480}>
+          <div style={{ padding: "32px 28px 24px" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 18, margin: "0 auto 16px", background: "rgba(96,165,250,0.1)", border: "1px solid rgba(96,165,250,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>📦</div>
+            <h3 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, fontWeight: 400, color: C.text, textAlign: "center", marginBottom: 6 }}>Export Encrypted Backup</h3>
+            <p style={{ fontSize: 13, color: C.textSub, textAlign: "center", lineHeight: 1.65, marginBottom: 20 }}>
+              Specify a password to encrypt your backup. <strong>This password cannot be reset or recovered.</strong> You will need it to restore your data on any device.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
+              <InputField 
+                label="Decryption Password" 
+                secret 
+                value={exportPassword} 
+                onChange={setExportPassword} 
+                placeholder="Enter a secure password" 
+                hint="Used to derive a PBKDF2 key for secure AES encryption."
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn onClick={() => setActiveModal(null)} style={{ flex: 1 }} disabled={loading}>Cancel</Btn>
+              <Btn onClick={handleExportBackup} variant="primary" loading={loading} style={{ flex: 1 }}>
+                Export Backup File
+              </Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── RESTORE BACKUP MODAL ── */}
+      {activeModal === "restoreBackup" && (
+        <Modal onClose={() => setActiveModal(null)} maxW={480}>
+          <div style={{ padding: "32px 28px 24px" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 18, margin: "0 auto 16px", background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>📥</div>
+            <h3 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, fontWeight: 400, color: C.text, textAlign: "center", marginBottom: 6 }}>Restore Encrypted Backup</h3>
+            <p style={{ fontSize: 13, color: C.textSub, textAlign: "center", lineHeight: 1.65, marginBottom: 20 }}>
+              Select a <code>.stasisbak</code> backup file and provide the encryption password.
+              <span style={{ color: C.yellow, fontWeight: 500 }}> Warning: This will completely replace your current telemetry and configuration.</span>
+            </p>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
+              {/* Custom Styled Drag-and-Drop / Browse Area */}
+              <div 
+                style={{
+                  border: `1.5px dashed ${restoreFile ? "rgba(74,222,128,0.4)" : "rgba(255,255,255,0.15)"}`,
+                  borderRadius: 12,
+                  padding: "24px 16px",
+                  textAlign: "center",
+                  cursor: "pointer",
+                  background: restoreFile ? "rgba(74,222,128,0.02)" : "rgba(255,255,255,0.01)",
+                  transition: "all 0.2s",
+                  boxShadow: restoreFile ? "0 0 16px rgba(74,222,128,0.05)" : "none"
+                }} 
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  accept=".stasisbak" 
+                  onChange={e => setRestoreFile(e.target.files?.[0] || null)} 
+                  style={{ display: "none" }} 
+                />
+                <div style={{ fontSize: 24, marginBottom: 8 }}>{restoreFile ? "📄" : "📂"}</div>
+                {restoreFile ? (
+                  <div>
+                    <div style={{ color: C.green, fontSize: 13, fontWeight: 600 }}>{restoreFile.name}</div>
+                    <div style={{ color: C.textMuted, fontSize: 11, marginTop: 4 }}>
+                      {(restoreFile.size / 1024).toFixed(1)} KB · Ready to restore
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ color: C.text, fontSize: 13, fontWeight: 500 }}>Select Backup File</div>
+                    <div style={{ color: C.textMuted, fontSize: 11, marginTop: 4 }}>
+                      Click to browse your device files
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <InputField 
+                label="Decryption Password" 
+                secret 
+                value={restorePassword} 
+                onChange={setRestorePassword} 
+                placeholder="Enter backup encryption password" 
+              />
+            </div>
+            
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn onClick={() => setActiveModal(null)} style={{ flex: 1 }} disabled={loading}>Cancel</Btn>
+              <Btn 
+                onClick={handleRestoreBackup} 
+                variant="primary" 
+                loading={loading} 
+                disabled={!restoreFile || !restorePassword.trim()}
+                style={{ flex: 1 }}
+              >
+                Decrypt &amp; Restore
+              </Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* ── CLEAR DATA MODAL ── */}
       {activeModal === "clearData" && (

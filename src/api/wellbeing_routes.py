@@ -93,3 +93,4 @@ import src.api.danger_routes
 import src.api.spark_routes
 import src.api.goals_routes
 import src.api.report_routes
+import src.api.backup_routes

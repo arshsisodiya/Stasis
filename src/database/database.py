@@ -977,46 +977,186 @@ def get_auto_delete_days():
 
     return int(value)
 
-def delete_activity_older_than(days: int):
+def delete_expired_telemetry(user_id=None, detailed_days_override=None, stats_days_override=None):
     """
-    Delete activity records older than N days across all log tables.
+    Delete activity records older than N days for detailed logs and M days for daily stats,
+    filtering strictly by user_id if provided.
     """
+    from src.config.settings_manager import SettingsManager
+
+    # Resolve active user_id if not passed
+    if user_id is None:
+        try:
+            from src.api.auth_routes import _app_controller
+            if _app_controller and _app_controller.auth_manager:
+                user_id = _app_controller.auth_manager.active_user_id
+        except Exception:
+            pass
+
+    # Read detailed logs retention days (auto_delete_days)
+    detailed_days = None
+    if detailed_days_override is not None:
+        detailed_days = detailed_days_override
+    else:
+        detailed_val = SettingsManager.get("auto_delete_days", user_id=user_id)
+        if detailed_val and detailed_val != "forever":
+            try:
+                detailed_days = int(detailed_val)
+            except ValueError:
+                pass
+
+    # Read stats retention days (auto_delete_stats_days)
+    stats_days = None
+    if stats_days_override is not None:
+        stats_days = stats_days_override
+    else:
+        stats_val = SettingsManager.get("auto_delete_stats_days", user_id=user_id)
+        if stats_val and stats_val != "forever":
+            try:
+                stats_days = int(stats_val)
+            except ValueError:
+                pass
 
     conn = get_connection()
     cursor = conn.cursor()
 
-    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-    cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    try:
+        # 1. Purge raw activity logs and file logs if detailed_days is set
+        if detailed_days is not None and detailed_days > 0:
+            cutoff = (datetime.now() - timedelta(days=detailed_days)).isoformat()
+            
+            if user_id is not None:
+                cursor.execute("""
+                    DELETE FROM activity_logs
+                    WHERE timestamp < ? AND user_id = ?
+                """, (cutoff, user_id))
+                cursor.execute("""
+                    DELETE FROM file_logs
+                    WHERE timestamp < ? AND user_id = ?
+                """, (cutoff, user_id))
+            else:
+                cursor.execute("""
+                    DELETE FROM activity_logs
+                    WHERE timestamp < ? AND user_id IS NULL
+                """, (cutoff,))
+                cursor.execute("""
+                    DELETE FROM file_logs
+                    WHERE timestamp < ? AND user_id IS NULL
+                """, (cutoff,))
 
-    cursor.execute("""
-        DELETE FROM activity_logs
-        WHERE timestamp < ?
-    """, (cutoff,))
+        # 2. Purge daily stats, limit events, and goal logs if stats_days is set
+        if stats_days is not None and stats_days > 0:
+            cutoff_date = (datetime.now() - timedelta(days=stats_days)).strftime("%Y-%m-%d")
+            cutoff_iso = (datetime.now() - timedelta(days=stats_days)).isoformat()
+            
+            if user_id is not None:
+                cursor.execute("""
+                    DELETE FROM daily_stats
+                    WHERE date < ? AND user_id = ?
+                """, (cutoff_date, user_id))
+                cursor.execute("""
+                    DELETE FROM limit_events
+                    WHERE timestamp < ? AND user_id = ?
+                """, (cutoff_iso, user_id))
+                cursor.execute("""
+                    DELETE FROM goal_logs
+                    WHERE date < ? AND user_id = ?
+                """, (cutoff_date, user_id))
+            else:
+                cursor.execute("""
+                    DELETE FROM daily_stats
+                    WHERE date < ? AND user_id IS NULL
+                """, (cutoff_date,))
+                cursor.execute("""
+                    DELETE FROM limit_events
+                    WHERE timestamp < ? AND user_id IS NULL
+                """, (cutoff_iso,))
+                cursor.execute("""
+                    DELETE FROM goal_logs
+                    WHERE date < ? AND user_id IS NULL
+                """, (cutoff_date,))
 
-    cursor.execute("""
-        DELETE FROM daily_stats
-        WHERE date < ?
-    """, (cutoff_date,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
-    cursor.execute("""
-        DELETE FROM file_logs
-        WHERE timestamp < ?
-    """, (cutoff,))
+def optimize_database():
+    """
+    Run VACUUM and ANALYZE on SQLite database to release unused space and optimize queries.
+    Saves last optimized timestamp and returns reclaimed size.
+    """
+    from src.config.settings_manager import SettingsManager
 
-    conn.commit()
-    conn.close()
+    db_path = DB_PATH
+    size_before = 0.0
+    if os.path.exists(db_path):
+        size_before = os.path.getsize(db_path)
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        # SQLite VACUUM defragments the database file
+        cursor.execute("VACUUM")
+        # ANALYZE optimizes query planner indices
+        cursor.execute("ANALYZE")
+    finally:
+        conn.close()
+
+    size_after = 0.0
+    if os.path.exists(db_path):
+        size_after = os.path.getsize(db_path)
+
+    reclaimed_bytes = max(0, size_before - size_after)
+    reclaimed_mb = round(reclaimed_bytes / (1024 * 1024), 2)
+    new_size_mb = round(size_after / (1024 * 1024), 2)
+
+    # Save the last optimized timestamp
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        SettingsManager.set("database_last_optimized", now_str)
+    except Exception:
+        pass
+
+    return {
+        "reclaimed_mb": reclaimed_mb,
+        "new_size_mb": new_size_mb,
+        "last_optimized": now_str
+    }
+
+def get_database_file_info():
+    """
+    Return current database file size in MB and last optimized timestamp.
+    """
+    from src.config.settings_manager import SettingsManager
+
+    db_path = DB_PATH
+    size_mb = 0.0
+    if os.path.exists(db_path):
+        size_bytes = os.path.getsize(db_path)
+        size_mb = round(size_bytes / (1024 * 1024), 2)
+
+    last_optimized = SettingsManager.get("database_last_optimized") or ""
+
+    return {
+        "size_mb": size_mb,
+        "last_optimized": last_optimized
+    }
+
+def delete_activity_older_than(days: int):
+    """
+    Delete activity records older than N days across all log tables (compatibility fallback).
+    """
+    delete_expired_telemetry(detailed_days_override=days, stats_days_override=days)
 
 def run_retention_cleanup():
     """
-    Execute retention cleanup based on current setting
+    Execute retention cleanup based on current settings
     """
-
-    days = get_auto_delete_days()
-
-    if days is None:
-        return
-
-    delete_activity_older_than(days)
+    delete_expired_telemetry()
 
 
 # ==========================================================

@@ -781,7 +781,7 @@ function TelegramSection({ push }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // GENERAL SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
-const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, retention: "90", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false, weekly_report_verbosity: "standard", widget_enabled: false, widget_details_hover_enabled: true, widget_theme: "normal" };
+const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, auto_delete_days: "30", auto_delete_stats_days: "0", database_size_mb: 0.0, database_last_optimized: "", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false, weekly_report_verbosity: "standard", widget_enabled: false, widget_details_hover_enabled: true, widget_theme: "normal" };
 
 function GeneralSection({ push }) {
   const [s, setS] = useState({ ...DEFAULTS });
@@ -791,8 +791,10 @@ function GeneralSection({ push }) {
   const [togglingIdle, setTogglingIdle] = useState(false);
   const [togglingBrowser, setTogglingBrowser] = useState(false);
   const [savingRetention, setSavingRetention] = useState(false);
+  const [savingStatsRetention, setSavingStatsRetention] = useState(false);
   const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
+  const [optimizingDb, setOptimizingDb] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -933,37 +935,76 @@ function GeneralSection({ push }) {
     setTogglingBrowser(false);
   };
 
-  // Wire: data retention change
-  const handleRetentionChange = async (val) => {
-    set("retention", val);
+  // Wire: data retention changes
+  const handleDetailedRetentionChange = async (val) => {
+    set("auto_delete_days", val);
     setSavingRetention(true);
     try {
-      const r = await fetch(`${BASE_URL}/api/settings/data-retention`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ days: val === "0" ? "forever" : val })
+      const r = await fetch(`${BASE_URL}/api/settings/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auto_delete_days: val })
       });
       const d = await r.json();
-      if (d.status === "success") push(`Retention set to ${val === "0" ? "forever" : val + " days"}`, "success");
-      else push(d.message || "Failed to update retention", "error");
-    } catch { push("Network error", "error"); }
+      if (d.status === "updated") {
+        setSaved(prev => ({ ...prev, auto_delete_days: val }));
+        push(`Detailed activity retention set to ${val === "0" ? "forever" : val + " days"}`, "success");
+      } else {
+        push("Failed to update detailed retention", "error");
+      }
+    } catch {
+      push("Network error", "error");
+    }
     setSavingRetention(false);
   };
 
-  // Wire: immediate cleanup
-  const handleCleanupNow = async () => {
-    setShowCleanupConfirm(false);
-    setCleaningUp(true);
+  const handleStatsRetentionChange = async (val) => {
+    set("auto_delete_stats_days", val);
+    setSavingStatsRetention(true);
     try {
-      const r = await fetch(`${BASE_URL}/api/settings/data-retention/cleanup`, { method: "POST" });
+      const r = await fetch(`${BASE_URL}/api/settings/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auto_delete_stats_days: val })
+      });
       const d = await r.json();
-      if (d.status === "success") push(`Deleted data older than ${d.deleted_older_than_days} days`, "success");
-      else if (d.status === "skipped") push("Retention is set to forever — nothing to clean up", "warn");
-      else push(d.message || "Cleanup failed", "error");
-    } catch { push("Network error", "error"); }
-    setCleaningUp(false);
+      if (d.status === "updated") {
+        setSaved(prev => ({ ...prev, auto_delete_stats_days: val }));
+        push(`Aggregated statistics retention set to ${val === "0" ? "forever" : val + " days"}`, "success");
+      } else {
+        push("Failed to update stats retention", "error");
+      }
+    } catch {
+      push("Network error", "error");
+    }
+    setSavingStatsRetention(false);
   };
 
-  const retentionLabel = { "30": "30 days", "60": "60 days", "90": "90 days", "180": "6 months", "365": "1 year", "0": "forever" }[s.retention] || s.retention + " days";
+  // Wire: immediate database defragmentation & query tuning
+  const handleOptimizeDatabase = async () => {
+    setOptimizingDb(true);
+    try {
+      const r = await fetch(`${BASE_URL}/api/settings/database/optimize`, {
+        method: "POST"
+      });
+      const d = await r.json();
+      if (d.status === "success") {
+        set("database_size_mb", d.new_size_mb);
+        set("database_last_optimized", d.last_optimized);
+        setSaved(prev => ({ 
+          ...prev, 
+          database_size_mb: d.new_size_mb, 
+          database_last_optimized: d.last_optimized 
+        }));
+        push(`Defragmentation successful! Reclaimed ${d.reclaimed_mb} MB. New size: ${d.new_size_mb} MB`, "success");
+      } else {
+        push(d.message || "Defragmentation failed", "error");
+      }
+    } catch {
+      push("Network error", "error");
+    }
+    setOptimizingDb(false);
+  };
 
   if (loading) return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1022,47 +1063,134 @@ function GeneralSection({ push }) {
         } />
       </Card>
 
-      {/* Data Retention Card */}
+      {/* Data Retention & Database Health Card */}
       <Card>
-        <SectionLabel>Data Retention</SectionLabel>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, paddingBottom: 14, borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 500, color: C.text }}>Auto-delete activity older than</div>
-            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3, lineHeight: 1.4 }}>Data outside this window is permanently removed on next cleanup cycle</div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            {savingRetention && <span style={{ width: 10, height: 10, borderRadius: "50%", border: `2px solid ${C.green}40`, borderTopColor: C.green, animation: "sp-spin 0.65s linear infinite", display: "inline-block" }} />}
+        <SectionLabel>Data Retention & Database Tuning</SectionLabel>
+        
+        {/* Retention Dropdowns Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+          
+          {/* Detailed Logs Selector */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Detailed Activity Logs</span>
+              {savingRetention && <span style={{ width: 10, height: 10, borderRadius: "50%", border: `2px solid ${C.green}40`, borderTopColor: C.green, animation: "sp-spin 0.65s linear infinite", display: "inline-block" }} />}
+            </div>
+            <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4, marginBottom: 4 }}>
+              Raw keystrokes, mouse click events, file logs, active window titles, and raw telemetry logs.
+            </div>
             <div style={{ position: "relative" }}>
               <select
                 className="sp-select"
-                value={s.retention}
-                onChange={e => handleRetentionChange(e.target.value)}
+                value={s.auto_delete_days}
+                onChange={e => handleDetailedRetentionChange(e.target.value)}
                 style={{
+                  width: "100%",
                   background: "rgba(20,24,40,0.9)", border: `1px solid ${C.borderMed}`,
-                  borderRadius: 10, color: C.text, padding: "7px 36px 7px 14px", fontSize: 12,
+                  borderRadius: 10, color: C.text, padding: "8px 36px 8px 14px", fontSize: 12,
                   fontFamily: "'DM Sans',sans-serif", cursor: "pointer",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)", minWidth: 110
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)"
                 }}>
-                {[["30", "30 days"], ["60", "60 days"], ["90", "90 days"], ["180", "6 months"], ["365", "1 year"], ["0", "Forever"]].map(([v, l]) => (
+                {[["7", "7 days"], ["14", "14 days"], ["30", "30 days (Recommended)"], ["60", "60 days"], ["90", "90 days"], ["180", "180 days"], ["0", "Forever"]].map(([v, l]) => (
                   <option key={v} value={v}>{l}</option>
                 ))}
               </select>
-              <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 10, color: C.textMuted }}>▾</span>
+              <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 10, color: C.textMuted }}>▾</span>
             </div>
           </div>
+
+          {/* Aggregated Stats Selector */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Aggregated Statistics</span>
+              {savingStatsRetention && <span style={{ width: 10, height: 10, borderRadius: "50%", border: `2px solid ${C.green}40`, borderTopColor: C.green, animation: "sp-spin 0.65s linear infinite", display: "inline-block" }} />}
+            </div>
+            <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4, marginBottom: 4 }}>
+              Daily category & app durations, streaks, focus scores, limit event counters, and goal history.
+            </div>
+            <div style={{ position: "relative" }}>
+              <select
+                className="sp-select"
+                value={s.auto_delete_stats_days}
+                onChange={e => handleStatsRetentionChange(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "rgba(20,24,40,0.9)", border: `1px solid ${C.borderMed}`,
+                  borderRadius: 10, color: C.text, padding: "8px 36px 8px 14px", fontSize: 12,
+                  fontFamily: "'DM Sans',sans-serif", cursor: "pointer",
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)"
+                }}>
+                {[["90", "90 days"], ["180", "180 days"], ["365", "365 days"], ["0", "Forever (Recommended)"]].map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
+              <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 10, color: C.textMuted }}>▾</span>
+            </div>
+          </div>
+
         </div>
-        {s.retention !== "0" && (
-          <div style={{ paddingTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
-                <span style={{ color: C.yellow, fontWeight: 500 }}>Cleanup now</span> — immediately delete all activity older than <span style={{ color: C.text, fontWeight: 500 }}>{retentionLabel}</span>. This cannot be undone.
+
+        {/* Database Tuning & Health Dashboard Panel */}
+        <div style={{ 
+          marginTop: 20, 
+          background: "linear-gradient(135deg, rgba(20,24,40,0.6) 0%, rgba(10,12,22,0.8) 100%)", 
+          border: `1px solid ${C.borderMed}`, 
+          borderRadius: 14, 
+          padding: "16px 20px"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                SQLite Storage Engine
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+                <span style={{ fontSize: 22, fontWeight: 800, color: C.text, fontFamily: "monospace" }}>
+                  {s.database_size_mb ? s.database_size_mb.toFixed(2) : "0.00"} MB
+                </span>
+                <span style={{ 
+                  fontSize: 10, 
+                  fontWeight: 600, 
+                  color: s.database_size_mb > 50 ? C.yellow : C.green,
+                  background: s.database_size_mb > 50 ? "rgba(251,191,36,0.08)" : "rgba(74,222,128,0.08)",
+                  padding: "2px 6px",
+                  borderRadius: 4
+                }}>
+                  {s.database_size_mb > 100 ? "⚠️ Large" : s.database_size_mb > 50 ? "⚡ Needs Tune" : "⚡ Healthy"}
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                <span>📅 Last Defragmented:</span>
+                <span style={{ color: C.textSub, fontWeight: 500 }}>
+                  {s.database_last_optimized ? s.database_last_optimized : "Never"}
+                </span>
               </div>
             </div>
-            <Btn variant="warning" size="sm" loading={cleaningUp} onClick={() => setShowCleanupConfirm(true)}>
-              {cleaningUp ? "Cleaning…" : "🗑 Clean Now"}
+            
+            <Btn 
+              variant="primary" 
+              size="md" 
+              loading={optimizingDb} 
+              onClick={handleOptimizeDatabase}
+              style={{
+                background: "linear-gradient(135deg,#3b82f6 0%,#2563eb 100%)",
+                boxShadow: "0 4px 14px rgba(37,99,235,0.3)"
+              }}
+            >
+              {optimizingDb ? "Optimizing..." : "🧹 Optimize & Defragment"}
             </Btn>
           </div>
-        )}
+          
+          <div style={{ 
+            marginTop: 12, 
+            fontSize: 11, 
+            color: C.textMuted, 
+            lineHeight: 1.5,
+            borderTop: `1px solid rgba(255,255,255,0.04)`,
+            paddingTop: 10
+          }}>
+            ℹ️ <strong>Programmatic Defragmentation:</strong> Deletes stale pages, defragments row indices, compiles SQLite schema query stats, and releases physical disk space back to your OS.
+          </div>
+        </div>
       </Card>
 
       <Card>

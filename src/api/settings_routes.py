@@ -5,6 +5,7 @@ from src.api.wellbeing_routes import wellbeing_bp, get_active_user_id
 from src.config.settings_manager import SettingsManager
 from src.config.storage import get_base_dir
 from src.core.desktop_notifications import desktop_notifier
+from src.database.database import get_database_file_info, optimize_database, delete_expired_telemetry
 
 
 def _send_test_notification(title: str, message: str, source: str, actions=None):
@@ -22,6 +23,7 @@ def _send_test_notification(title: str, message: str, source: str, actions=None)
 @wellbeing_bp.route("/api/settings", methods=["GET"])
 def get_settings():
     user_id = get_active_user_id()
+    db_info = get_database_file_info()
     return jsonify({
         "notifications": SettingsManager.get_bool("notifications", False, user_id=user_id),
         "notifications_enable_goal_events": SettingsManager.get_bool("notifications_enable_goal_events", True, user_id=user_id),
@@ -47,7 +49,11 @@ def get_settings():
         "widget_details_hover_enabled": SettingsManager.get_bool("widget_details_hover_enabled", True, user_id=user_id),
         "widget_theme": SettingsManager.get("widget_theme", user_id=user_id) or "normal",
         "widget_anchor_x": SettingsManager.get("widget_anchor_x", user_id=user_id) or "0",
-        "widget_anchor_y": SettingsManager.get("widget_anchor_y", user_id=user_id) or "0"
+        "widget_anchor_y": SettingsManager.get("widget_anchor_y", user_id=user_id) or "0",
+        "auto_delete_days": SettingsManager.get("auto_delete_days", user_id=user_id) or "30",
+        "auto_delete_stats_days": SettingsManager.get("auto_delete_stats_days", user_id=user_id) or "0",
+        "database_size_mb": db_info["size_mb"],
+        "database_last_optimized": db_info["last_optimized"]
     })
 
 
@@ -179,7 +185,33 @@ def update_settings():
     if "widget_anchor_y" in data:
         SettingsManager.set("widget_anchor_y", str(data["widget_anchor_y"]), user_id=user_id)
 
+    if "auto_delete_days" in data:
+        SettingsManager.set("auto_delete_days", str(data["auto_delete_days"]).strip(), user_id=user_id)
+
+    if "auto_delete_stats_days" in data:
+        SettingsManager.set("auto_delete_stats_days", str(data["auto_delete_stats_days"]).strip(), user_id=user_id)
+
     return jsonify({"status": "updated"})
+
+
+@wellbeing_bp.route("/api/settings/database/optimize", methods=["POST"])
+def optimize_db_route():
+    try:
+        user_id = get_active_user_id()
+        # Execute retention purge first so that defragmentation actually reclaims space!
+        delete_expired_telemetry(user_id=user_id)
+        result = optimize_database()
+        return jsonify({
+            "status": "success",
+            "reclaimed_mb": result["reclaimed_mb"],
+            "new_size_mb": result["new_size_mb"],
+            "last_optimized": result["last_optimized"]
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 
 @wellbeing_bp.route("/api/settings/notifications/test", methods=["POST"])

@@ -204,7 +204,10 @@ class SettingsManager(BaseSettingsManager):
             "widget_details_hover_enabled": "true",
             "widget_theme": "normal",
             "widget_anchor_x": "0",
-            "widget_anchor_y": "0"
+            "widget_anchor_y": "0",
+            "auto_delete_days": "30",
+            "auto_delete_stats_days": "0",
+            "database_last_optimized": ""
         }
 
         for key, value in defaults.items():

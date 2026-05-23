@@ -14,6 +14,17 @@
 !macroend
 
 # -----------------------------
+# Pre-install Process Cleanup
+# -----------------------------
+
+!macro NSIS_HOOK_PREINSTALL
+  # Forcefully terminate any running instances of the backend service before installing/updating
+  DetailPrint "Closing running backend services..."
+  nsExec::ExecToStack 'taskkill /IM stasis-backend.exe /F'
+  Sleep 1000
+!macroend
+
+# -----------------------------
 # Global Variable
 # -----------------------------
 
@@ -104,4 +115,8 @@ FunctionEnd
 
 !macro NSIS_HOOK_PREUNINSTALL
   DeleteRegKey HKCU "Software\Classes\stasis"
+  # Forcefully terminate any running instances of the backend service before uninstalling
+  DetailPrint "Closing running backend services..."
+  nsExec::ExecToStack 'taskkill /IM stasis-backend.exe /F'
+  Sleep 1000
 !macroend

@@ -82,9 +82,15 @@ Flags: nowait runascurrentuser skipifsilent
 
 ; Kill running process
 Filename: "taskkill.exe"; \
-Parameters: "/f /im {#AppExeName}"; \
-Flags: runhidden; \
-RunOnceId: "KillStasis"
+    Parameters: "/f /im {#AppExeName}"; \
+    Flags: runhidden; \
+    RunOnceId: "KillStasis"
+
+; Kill running backend process
+Filename: "taskkill.exe"; \
+    Parameters: "/f /im stasis-backend.exe"; \
+    Flags: runhidden; \
+    RunOnceId: "KillStasisBackend"
 
 ; Delete scheduled task
 Filename: "schtasks.exe"; \
@@ -130,6 +136,16 @@ begin
     MsgBox('Failed to restart installer in silent mode.', mbError, MB_OK);
     Result := False;
   end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Result := '';
+  // Forcefully terminate any running instances of Stasis and its backend before installing/updating
+  Exec('taskkill.exe', '/f /im stasis-backend.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/f /im Stasis.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 procedure InitializeUninstallProgressForm;

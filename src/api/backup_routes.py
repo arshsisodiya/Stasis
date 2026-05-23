@@ -4,7 +4,7 @@ from flask import jsonify, request, send_file
 from src.api.wellbeing_routes import wellbeing_bp, get_active_user_id
 from src.core.backup_service import BackupService
 
-@wellbeing_bp.route("/backup/export", methods=["POST"])
+@wellbeing_bp.route("/api/backup/export", methods=["POST"])
 def api_export_backup():
     """Export and encrypt active user data as a binary backup file"""
     data = request.json
@@ -36,7 +36,7 @@ def api_export_backup():
         return jsonify({"status": "error", "message": f"Export failed: {str(e)}"}), 500
 
 
-@wellbeing_bp.route("/backup/import", methods=["POST"])
+@wellbeing_bp.route("/api/backup/import", methods=["POST"])
 def api_import_backup():
     """Upload, decrypt and restore binary backup file under active user context"""
     password = request.form.get("password")

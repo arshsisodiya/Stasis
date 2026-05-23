@@ -26,12 +26,20 @@ def api_export_backup():
         encrypted_bytes = service.encrypt_data(json_str, password)
         
         # 4. Return as a binary file download
-        return send_file(
+        import os
+        response = send_file(
             io.BytesIO(encrypted_bytes),
             mimetype="application/octet-stream",
             as_attachment=True,
             download_name="stasis_backup.stasisbak"
         )
+        
+        # Resolve Downloads folder path
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        response.headers["X-Download-Directory"] = downloads_dir
+        response.headers["Access-Control-Expose-Headers"] = "X-Download-Directory"
+        
+        return response
     except Exception as e:
         return jsonify({"status": "error", "message": f"Export failed: {str(e)}"}), 500
 

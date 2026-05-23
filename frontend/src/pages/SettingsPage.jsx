@@ -1742,6 +1742,7 @@ function SecuritySection({ push }) {
         const errData = await res.json();
         throw new Error(errData.message || "Export failed");
       }
+      const downloadDir = res.headers.get("X-Download-Directory") || "your default Downloads folder";
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -1751,7 +1752,7 @@ function SecuritySection({ push }) {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-      push("Backup file generated and downloaded successfully", "success");
+      push(`Backup file downloaded successfully (saved in: ${downloadDir})`, "success");
       setActiveModal(null);
       setExportPassword("");
     } catch (e) {

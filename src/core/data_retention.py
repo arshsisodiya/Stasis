@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 from src.database.database import (
     get_connection,
     delete_expired_telemetry,
-    optimize_database
+    optimize_database,
+    backup_database
 )
 from src.config.settings_manager import SettingsManager
 from src.utils.logger import setup_logger
@@ -80,8 +81,32 @@ def retention_worker():
                 logger.info("Programmatic database defragmentation triggered (7 days since last tune or never tuned)")
                 result = optimize_database()
                 logger.info(f"Database performance tuning success: Reclaimed {result['reclaimed_mb']} MB. New size: {result['new_size_mb']} MB.")
-
         except Exception:
             logger.exception("Programmatic database defragmentation failed")
+
+        # 3. Daily Database Backup
+        try:
+            last_backup_str = SettingsManager.get("database_last_backed_up")
+            should_backup = False
+
+            if not last_backup_str:
+                should_backup = True
+            else:
+                try:
+                    last_backup = datetime.strptime(last_backup_str, "%Y-%m-%d %H:%M:%S")
+                    if datetime.now() - last_backup >= timedelta(days=1):
+                        should_backup = True
+                except Exception:
+                    should_backup = True
+
+            if should_backup:
+                logger.info("Automatic database backup triggered (24 hours since last backup or never backed up)")
+                result = backup_database()
+                if result.get("success"):
+                    logger.info(f"Database backup succeeded. Size: {result['backup_size_mb']} MB. Saved at: {result['backup_path']}")
+                else:
+                    logger.error(f"Database backup failed: {result.get('error')}")
+        except Exception:
+            logger.exception("Automatic database backup encountered an unexpected error")
 
         shutdown_event.wait(RETENTION_CHECK_INTERVAL)

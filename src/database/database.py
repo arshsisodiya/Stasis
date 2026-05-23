@@ -1083,6 +1083,61 @@ def delete_expired_telemetry(user_id=None, detailed_days_override=None, stats_da
     finally:
         conn.close()
 
+def backup_database():
+    """
+    Safely perform a non-blocking online backup of the active SQLite database
+    to a backup file (stasis.db.bak) in the same data directory.
+    Updates the database_last_backed_up setting.
+    """
+    from src.config.settings_manager import SettingsManager
+
+    db_path = DB_PATH
+    backup_path = f"{db_path}.bak"
+
+    if not os.path.exists(db_path):
+        return {"success": False, "error": "Active database file does not exist"}
+
+    try:
+        # Perform safe, non-blocking online SQLite backup
+        src_conn = sqlite3.connect(
+            db_path,
+            timeout=30,
+            check_same_thread=False
+        )
+        dst_conn = sqlite3.connect(
+            backup_path,
+            timeout=30,
+            check_same_thread=False
+        )
+
+        with dst_conn:
+            src_conn.backup(dst_conn)
+
+        dst_conn.close()
+        src_conn.close()
+
+        # Update last backed up setting
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            SettingsManager.set("database_last_backed_up", now_str)
+        except Exception:
+            pass
+
+        # Calculate backup size
+        backup_size_mb = 0.0
+        if os.path.exists(backup_path):
+            backup_size_mb = round(os.path.getsize(backup_path) / (1024 * 1024), 2)
+
+        return {
+            "success": True,
+            "backup_path": backup_path,
+            "backup_size_mb": backup_size_mb,
+            "last_backed_up": now_str
+        }
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 def optimize_database():
     """
     Run VACUUM and ANALYZE on SQLite database to release unused space and optimize queries.

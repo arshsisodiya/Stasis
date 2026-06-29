@@ -8,107 +8,31 @@ def set_app_controller_auth(controller):
     global _app_controller
     _app_controller = controller
 
-@auth_bp.route('/register', methods=['POST'])
-def register():
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    
-    if not username or not password:
-        return jsonify({"success": False, "error": "Username and password required"}), 400
-        
-    result = _app_controller.auth_manager.register_user(username, password)
-    if result["success"]:
-        # Log them in automatically
-        login_result = _app_controller.auth_manager.login(username, password)
-        if login_result["success"]:
-            guest_summary = _app_controller.auth_manager.get_guest_summary()
-            if guest_summary:
-                login_result["has_guest_data"] = True
-                login_result["guest_summary"] = guest_summary
-            else:
-                login_result["has_guest_data"] = False
-        return jsonify(login_result)
-    else:
-        return jsonify(result), 400
-
-@auth_bp.route('/login', methods=['POST'])
-def login():
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    
-    result = _app_controller.auth_manager.login(username, password)
-    if result["success"]:
-        guest_summary = _app_controller.auth_manager.get_guest_summary()
-        if guest_summary:
-            result["has_guest_data"] = True
-            result["guest_summary"] = guest_summary
-        else:
-            result["has_guest_data"] = False
-        return jsonify(result)
-    else:
-        return jsonify(result), 401
-
-@auth_bp.route('/logout', methods=['POST'])
-def logout():
-    auth_header = request.headers.get('Authorization')
-    if auth_header and auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        _app_controller.auth_manager.logout(token)
-    return jsonify({"success": True})
-
 @auth_bp.route('/me', methods=['GET'])
 def me():
-    auth_header = request.headers.get('Authorization')
-    if auth_header and auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        user = _app_controller.auth_manager.set_active_user_by_token(token)
-        if user:
-            return jsonify({"success": True, "user": user})
-    return jsonify({"success": False, "error": "Unauthorized"}), 401
+    """Always auto-login the local system user and return a valid token"""
+    result = _app_controller.auth_manager.auto_login_local_user()
+    if result["success"]:
+        return jsonify({"success": True, "user": result["user"], "token": result["token"]})
+    return jsonify({"success": False, "error": result.get("error", "Failed to auto-login")}), 500
 
-@auth_bp.route('/change-password', methods=['POST'])
-def change_password():
+@auth_bp.route('/update-profile', methods=['POST'])
+def update_profile():
     auth_header = request.headers.get('Authorization')
     if auth_header and auth_header.startswith('Bearer '):
         token = auth_header.split(' ')[1]
         user = _app_controller.auth_manager.validate_token(token)
         if user:
             data = request.json
-            current_password = data.get('currentPassword')
-            new_password = data.get('newPassword')
+            new_username = data.get('username')
             
-            if not current_password or not new_password:
-                return jsonify({"success": False, "error": "Current and new password required"}), 400
+            if not new_username:
+                return jsonify({"success": False, "error": "Username required"}), 400
                 
-            result = _app_controller.auth_manager.change_password(user["id"], current_password, new_password)
+            result = _app_controller.auth_manager.update_username(user["id"], new_username)
             if result["success"]:
                 return jsonify({"success": True})
             else:
                 return jsonify({"success": False, "error": result["error"]}), 400
-    
+                
     return jsonify({"success": False, "error": "Unauthorized"}), 401
-
-@auth_bp.route('/guest-stats', methods=['GET'])
-def guest_stats():
-    summary = _app_controller.auth_manager.get_guest_summary()
-    return jsonify({"success": True, "summary": summary})
-
-@auth_bp.route('/sync-guest', methods=['POST'])
-def sync_guest():
-    auth_header = request.headers.get('Authorization')
-    if auth_header and auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        user = _app_controller.auth_manager.validate_token(token)
-        if user:
-            result = _app_controller.auth_manager.sync_guest_data_for_user(user["id"])
-            return jsonify(result)
-    return jsonify({"success": False, "error": "Unauthorized"}), 401
-
-@auth_bp.route('/discard-guest', methods=['POST'])
-def discard_guest():
-    # Can be called without auth
-    result = _app_controller.auth_manager.discard_guest_data()
-    return jsonify(result)
-

@@ -4,7 +4,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
 import { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import AuthScreen from './pages/AuthScreen';
 
 /**
  * Startup transition flow:
@@ -35,7 +34,7 @@ function AppContent() {
   const [backendReady, setBackendReady] = useState(false);
   // Ref to hold prefetched data from the LoadingScreen during the auth-loading phase
   const cachedDataRef = useRef(null);
-  const { user, isGuest, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const doTransition = async (prefetchedData) => {
     setInitialData(prefetchedData || null);
@@ -67,37 +66,32 @@ function AppContent() {
     setTimeout(() => setStage("done"), 750);
   };
 
+
   // ── Effect: When authLoading flips to false AND backend is already ready,
   //    immediately start the dashboard transition (no second health-check needed).
   useEffect(() => {
-    if (!authLoading && (user || isGuest) && backendReady && stage === "idle") {
+    if (!authLoading && user && backendReady && stage === "idle") {
       doTransition(cachedDataRef.current);
     }
-  }, [authLoading, user, isGuest, backendReady]);
+  }, [authLoading, user, backendReady, stage]);
 
   // ── Show LoadingScreen while auth is still resolving ──
   // This runs the backend health-check polling concurrently with auth validation.
-  if (authLoading) {
+  if (authLoading || !user) {
     return (
       <LoadingScreen
         onReady={(data) => {
           // Backend is healthy — cache the data. We'll use it once auth resolves.
           cachedDataRef.current = data;
           setBackendReady(true);
-          // Note: we do NOT call doTransition here because we don't know yet
-          // whether auth will succeed (user) or fail (show AuthScreen).
         }}
       />
     );
   }
 
-  // ── Auth resolved: no valid user and not guest → show login screen ──
-  if (!user && !isGuest) {
-    return <AuthScreen />;
-  }
-
-  // ── Auth resolved: valid user or guest present ──
+  // ── Auth resolved: valid user present ──
   return (
+
     <>
       {/* Dashboard renders underneath as soon as the API is ready */}
       {stage !== "idle" && (

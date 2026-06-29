@@ -792,8 +792,6 @@ function GeneralSection({ push }) {
   const [togglingBrowser, setTogglingBrowser] = useState(false);
   const [savingRetention, setSavingRetention] = useState(false);
   const [savingStatsRetention, setSavingStatsRetention] = useState(false);
-  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
-  const [cleaningUp, setCleaningUp] = useState(false);
   const [optimizingDb, setOptimizingDb] = useState(false);
 
   useEffect(() => {
@@ -1222,18 +1220,6 @@ function GeneralSection({ push }) {
           </div>
         } />
       </Card>
-
-      {/* Cleanup Confirmation Modal */}
-      {showCleanupConfirm && (
-        <WarningModal
-          variant="danger"
-          title="Run cleanup now?"
-          body={`This will immediately and permanently delete all activity data older than ${retentionLabel}. This action cannot be undone.`}
-          confirmLabel={`Delete data older than ${retentionLabel}`}
-          onConfirm={handleCleanupNow}
-          onCancel={() => setShowCleanupConfirm(false)}
-        />
-      )}
 
       {/* Reset confirmation row */}
       {confirmReset && (
@@ -2205,50 +2191,32 @@ function AboutSection() {
 // ACCOUNT SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 function AccountSection({ push }) {
-  const { user, logout, token } = useAuth();
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const { user, updateProfile } = useAuth();
+  const [newUsername, setNewUsername] = useState(user?.username || "");
   const [loading, setLoading] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-  };
+  useEffect(() => {
+    if (user) {
+      setNewUsername(user.username);
+    }
+  }, [user]);
 
-  const handleChangePassword = async () => {
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      push("All fields are required", "warn");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      push("New passwords do not match", "warn");
-      return;
-    }
-    if (newPassword.length < 6) {
-      push("New password must be at least 6 characters", "warn");
+  const handleChangeUsername = async () => {
+    if (!newUsername.trim()) {
+      push("Username cannot be empty", "warn");
       return;
     }
 
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:7432/api/auth/change-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ currentPassword, newPassword })
-      });
-      const data = await res.json();
-      if (data.success) {
-        push("Password changed successfully", "success");
-        setCurrentPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
+      const res = await updateProfile(newUsername.trim());
+      if (res.success) {
+        push("Username updated successfully", "success");
       } else {
-        push(data.error || "Failed to change password", "error");
+        push(res.error || "Failed to update username", "error");
       }
     } catch (e) {
+      console.error(e);
       push("Network error", "error");
     } finally {
       setLoading(false);
@@ -2265,39 +2233,23 @@ function AccountSection({ push }) {
               {user ? user.username : "Not logged in"}
             </div>
             <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
-              Currently logged in and syncing data to this account.
+              Locally linked user. Telemetry is saved automatically.
             </div>
           </div>
-          <Btn onClick={handleLogout} variant="danger">Logout</Btn>
         </div>
       </Card>
 
       <Card>
-        <SectionLabel>Change Password</SectionLabel>
+        <SectionLabel>Change Username</SectionLabel>
         <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
           <InputField 
-            label="Current Password" 
-            secret 
-            value={currentPassword} 
-            onChange={setCurrentPassword} 
-            placeholder="Enter current password" 
-          />
-          <InputField 
-            label="New Password" 
-            secret 
-            value={newPassword} 
-            onChange={setNewPassword} 
-            placeholder="Enter new password" 
-          />
-          <InputField 
-            label="Confirm New Password" 
-            secret 
-            value={confirmPassword} 
-            onChange={setConfirmPassword} 
-            placeholder="Confirm new password" 
+            label="New Username" 
+            value={newUsername} 
+            onChange={setNewUsername} 
+            placeholder="Enter new username" 
           />
           <div style={{ marginTop: 8 }}>
-            <Btn onClick={handleChangePassword} loading={loading} variant="primary">Change Password</Btn>
+            <Btn onClick={handleChangeUsername} loading={loading} variant="primary">Change Username</Btn>
           </div>
         </div>
       </Card>

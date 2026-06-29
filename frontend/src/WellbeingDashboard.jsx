@@ -10,8 +10,6 @@ import DaySummary from "./pages/DaySummary";
 import { Skeleton, SkeletonCard, TabPanel, AppIcon } from "./shared/components";
 import { localYMD, fmtTime, fmtTimeFull } from "./shared/utils";
 import { useLiveClock, useVisibilityPolling } from "./shared/hooks";
-import { useAuth } from "./context/AuthContext";
-import GuestSyncPopup from "./components/GuestSyncPopup";
 
 // ─── useReducer — atomic state for all dashboard data ─────────────────────────
 
@@ -265,7 +263,6 @@ function trimDashboardCache(cache, keepDates = []) {
 
 export default function WellbeingDashboard({ onDisconnect, initialData = null }) {
   const BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:7432";
-  const { isGuest, logout } = useAuth();
 
   const [dashState, dispatch] = useReducer(dashReducer, {
     ...initialDashState,
@@ -597,34 +594,6 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
         }
       `}</style>
 
-      {isGuest && (
-        <div style={{
-          position: "absolute", top: 0, left: 0, right: 0, zIndex: 10,
-          background: "rgba(248, 113, 113, 0.15)", borderBottom: "1px solid rgba(248, 113, 113, 0.3)",
-          backdropFilter: "blur(8px)", padding: "8px 24px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          fontSize: "12px", fontFamily: "'DM Sans', sans-serif"
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f8fafc" }}>
-            <span style={{ color: "#f87171" }}>●</span>
-            <strong>Guest Mode:</strong> Your data is not being saved to an account.
-          </div>
-          <button 
-            onClick={logout}
-            style={{
-              background: "transparent", border: "1px solid rgba(255,255,255,0.2)",
-              color: "#f8fafc", borderRadius: "6px", padding: "4px 12px",
-              cursor: "pointer", fontSize: "11px", fontWeight: 600,
-              transition: "background 0.2s"
-            }}
-            onMouseEnter={e => e.target.style.background = "rgba(255,255,255,0.1)"}
-            onMouseLeave={e => e.target.style.background = "transparent"}
-          >
-            Sign In
-          </button>
-        </div>
-      )}
-
       {/* ── AMBIENT ORBS — shift to indigo in historical mode ── */}
       <div className="orb-float" style={{
         position: "fixed", top: "-10%", left: "-5%", width: 500, height: 500,
@@ -661,8 +630,9 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
       <div ref={scrollRef} className="db-scroll-wrapper"
         style={{ height: "100%", width: "100%", overflowY: "auto", overflowX: "hidden", position: "relative", zIndex: 4 }}>
         <div style={{
-          maxWidth: 1280, width: "100%", margin: "0 auto", padding: "28px 24px",
-          paddingTop: isGuest ? "48px" : "28px",
+          maxWidth: "1400px", margin: "0 auto", minHeight: "100vh", position: "relative",
+          paddingTop: "28px",
+          paddingLeft: "24px", paddingRight: "24px", paddingBottom: "40px",
           opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(20px)",
           transition: "opacity 0.7s ease, transform 0.7s ease",
         }}>
@@ -939,7 +909,6 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
       {showSettings && showSettings !== "drawer" && (
         <SettingsPage key={showSettings} initialSection={showSettings} onClose={() => setShowSettings(null)} />
       )}
-      <GuestSyncPopup />
     </div>
   );
 }

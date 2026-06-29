@@ -630,8 +630,9 @@ def _report_to_telegram_html(report):
         "<b>📱 Top Applications</b>",
     ]
 
+    import html
     for app in report["top_apps"][:5]:
-        name = app['app_name'].replace('.exe', '')
+        name = html.escape(app['app_name'].replace('.exe', ''))
         trend = "🔺" if app.get("trend") == "up" else "🔻" if app.get("trend") == "down" else "🔹"
         bar = _generate_ascii_bar(app['pct'])
         lines.append(f"• <b>{name}</b> {trend}")
@@ -1665,39 +1666,51 @@ def run_weekly_report_scheduler(stop_event=None, check_interval_sec=300):
             tg_enabled = TelegramSettingsManager.get("telegram_enabled", user_id=active_user_id) == "true"
 
             now = datetime.now()
-            is_sunday = now.weekday() == 6
-            monday, _ = _week_bounds(now.date().isoformat())
+            
+            # Determine which week we are reporting on.
+            # If today is Sunday evening (>= 18:00), we report on the current week.
+            # Otherwise (Mon-Sat, or early Sun), we report on the previous week.
+            if now.weekday() == 6 and now.hour >= 18:
+                target_date = now
+            else:
+                target_date = now - timedelta(days=now.weekday() + 1)
+                
+            report_monday, _ = _week_bounds(target_date.date().isoformat())
             sent_week = SettingsManager.get("weekly_report_last_sent_week", user_id=active_user_id) or ""
 
-            if enabled and tg_enabled and is_sunday and sent_week != monday:
-                token_enc = TelegramSettingsManager.get("telegram_token", user_id=active_user_id)
-                chat_id_enc = TelegramSettingsManager.get("telegram_chat_id", user_id=active_user_id)
-                if token_enc and chat_id_enc:
-                    try:
-                        token = decrypt(token_enc)
-                        chat_id = decrypt(chat_id_enc)
-                    except Exception:
-                        token = token_enc
-                        chat_id = chat_id_enc
+            if enabled and tg_enabled:
+                if sent_week == "":
+                    # Initialize to avoid sending retroactive reports on first run
+                    SettingsManager.set("weekly_report_last_sent_week", report_monday, user_id=active_user_id)
+                elif sent_week != report_monday:
+                    token_enc = TelegramSettingsManager.get("telegram_token", user_id=active_user_id)
+                    chat_id_enc = TelegramSettingsManager.get("telegram_chat_id", user_id=active_user_id)
+                    if token_enc and chat_id_enc:
+                        try:
+                            token = decrypt(token_enc)
+                            chat_id = decrypt(chat_id_enc)
+                        except Exception:
+                            token = token_enc
+                            chat_id = chat_id_enc
 
-                    verbosity = _normalize_verbosity(SettingsManager.get("weekly_report_verbosity", user_id=active_user_id) or "standard")
-                    report = _generate_report(now.date().isoformat(), verbosity=verbosity, user_id=active_user_id)
-                    
-                    text = _report_to_telegram_html(report)
-                    report_html = _generate_report_html(report)
-                    
-                    temp_dir = get_data_dir()
-                    file_name = f"Stasis_Report_{monday}.html"
-                    file_path = os.path.join(temp_dir, file_name)
-                    
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        f.write(report_html)
+                        verbosity = _normalize_verbosity(SettingsManager.get("weekly_report_verbosity", user_id=active_user_id) or "standard")
+                        report = _generate_report(target_date.date().isoformat(), verbosity=verbosity, user_id=active_user_id)
+                        
+                        text = _report_to_telegram_html(report)
+                        report_html = _generate_report_html(report)
+                        
+                        temp_dir = get_data_dir()
+                        file_name = f"Stasis_Report_{report_monday}.html"
+                        file_path = os.path.join(temp_dir, file_name)
+                        
+                        with open(file_path, "w", encoding="utf-8") as f:
+                            f.write(report_html)
 
-                    from src.core.telegram.api import TelegramAPI
-                    api = TelegramAPI(token, chat_id)
-                    if api.send_message(text):
-                        api.send_document(file_path, caption=f"📄 Full Interactive Report ({monday})")
-                        SettingsManager.set("weekly_report_last_sent_week", monday, user_id=active_user_id)
+                        from src.core.telegram.api import TelegramAPI
+                        api = TelegramAPI(token, chat_id)
+                        if api.send_message(text):
+                            api.send_document(file_path, caption=f"📄 Full Interactive Report ({report_monday})")
+                            SettingsManager.set("weekly_report_last_sent_week", report_monday, user_id=active_user_id)
                     
                     try: os.remove(file_path)
                     except: pass

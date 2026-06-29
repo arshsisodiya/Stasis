@@ -544,9 +544,9 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
 
   return (
     <div className="app-surface" style={{
-        fontFamily: "'DM Sans',sans-serif", color: "#e2e8f0",
-        position: "relative", overflow: "hidden",
-        animation: "db-enter 0.5s cubic-bezier(0.16,1,0.3,1) both",
+      fontFamily: "'DM Sans',sans-serif", color: "#e2e8f0",
+      position: "relative", overflow: "hidden",
+      animation: "db-enter 0.5s cubic-bezier(0.16,1,0.3,1) both",
     }}>
       <MemoNoiseOverlay />
 
@@ -681,7 +681,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
                     </button>
                   ))}
                 </div>
-                
+
 
 
                 <button className="hover-surface" onClick={() => setShowSettings("drawer")} title="Menu" style={{
@@ -702,8 +702,8 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               <span style={{ fontSize: 12, color: "#475569" }}>
                 {activeTab === "insights" && activeInsightTab === "limits" ? "App time limits & blocking"
                   : activeTab === "insights" && activeInsightTab === "goals" ? "Personal goals & daily targets"
-                  : activeTab === "insights" && activeInsightTab === "reports" ? "Weekly usage summary & insights"
-                  : new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                    : activeTab === "insights" && activeInsightTab === "reports" ? "Weekly usage summary & insights"
+                      : new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
               </span>
               {!isToday && activeTab !== "insights" && (
                 <span style={{
@@ -838,7 +838,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
           <div style={{ textAlign: "center", marginTop: 48, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <a className="hover-fade" href="https://github.com/arshsisodiya/Stasis" target="_blank" rel="noopener noreferrer"
               style={{ letterSpacing: "0.04em", opacity: 0.35, textDecoration: "none", color: "#475569", transition: "opacity 0.15s ease, transform 0.15s ease", cursor: "pointer", fontVariantNumeric: "tabular-nums" }}
-              >
+            >
               Stasis{appVersion ? ` v${appVersion}` : ""} · © {new Date().getFullYear()} Arsh Sisodiya
             </a>
           </div>
@@ -874,11 +874,13 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
             </div>
             <nav style={{ flex: 1, padding: "12px 10px", display: "flex", flexDirection: "column", gap: 3 }}>
               {[
+                { icon: "👤", label: "Account", sub: "User profile & session", section: "account" },
                 { icon: "⚙️", label: "General Settings", sub: "Tracking & app preferences", section: "general" },
                 { icon: "✈️", label: "Telegram Integration", sub: "Remote control setup", section: "telegram" },
                 { icon: "🔐", label: "Security", sub: "Encryption & access control", section: "security" },
-                { icon: "ℹ️", label: "About & Privacy", sub: "About, licenses, policy", section: "about" },
                 { icon: "🚀", label: "Updates", sub: "Version & changelog", section: "updates" },
+                { icon: "ℹ️", label: "About & Privacy", sub: "About, licenses, policy", section: "about" },
+                { icon: "👨‍💻", label: "Contact", sub: "Developer details", section: "contact" },
               ].map(({ icon, label, sub, section }) => (
                 <button key={section} className="hover-surface" onClick={() => setShowSettings(section)} style={{
                   display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",

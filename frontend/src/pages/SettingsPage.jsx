@@ -499,7 +499,7 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
     setInstalling(true);
     setInstallProgress(5);
     setInstallMessage("Starting...");
-    
+
     try {
       // Start async installation
       const r = await fetch(`${BASE_URL}/api/dependencies/install`, {
@@ -507,7 +507,7 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ package: "opencv-python-headless" })
       });
-      
+
       const d = await r.json();
       if (d.success) {
         // Start polling for progress
@@ -515,10 +515,10 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
           try {
             const pr = await fetch(`${BASE_URL}/api/dependencies/progress?package=opencv-python-headless`);
             const pd = await pr.json();
-            
+
             setInstallProgress(pd.progress);
             setInstallMessage(pd.message);
-            
+
             if (pd.status === "success") {
               clearInterval(pollInterval);
               push("OpenCV installed successfully", "success");
@@ -539,8 +539,8 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
         push("Failed to start installation", "error");
         setInstalling(false);
       }
-    } catch { 
-      push("Installation failed — check connection", "error"); 
+    } catch {
+      push("Installation failed — check connection", "error");
       setInstalling(false);
     }
   };
@@ -989,10 +989,10 @@ function GeneralSection({ push }) {
       if (d.status === "success") {
         set("database_size_mb", d.new_size_mb);
         set("database_last_optimized", d.last_optimized);
-        setSaved(prev => ({ 
-          ...prev, 
-          database_size_mb: d.new_size_mb, 
-          database_last_optimized: d.last_optimized 
+        setSaved(prev => ({
+          ...prev,
+          database_size_mb: d.new_size_mb,
+          database_last_optimized: d.last_optimized
         }));
         push(`Defragmentation successful! Reclaimed ${d.reclaimed_mb} MB. New size: ${d.new_size_mb} MB`, "success");
       } else {
@@ -1024,8 +1024,8 @@ function GeneralSection({ push }) {
       <Card>
         <SectionLabel>Widget</SectionLabel>
         <SettingRow label="Enable Taskbar Widget" desc="Show a persistent floating widget for real-time stats" control={
-          <Toggle 
-            on={s.widget_enabled} 
+          <Toggle
+            on={s.widget_enabled}
             onChange={async v => {
               set("widget_enabled", v);
               if (window.__TAURI_INTERNALS__) {
@@ -1037,13 +1037,13 @@ function GeneralSection({ push }) {
                   if (push) push("Failed to toggle widget", "error");
                 }
               }
-            }} 
+            }}
           />
         } />
         <SettingRow label="Widget details on hover" desc="Show the detailed card when hovering over the taskbar widget" control={
-          <Toggle 
-            on={s.widget_details_hover_enabled} 
-            onChange={v => set("widget_details_hover_enabled", v)} 
+          <Toggle
+            on={s.widget_details_hover_enabled}
+            onChange={v => set("widget_details_hover_enabled", v)}
           />
         } />
         <SettingRow borderless label="Widget Theme" desc="Choose between a normal dark panel or a fully transparent minimalist look" control={
@@ -1066,10 +1066,10 @@ function GeneralSection({ push }) {
       {/* Data Retention & Database Health Card */}
       <Card>
         <SectionLabel>Data Retention & Database Tuning</SectionLabel>
-        
+
         {/* Retention Dropdowns Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
-          
+
           {/* Detailed Logs Selector */}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1131,11 +1131,11 @@ function GeneralSection({ push }) {
         </div>
 
         {/* Database Tuning & Health Dashboard Panel */}
-        <div style={{ 
-          marginTop: 20, 
-          background: "linear-gradient(135deg, rgba(20,24,40,0.6) 0%, rgba(10,12,22,0.8) 100%)", 
-          border: `1px solid ${C.borderMed}`, 
-          borderRadius: 14, 
+        <div style={{
+          marginTop: 20,
+          background: "linear-gradient(135deg, rgba(20,24,40,0.6) 0%, rgba(10,12,22,0.8) 100%)",
+          border: `1px solid ${C.borderMed}`,
+          borderRadius: 14,
           padding: "16px 20px"
         }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
@@ -1147,9 +1147,9 @@ function GeneralSection({ push }) {
                 <span style={{ fontSize: 22, fontWeight: 800, color: C.text, fontFamily: "monospace" }}>
                   {s.database_size_mb ? s.database_size_mb.toFixed(2) : "0.00"} MB
                 </span>
-                <span style={{ 
-                  fontSize: 10, 
-                  fontWeight: 600, 
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 600,
                   color: s.database_size_mb > 50 ? C.yellow : C.green,
                   background: s.database_size_mb > 50 ? "rgba(251,191,36,0.08)" : "rgba(74,222,128,0.08)",
                   padding: "2px 6px",
@@ -1165,11 +1165,11 @@ function GeneralSection({ push }) {
                 </span>
               </div>
             </div>
-            
-            <Btn 
-              variant="primary" 
-              size="md" 
-              loading={optimizingDb} 
+
+            <Btn
+              variant="primary"
+              size="md"
+              loading={optimizingDb}
               onClick={handleOptimizeDatabase}
               style={{
                 background: "linear-gradient(135deg,#3b82f6 0%,#2563eb 100%)",
@@ -1179,11 +1179,11 @@ function GeneralSection({ push }) {
               {optimizingDb ? "Optimizing..." : "🧹 Optimize & Defragment"}
             </Btn>
           </div>
-          
-          <div style={{ 
-            marginTop: 12, 
-            fontSize: 11, 
-            color: C.textMuted, 
+
+          <div style={{
+            marginTop: 12,
+            fontSize: 11,
+            color: C.textMuted,
             lineHeight: 1.5,
             borderTop: `1px solid rgba(255,255,255,0.04)`,
             paddingTop: 10
@@ -1670,7 +1670,7 @@ function SecuritySection({ push }) {
     try {
       const r = await fetch(`${BASE_URL}/api/clear-data`, {
         method: "DELETE",
-        headers: { 
+        headers: {
           "X-Confirm-Clear": "true",
           "Authorization": `Bearer ${token}`
         },
@@ -1693,7 +1693,7 @@ function SecuritySection({ push }) {
     try {
       const r = await fetch(`${BASE_URL}/api/factory-reset`, {
         method: "DELETE",
-        headers: { 
+        headers: {
           "X-Confirm-Reset": "RESET_ALL",
           "Authorization": `Bearer ${token}`
         },
@@ -1807,7 +1807,7 @@ function SecuritySection({ push }) {
           </div>
         </div>
       </Card>
-      
+
       <Card>
         <SectionLabel>Access Control</SectionLabel>
         <SettingRow label="Require password to access settings" control={<Toggle on={false} onChange={() => { }} />} />
@@ -1826,8 +1826,8 @@ function SecuritySection({ push }) {
             </div>
           </div>
         </div>
-        <SettingRow 
-          label="Export Encrypted Backup" 
+        <SettingRow
+          label="Export Encrypted Backup"
           desc="Generate a secure, device-portable backup file (.stasisbak) encrypted with a custom password."
           control={
             <Btn onClick={() => { setActiveModal("exportBackup"); setExportPassword(""); }} variant="secondary" size="sm">
@@ -1835,9 +1835,9 @@ function SecuritySection({ push }) {
             </Btn>
           }
         />
-        <SettingRow 
+        <SettingRow
           borderless
-          label="Restore from Backup" 
+          label="Restore from Backup"
           desc="Decrypt and import data from a .stasisbak backup. This will safely overwrite your active profile settings and logs."
           control={
             <Btn onClick={() => { setActiveModal("restoreBackup"); setRestorePassword(""); setRestoreFile(null); }} variant="secondary" size="sm">
@@ -1930,12 +1930,12 @@ function SecuritySection({ push }) {
               Specify a password to encrypt your backup. <strong>This password cannot be reset or recovered.</strong> You will need it to restore your data on any device.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
-              <InputField 
-                label="Decryption Password" 
-                secret 
-                value={exportPassword} 
-                onChange={setExportPassword} 
-                placeholder="Enter a secure password" 
+              <InputField
+                label="Decryption Password"
+                secret
+                value={exportPassword}
+                onChange={setExportPassword}
+                placeholder="Enter a secure password"
                 hint="Used to derive a PBKDF2 key for secure AES encryption."
               />
             </div>
@@ -1959,10 +1959,10 @@ function SecuritySection({ push }) {
               Select a <code>.stasisbak</code> backup file and provide the encryption password.
               <span style={{ color: C.yellow, fontWeight: 500 }}> Warning: This will completely replace your current telemetry and configuration.</span>
             </p>
-            
+
             <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
               {/* Custom Styled Drag-and-Drop / Browse Area */}
-              <div 
+              <div
                 style={{
                   border: `1.5px dashed ${restoreFile ? "rgba(74,222,128,0.4)" : "rgba(255,255,255,0.15)"}`,
                   borderRadius: 12,
@@ -1972,15 +1972,15 @@ function SecuritySection({ push }) {
                   background: restoreFile ? "rgba(74,222,128,0.02)" : "rgba(255,255,255,0.01)",
                   transition: "all 0.2s",
                   boxShadow: restoreFile ? "0 0 16px rgba(74,222,128,0.05)" : "none"
-                }} 
+                }}
                 onClick={() => fileInputRef.current?.click()}
               >
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  accept=".stasisbak" 
-                  onChange={e => setRestoreFile(e.target.files?.[0] || null)} 
-                  style={{ display: "none" }} 
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".stasisbak"
+                  onChange={e => setRestoreFile(e.target.files?.[0] || null)}
+                  style={{ display: "none" }}
                 />
                 <div style={{ fontSize: 24, marginBottom: 8 }}>{restoreFile ? "📄" : "📂"}</div>
                 {restoreFile ? (
@@ -2000,21 +2000,21 @@ function SecuritySection({ push }) {
                 )}
               </div>
 
-              <InputField 
-                label="Decryption Password" 
-                secret 
-                value={restorePassword} 
-                onChange={setRestorePassword} 
-                placeholder="Enter backup encryption password" 
+              <InputField
+                label="Decryption Password"
+                secret
+                value={restorePassword}
+                onChange={setRestorePassword}
+                placeholder="Enter backup encryption password"
               />
             </div>
-            
+
             <div style={{ display: "flex", gap: 10 }}>
               <Btn onClick={() => setActiveModal(null)} style={{ flex: 1 }} disabled={loading}>Cancel</Btn>
-              <Btn 
-                onClick={handleRestoreBackup} 
-                variant="primary" 
-                loading={loading} 
+              <Btn
+                onClick={handleRestoreBackup}
+                variant="primary"
+                loading={loading}
                 disabled={!restoreFile || !restorePassword.trim()}
                 style={{ flex: 1 }}
               >
@@ -2242,11 +2242,11 @@ function AccountSection({ push }) {
       <Card>
         <SectionLabel>Change Username</SectionLabel>
         <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
-          <InputField 
-            label="New Username" 
-            value={newUsername} 
-            onChange={setNewUsername} 
-            placeholder="Enter new username" 
+          <InputField
+            label="New Username"
+            value={newUsername}
+            onChange={setNewUsername}
+            placeholder="Enter new username"
           />
           <div style={{ marginTop: 8 }}>
             <Btn onClick={handleChangeUsername} loading={loading} variant="primary">Change Username</Btn>
@@ -2258,6 +2258,135 @@ function AccountSection({ push }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// CONTACT SECTION
+// ═══════════════════════════════════════════════════════════════════════════════
+function ContactSection() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      
+      {/* Banner / Profile Card */}
+      <div style={{
+        position: "relative",
+        borderRadius: 20,
+        background: "linear-gradient(135deg, rgba(17,24,39,0.7) 0%, rgba(15,23,42,0.9) 100%)",
+        border: `1px solid rgba(167,139,250,0.2)`,
+        overflow: "hidden",
+        boxShadow: "0 12px 40px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.05)",
+      }}>
+        {/* Abstract background blobs */}
+        <div style={{ position: "absolute", top: -50, right: -20, width: 150, height: 150, background: "radial-gradient(circle, rgba(167,139,250,0.15) 0%, transparent 70%)", borderRadius: "50%" }} />
+        <div style={{ position: "absolute", bottom: -30, left: -20, width: 120, height: 120, background: "radial-gradient(circle, rgba(56,189,248,0.12) 0%, transparent 70%)", borderRadius: "50%" }} />
+        
+        <div style={{ padding: "36px 24px", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+          
+          <div style={{ position: "relative", marginBottom: 18 }}>
+            <div style={{ 
+              width: 88, height: 88, borderRadius: "50%", 
+              background: "linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%)", 
+              display: "flex", alignItems: "center", justifyContent: "center", 
+              fontSize: 44, 
+              border: "3px solid rgba(30,41,59,0.8)",
+              boxShadow: "0 0 30px rgba(139,92,246,0.3)",
+              zIndex: 2, position: "relative"
+            }}>
+              👨‍💻
+            </div>
+            <div style={{ 
+              position: "absolute", inset: -7, borderRadius: "50%", 
+              border: "2px dashed rgba(167,139,250,0.4)", animation: "sp-spin 12s linear infinite",
+              zIndex: 1
+            }} />
+          </div>
+
+          <div style={{ fontSize: 28, fontWeight: 700, color: C.text, fontFamily: "'DM Serif Display',serif", letterSpacing: "0.01em", lineHeight: 1.2 }}>Arsh Sisodiya</div>
+          <div style={{ fontSize: 12, color: C.purple, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 8 }}>Creator & Lead Developer</div>
+          <div style={{ fontSize: 13, color: C.textMuted, marginTop: 14, maxWidth: 420, lineHeight: 1.6 }}>
+            Building tools that enhance digital wellbeing and productivity. Passionate about beautiful interfaces, performance, and seamless user experiences.
+          </div>
+          
+          <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
+            <div style={{ padding: "5px 12px", borderRadius: 20, background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)", fontSize: 11, color: C.purple, fontWeight: 600 }}>Design</div>
+            <div style={{ padding: "5px 12px", borderRadius: 20, background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.2)", fontSize: 11, color: C.blue, fontWeight: 600 }}>Engineering</div>
+            <div style={{ padding: "5px 12px", borderRadius: 20, background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.2)", fontSize: 11, color: C.green, fontWeight: 600 }}>Product</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, marginBottom: 4 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.textSub, letterSpacing: "0.12em", textTransform: "uppercase" }}>Get in touch</div>
+        <div style={{ flex: 1, height: 1, background: "linear-gradient(90deg, rgba(255,255,255,0.06) 0%, transparent 100%)" }} />
+      </div>
+      
+      {/* Bento Grid for Links */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <a href="https://github.com/arshsisodiya" target="_blank" rel="noreferrer" className="sp-bento-link" style={{ 
+          textDecoration: "none", display: "flex", flexDirection: "column", padding: 22, 
+          background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)", 
+          border: `1px solid ${C.borderMed}`, borderRadius: 18, transition: "all 0.25s cubic-bezier(0.34,1.56,0.64,1)" 
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, border: "1px solid rgba(255,255,255,0.1)" }}>🐙</div>
+            <div className="link-arrow" style={{ color: C.textMuted, fontSize: 18, transition: "transform 0.2s ease" }}>↗</div>
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 600, color: C.text, marginBottom: 6 }}>GitHub</div>
+          <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>Explore my open-source projects and contributions.</div>
+          <div style={{ fontSize: 11, color: C.textDim, marginTop: 14, fontFamily: "monospace", letterSpacing: "0.02em" }}>github.com/arshsisodiya</div>
+        </a>
+
+        <a href="https://t.me/NmberSEVEN" target="_blank" rel="noreferrer" className="sp-bento-link" style={{ 
+          textDecoration: "none", display: "flex", flexDirection: "column", padding: 22, 
+          background: "linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(37,99,235,0.02) 100%)", 
+          border: "1px solid rgba(59,130,246,0.2)", borderRadius: 18, transition: "all 0.25s cubic-bezier(0.34,1.56,0.64,1)" 
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(59,130,246,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, border: "1px solid rgba(59,130,246,0.3)" }}>✈️</div>
+            <div className="link-arrow" style={{ color: C.blue, fontSize: 18, transition: "transform 0.2s ease" }}>↗</div>
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 600, color: C.blue, marginBottom: 6 }}>Telegram</div>
+          <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>Reach out for a quick chat or collaboration.</div>
+          <div style={{ fontSize: 11, color: C.blue + "99", marginTop: 14, fontFamily: "monospace", letterSpacing: "0.02em" }}>@NmberSEVEN</div>
+        </a>
+
+        <a href="mailto:arshsisodiya@gmail.com" target="_blank" rel="noreferrer" className="sp-bento-link" style={{ 
+          textDecoration: "none", display: "flex", flexDirection: "column", padding: 22, 
+          background: "linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(21,128,61,0.02) 100%)", 
+          border: "1px solid rgba(34,197,94,0.2)", borderRadius: 18, transition: "all 0.25s cubic-bezier(0.34,1.56,0.64,1)",
+          gridColumn: "1 / -1" 
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 16, background: "rgba(34,197,94,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, border: "1px solid rgba(34,197,94,0.3)", flexShrink: 0 }}>✉️</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 17, fontWeight: 600, color: C.green, marginBottom: 4 }}>Email Me</div>
+              <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.5 }}>For business inquiries, support, or longer discussions.</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(34,197,94,0.1)", padding: "8px 16px", borderRadius: 24, border: "1px solid rgba(34,197,94,0.25)" }}>
+              <span style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>arshsisodiya@gmail.com</span>
+              <span className="link-arrow" style={{ fontSize: 16, color: C.green, transition: "transform 0.2s ease" }}>↗</span>
+            </div>
+          </div>
+        </a>
+      </div>
+
+      <div style={{ textAlign: "center", padding: "16px", color: C.textDim, fontSize: 12, marginTop: 12, letterSpacing: "0.02em" }}>
+        Made with ❤️ by Arsh Sisodiya
+      </div>
+
+      <style>{`
+        .sp-bento-link:hover {
+          transform: translateY(-4px) scale(1.01);
+          box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+          border-color: rgba(255,255,255,0.2) !important;
+        }
+        .sp-bento-link:hover .link-arrow {
+          transform: translate(3px, -3px);
+        }
+      `}</style>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SIDE NAV
 // ═══════════════════════════════════════════════════════════════════════════════
 const NAV_ITEMS = [
@@ -2267,6 +2396,7 @@ const NAV_ITEMS = [
   { id: "security", icon: "🔐", label: "Security", sub: "Access & encryption" },
   { id: "updates", icon: "🚀", label: "Updates", sub: "Version & changelog" },
   { id: "about", icon: "ℹ️", label: "About", sub: "Privacy & licenses" },
+  { id: "contact", icon: "👨‍💻", label: "Contact", sub: "Developer details" },
   { id: "developer", icon: "🛠️", label: "Developer", sub: "Diagnostics & logs" },
 ];
 
@@ -2410,6 +2540,7 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
     security: { label: "Security", sub: "Access control and encryption" },
     updates: { label: "Updates", sub: "Version history and changelog" },
     about: { label: "About & Privacy", sub: "Version, licenses and data policy" },
+    contact: { label: "Contact", sub: "Connect with the developer" },
     developer: { label: "Developer", sub: "Notification diagnostics and history" },
   };
 
@@ -2490,6 +2621,7 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
                       {id === "security" && <SecuritySection push={push} />}
                       {id === "updates" && <UpdateSection push={push} />}
                       {id === "about" && <AboutSection push={push} />}
+                      {id === "contact" && <ContactSection push={push} />}
                     </div>
                   );
                 })}

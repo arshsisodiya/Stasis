@@ -1030,12 +1030,14 @@ function GeneralSection({ push }) {
             on={s.widget_enabled} 
             onChange={async v => {
               set("widget_enabled", v);
-              try {
-                await invoke("set_widget_visibility", { visible: v });
-              } catch (e) {
-                console.error(e);
-                set("widget_enabled", !v);
-                if (push) push("Failed to toggle widget", "error");
+              if (window.__TAURI_INTERNALS__) {
+                try {
+                  await invoke("set_widget_visibility", { visible: v });
+                } catch (e) {
+                  console.error(e);
+                  set("widget_enabled", !v);
+                  if (push) push("Failed to toggle widget", "error");
+                }
               }
             }} 
           />

@@ -176,7 +176,7 @@ class CommandHandler:
                     cursor = conn.cursor()
                     cursor.execute('''
                         SELECT app_name, SUM(duration_seconds)
-                        FROM session_logs
+                        FROM activity_logs
                         WHERE DATE(start_time) = DATE('now', 'localtime')
                         GROUP BY app_name
                         ORDER BY SUM(duration_seconds) DESC

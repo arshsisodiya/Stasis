@@ -243,7 +243,8 @@ class TelegramSettingsManager(BaseSettingsManager):
             "telegram_chat_id": None,
             "telegram_webcam_allowed": "true",
             "telegram_screenshot_allowed": "true",
-            "telegram_system_control_allowed": "true"
+            "telegram_system_control_allowed": "true",
+            "telegram_last_activity_timestamp": None,
         }
 
         for key, value in defaults.items():

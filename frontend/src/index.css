@@ -26,6 +26,13 @@ html, body, #root {
 body {
     font-family: 'DM Sans', sans-serif;
     color: #f8fafc;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+input, textarea {
+    user-select: auto;
+    -webkit-user-select: auto;
 }
 
 .app-surface {

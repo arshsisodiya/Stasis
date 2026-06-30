@@ -255,7 +255,10 @@ fn set_widget_visibility(app: tauri::AppHandle, visible: bool) {
         }
     }
 
-    // We no longer persist here, as it's handled by the DB via Python/Frontend
+    if let Ok(store) = app.store("settings.json") {
+        store.set("widget_enabled", serde_json::json!(visible));
+        let _ = store.save();
+    }
 }
 
 #[tauri::command]
@@ -283,6 +286,12 @@ fn expand_widget(window: tauri::WebviewWindow) {
 #[tauri::command]
 fn shrink_widget(window: tauri::WebviewWindow) {
     resize_widget_anchored(&window, WIDGET_COLLAPSED_W, WIDGET_COLLAPSED_H);
+}
+
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    SHOULD_EXIT.store(true, Ordering::SeqCst);
+    app.exit(0);
 }
 
 fn resize_widget_anchored(window: &tauri::WebviewWindow, width: f64, height: f64) {
@@ -711,7 +720,8 @@ fn main() {
             set_widget_visibility,
             expand_widget,
             shrink_widget,
-            set_widget_anchor
+            set_widget_anchor,
+            quit_app
         ])
 
         .build(tauri::generate_context!())

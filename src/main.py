@@ -81,9 +81,8 @@ def main():
 
     # 🔒 Ensure single instance
     _app_mutex = ensure_single_instance()
-    
+
     app_controller = AppController()
-    app_controller.initialize()
 
     def api_server_vessel():
         nonlocal api_server
@@ -94,21 +93,36 @@ def main():
         except Exception:
             logger.exception("API server crashed unexpectedly")
 
+    # ── Step 1: Initialize database ─────────────────────────────────────────
+    logger.info("=== STARTUP: Step 1 — Initializing database ===")
     init_db()
     log_system_boot()
     logger.info("System lifecycle session initialized")
 
-    # Restore the active user session from DB so the activity logger immediately
-    # uses the correct user_id without waiting for the frontend to connect.
+    # ── Step 2: Restore user session ────────────────────────────────────────
+    # MUST happen before app_controller.initialize() so that
+    # TelegramSettingsManager reads credentials under the real user_id,
+    # not the guest/NULL row.
+    logger.info("=== STARTUP: Step 2 — Restoring user session ===")
     restored_user = app_controller.auth_manager.restore_session_from_db()
     if restored_user:
         logger.info(f"Session restored for user: {restored_user['username']}")
     else:
         logger.info("No active session found in DB — waiting for user login")
+    logger.info(f"=== active_user_id after restore: {app_controller.auth_manager.active_user_id} ===")
 
-    # Pre-warm settings cache so the first get() doesn't hit the DB
+    # ── Step 3: Warm settings cache ──────────────────────────────────────────
+    logger.info("=== STARTUP: Step 3 — Warming settings cache ===")
     from src.core.settings_cache import settings_cache
     settings_cache.warm()
+
+    # ── Step 4: Initialize app services (Telegram etc.) ─────────────────────
+    # user_id is now guaranteed to be set so credentials are read from the
+    # correct per-user row in telegram_settings.
+    logger.info("=== STARTUP: Step 4 — Initializing app services ===")
+    app_controller.initialize()
+    logger.info("=== STARTUP: app_controller.initialize() complete ===")
+
 
     # One-time self-heal for Windows notification attribution (shortcut + AUMID).
     if os.name == "nt":

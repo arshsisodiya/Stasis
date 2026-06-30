@@ -1765,3 +1765,50 @@ def api_limit_events():
         {"app": e[0], "type": e[1], "old_value": e[2], "new_value": e[3], "timestamp": e[4], "date": e[5]}
         for e in events
     ])
+
+# ==========================================
+# DATA EXPORT
+# ==========================================
+
+@wellbeing_bp.route("/api/export/csv")
+def api_export_csv():
+    import csv
+    import io
+    from flask import Response, request
+    from src.database.database import get_connection
+    from src.api.wellbeing_routes import get_active_user_id
+    
+    user_id = get_active_user_id()
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Export daily_stats
+    if user_id:
+        cursor.execute('''
+            SELECT date, app_name, main_category, sub_category, active_seconds, idle_seconds, keystrokes, clicks
+            FROM daily_stats
+            WHERE user_id = ?
+            ORDER BY date DESC
+        ''', (user_id,))
+    else:
+        cursor.execute('''
+            SELECT date, app_name, main_category, sub_category, active_seconds, idle_seconds, keystrokes, clicks
+            FROM daily_stats
+            WHERE user_id IS NULL
+            ORDER BY date DESC
+        ''')
+        
+    rows = cursor.fetchall()
+    
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(['Date', 'App Name', 'Main Category', 'Sub Category', 'Active Seconds', 'Idle Seconds', 'Keystrokes', 'Clicks'])
+    cw.writerows(rows)
+    
+    output = si.getvalue()
+    
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-disposition": "attachment; filename=stasis_activity_export.csv"}
+    )

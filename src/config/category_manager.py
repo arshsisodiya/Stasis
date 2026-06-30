@@ -101,4 +101,59 @@ def get_category(app_name: str, url: str = None, exe_path: str = None):
         if app_exe in app_rules:
             return app_rules[app_exe]["main"], app_rules[app_exe]["sub"]
 
+    # 3️⃣  Heuristic Auto-Categorization (if not found)
+    cat_main, cat_sub = _auto_categorize_app(app_name, exe_path, url)
+    if cat_main != "other":
+        _save_auto_category(app_name, cat_main, cat_sub)
+        return cat_main, cat_sub
+
     return "other", "other"
+
+def _auto_categorize_app(app_name: str, exe_path: str, url: str):
+    """Heuristics to auto-categorize unknown apps based on name/url keywords."""
+    name = (app_name or "").lower()
+    url_str = (url or "").lower()
+    path = (exe_path or "").lower()
+
+    # Productive Keywords
+    productive_kws = ["code", "studio", "zoom", "teams", "slack", "word", "excel", "powerpoint", "notion", "figma", "obsidian", "edit", "dev", "term", "bash"]
+    if any(kw in name for kw in productive_kws) or any(kw in url_str for kw in productive_kws):
+        return "productive", "work"
+
+    # Distraction Keywords
+    distract_kws = ["game", "steam", "epic", "play", "netflix", "youtube", "social", "insta", "twitter", "reddit", "tiktok", "whatsapp"]
+    if any(kw in name for kw in distract_kws) or any(kw in url_str for kw in distract_kws):
+        return "distraction", "entertainment"
+
+    # Neutral Keywords
+    neutral_kws = ["settings", "system", "task", "file", "explorer", "update", "manager", "calc", "mail", "spotify", "music", "discord"]
+    if any(kw in name for kw in neutral_kws) or any(kw in url_str for kw in neutral_kws):
+        return "neutral", "utility"
+
+    return "other", "other"
+
+def _save_auto_category(app_name: str, main_cat: str, sub_cat: str):
+    """Saves the auto-categorized app to app_categories.json"""
+    try:
+        categories = load_categories()
+        
+        # Ensure 'apps' key exists
+        if "apps" not in categories:
+            categories["apps"] = {}
+            
+        app_key = app_name.lower()
+        if not app_key.endswith(".exe") and "." not in app_key:
+            app_key += ".exe"
+            
+        categories["apps"][app_key] = {
+            "main": main_cat,
+            "sub": sub_cat,
+            "auto_categorized": True
+        }
+        
+        with open(CATEGORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(categories, f, indent=4)
+            
+        load_categories.cache_clear()
+    except Exception as e:
+        print(f"Failed to save auto-category for {app_name}: {e}")

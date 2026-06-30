@@ -89,6 +89,19 @@ def init_db():
         PRIMARY KEY (date, app_name, main_category, user_id)
     )
     """)
+
+    # ===============================
+    # BADGES & MILESTONES
+    # ===============================
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS badges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        badge_key TEXT NOT NULL,
+        unlocked_at TEXT NOT NULL,
+        user_id TEXT,
+        UNIQUE(badge_key, user_id)
+    )
+    """)
     # ===============================
     # TABLE SCHEMA RECREATION / MIGRATION FOR MULTI-ACCOUNT SCOPING
     # ===============================

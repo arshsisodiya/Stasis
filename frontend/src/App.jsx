@@ -5,6 +5,8 @@ import { load } from "@tauri-apps/plugin-store";
 import { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
+import ContextMenu from './components/ContextMenu';
+
 /**
  * Startup transition flow:
  *  "idle"     → only LoadingScreen shown
@@ -23,6 +25,7 @@ export default function App() {
   return (
     <AuthProvider>
       <AppContent />
+      <ContextMenu />
     </AuthProvider>
   );
 }

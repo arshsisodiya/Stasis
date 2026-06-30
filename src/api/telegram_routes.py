@@ -68,26 +68,36 @@ def _mask(value: str, keep: int = 6) -> str | None:
     return value[:keep] + "..." if len(value) > keep else "*" * len(value)
 
 
+def _uid():
+    """Returns the currently active user_id from the app_controller."""
+    try:
+        return app_controller.auth_manager.active_user_id
+    except Exception:
+        return None
+
+
 def _has_credentials() -> bool:
     """True only if both encrypted token and chat_id are non-empty in DB."""
-    token = TelegramSettingsManager.get("telegram_token")
-    chat_id = TelegramSettingsManager.get("telegram_chat_id")
+    uid = _uid()
+    token = TelegramSettingsManager.get("telegram_token", user_id=uid)
+    chat_id = TelegramSettingsManager.get("telegram_chat_id", user_id=uid)
     return bool(token and token.strip() and chat_id and chat_id.strip())
 
 
 def _get_stored_credentials() -> tuple[str | None, str | None]:
     """Decrypt and return (token, chat_id). Returns (None, None) if missing."""
-    token_enc = TelegramSettingsManager.get("telegram_token")
-    chat_enc = TelegramSettingsManager.get("telegram_chat_id")
+    uid = _uid()
+    token_enc = TelegramSettingsManager.get("telegram_token", user_id=uid)
+    chat_enc  = TelegramSettingsManager.get("telegram_chat_id", user_id=uid)
     return (
         decrypt(token_enc) if token_enc else None,
-        decrypt(chat_enc) if chat_enc else None,
+        decrypt(chat_enc)  if chat_enc  else None,
     )
 
 
 def _state_string(enabled: bool, running: bool, has_creds: bool) -> str:
-    if enabled and running:     return "running"
-    if enabled and not running: return "degraded"
+    if enabled and running:       return "running"
+    if enabled and not running:   return "degraded"
     if not enabled and has_creds: return "paused"
     return "disabled"
 
@@ -97,9 +107,15 @@ def _state_string(enabled: bool, running: bool, has_creds: bool) -> str:
 @telegram_bp.route("/api/telegram/status", methods=["GET"])
 def telegram_status():
     """Lightweight status poll — safe to call frequently."""
-    enabled = TelegramSettingsManager.get_bool("telegram_enabled")
+    uid     = _uid()
+    enabled = TelegramSettingsManager.get_bool("telegram_enabled", user_id=uid)
     running = app_controller.is_telegram_running()
     has_creds = _has_credentials()
+
+    logger.debug(
+        f"[telegram_status] uid={uid} enabled={enabled} running={running} "
+        f"has_creds={has_creds}"
+    )
 
     return jsonify({
         "enabled": enabled,
@@ -111,32 +127,33 @@ def telegram_status():
 @telegram_bp.route("/api/telegram/config", methods=["GET"])
 def telegram_config():
     """Returns masked credentials. Raw values are never returned."""
-    enabled = TelegramSettingsManager.get_bool("telegram_enabled")
+    uid = _uid()
+    enabled   = TelegramSettingsManager.get_bool("telegram_enabled", user_id=uid)
     has_creds = _has_credentials()
 
     token_masked = chat_masked = None
     if has_creds:
         token, chat_id = _get_stored_credentials()
         token_masked = _mask(token, keep=6)
-        chat_masked = _mask(chat_id, keep=4)
-        
-    val = TelegramSettingsManager.get("telegram_recent_commands")
+        chat_masked  = _mask(chat_id, keep=4)
+
+    val = TelegramSettingsManager.get("telegram_recent_commands", user_id=uid)
     try:
         recent_cmds = json.loads(val) if val else []
     except Exception:
         recent_cmds = []
 
     return jsonify({
-        "enabled": enabled,
-        "has_credentials": has_creds,
-        "token": token_masked,
-        "chat_id": chat_masked,
-        "bot_username": TelegramSettingsManager.get("telegram_bot_username"),
-        "recent_commands": recent_cmds,
-        "last_activity_timestamp": TelegramSettingsManager.get("telegram_last_activity_timestamp"),
-        "webcam_allowed": TelegramSettingsManager.get_bool("telegram_webcam_allowed", True),
-        "screenshot_allowed": TelegramSettingsManager.get_bool("telegram_screenshot_allowed", True),
-        "system_control_allowed": TelegramSettingsManager.get_bool("telegram_system_control_allowed", True),
+        "enabled":                  enabled,
+        "has_credentials":          has_creds,
+        "token":                    token_masked,
+        "chat_id":                  chat_masked,
+        "bot_username":             TelegramSettingsManager.get("telegram_bot_username", user_id=uid),
+        "recent_commands":          recent_cmds,
+        "last_activity_timestamp":  TelegramSettingsManager.get("telegram_last_activity_timestamp", user_id=uid),
+        "webcam_allowed":           TelegramSettingsManager.get_bool("telegram_webcam_allowed", True, user_id=uid),
+        "screenshot_allowed":       TelegramSettingsManager.get_bool("telegram_screenshot_allowed", True, user_id=uid),
+        "system_control_allowed":   TelegramSettingsManager.get_bool("telegram_system_control_allowed", True, user_id=uid),
     })
 
 
@@ -357,12 +374,13 @@ def restart_telegram():
     Restarts the bot process.
     Guards on credentials existing, not just the enabled flag.
     """
+    uid = _uid()
     if not _has_credentials():
         return jsonify({
             "error": "No credentials stored — configure Telegram first",
         }), 400
 
-    if not TelegramSettingsManager.get_bool("telegram_enabled"):
+    if not TelegramSettingsManager.get_bool("telegram_enabled", user_id=uid):
         return jsonify({
             "error": "Telegram is disabled — enable it before restarting",
         }), 400
@@ -387,6 +405,7 @@ def reset_telegram():
     Stops the bot and permanently wipes all credentials from DB.
     Continues credential wipe even if disable() raises.
     """
+    uid = _uid()
     try:
         app_controller.disable_telegram()
     except Exception:
@@ -395,10 +414,10 @@ def reset_telegram():
         )
 
     try:
-        TelegramSettingsManager.delete("telegram_token")
-        TelegramSettingsManager.delete("telegram_chat_id")
-        TelegramSettingsManager.delete("telegram_bot_username")
-        TelegramSettingsManager.set("telegram_enabled", "false")
+        TelegramSettingsManager.delete("telegram_token",       user_id=uid)
+        TelegramSettingsManager.delete("telegram_chat_id",     user_id=uid)
+        TelegramSettingsManager.delete("telegram_bot_username", user_id=uid)
+        TelegramSettingsManager.set("telegram_enabled", "false", user_id=uid)
 
         return jsonify({
             "success": True,

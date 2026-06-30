@@ -17,6 +17,10 @@ if (typeof window !== "undefined" && window.__TAURI_INTERNALS__) {
     });
 }
 
+if (typeof window !== "undefined") {
+  window.addEventListener("contextmenu", (e) => e.preventDefault());
+}
+
 // Global fetch override to inject Auth token
 const originalFetch = window.fetch;
 window.fetch = async function(...args) {

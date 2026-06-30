@@ -10,6 +10,8 @@ html, body, #root {
 body {
     color: #f8fafc;
     font-family: "Segoe UI", system-ui, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 * {

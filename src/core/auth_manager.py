@@ -8,6 +8,7 @@ from src.database.database import get_connection
 class AuthManager:
     def __init__(self):
         self._active_user_id = None
+        self.on_active_user_changed = None
         
     @property
     def active_user_id(self):
@@ -15,7 +16,10 @@ class AuthManager:
         
     @active_user_id.setter
     def active_user_id(self, value):
+        old_value = self._active_user_id
         self._active_user_id = value
+        if old_value != value and self.on_active_user_changed:
+            self.on_active_user_changed(value)
 
 
     def auto_login_local_user(self):

@@ -9,6 +9,7 @@ import FocusCard from "./FocusCard";
 import InputActivityCard from "./InputActivityCard";
 import HourlyActivityPattern from "./HourlyActivityPattern";
 import CategoryBreakdown from "./CategoryBreakdown";
+import BadgesCard from "./BadgesCard";
 
 const OVERVIEW_GOALS_VISIBILITY_EVENT = "stasis:overview-goals-visibility";
 
@@ -587,6 +588,10 @@ export default function OverviewPage({
           ? <SectionEmpty icon="🗂️" message="No app usage recorded for this day" />
           : <CategoryBreakdown stats={stats} />
         }
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <BadgesCard />
       </div>
 
       <QuickGoalModal

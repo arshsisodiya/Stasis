@@ -33,10 +33,16 @@ class TelegramListener:
 
                     if message or callback_query:
                         try:
-                            from src.config.settings_manager import SettingsManager
+                            from src.config.settings_manager import TelegramSettingsManager
+                            from src.api.auth_routes import _app_controller as _ac
                             from datetime import datetime
-                            SettingsManager.set("telegram_last_activity_timestamp", datetime.now().isoformat())
-                        except:
+                            uid = _ac.auth_manager.active_user_id if _ac else None
+                            TelegramSettingsManager.set(
+                                "telegram_last_activity_timestamp",
+                                datetime.now().isoformat(),
+                                user_id=uid
+                            )
+                        except Exception:
                             pass
 
             except requests.exceptions.ReadTimeout:

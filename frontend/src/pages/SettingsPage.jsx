@@ -681,7 +681,8 @@ function TelegramSection({ push }) {
   const isEnabled = !!config?.enabled;
   const recentCmds = config?.recent_commands || [];
   const lastCmd = recentCmds[0];
-  const lastCmdText = lastCmd ? `last seen ${timeAgo(lastCmd.timestamp)}` : null;
+  const lastActivityTimestamp = config?.last_activity_timestamp || (lastCmd ? lastCmd.timestamp : null);
+  const lastCmdText = lastActivityTimestamp ? `last seen ${timeAgo(lastActivityTimestamp)}` : null;
   const st = computeStatus(isEnabled, status?.running, hasCreds);
 
   const requestAction = action => {
@@ -1270,6 +1271,7 @@ function DeveloperSection({ push }) {
   const [testingNotifications, setTestingNotifications] = useState(false);
   const [testingGoalNotification, setTestingGoalNotification] = useState(false);
   const [testingAppLimitNotification, setTestingAppLimitNotification] = useState(false);
+  const [testingEyecareNotification, setTestingEyecareNotification] = useState(false);
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [notifCfg, setNotifCfg] = useState({
@@ -1277,6 +1279,7 @@ function DeveloperSection({ push }) {
     notifications_enable_limit_events: true,
     notifications_enable_test_events: true,
     notifications_enable_digest_events: true,
+    notifications_enable_eyecare_events: false,
     notifications_quiet_hours_enabled: false,
     notifications_quiet_start: "22:00",
     notifications_quiet_end: "07:00",
@@ -1371,6 +1374,11 @@ function DeveloperSection({ push }) {
           control={<Toggle on={notifCfg.notifications_enable_digest_events} onChange={v => saveNotifCfg({ notifications_enable_digest_events: v })} />}
         />
         <SettingRow
+          label="Eye-Care Reminders (20-20-20 Rule)"
+          desc="Alerts you to look at something 20 feet away for 20 seconds after 20 minutes of continuous screen time"
+          control={<Toggle on={notifCfg.notifications_enable_eyecare_events} onChange={v => saveNotifCfg({ notifications_enable_eyecare_events: v })} />}
+        />
+        <SettingRow
           label="Quiet hours"
           desc="Suppress all notifications during the selected time window"
           control={<Toggle on={notifCfg.notifications_quiet_hours_enabled} onChange={v => saveNotifCfg({ notifications_quiet_hours_enabled: v })} />}
@@ -1420,7 +1428,7 @@ function DeveloperSection({ push }) {
 
       <Card>
         <SectionLabel>Notification Test Tools</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
           <Btn
             size="sm"
             loading={testingNotifications}
@@ -1456,6 +1464,18 @@ function DeveloperSection({ push }) {
             )}
           >
             Send App Limit Test
+          </Btn>
+          <Btn
+            size="sm"
+            loading={testingEyecareNotification}
+            onClick={() => runTest(
+              "/api/settings/notifications/test-eyecare",
+              setTestingEyecareNotification,
+              "Eye-care notification sent",
+              "Eye-care notification test failed"
+            )}
+          >
+            Send Eye Care Test
           </Btn>
         </div>
         <div style={{ marginTop: 10, fontSize: 11, color: C.textMuted }}>

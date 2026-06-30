@@ -133,6 +133,7 @@ def telegram_config():
         "chat_id": chat_masked,
         "bot_username": TelegramSettingsManager.get("telegram_bot_username"),
         "recent_commands": recent_cmds,
+        "last_activity_timestamp": TelegramSettingsManager.get("telegram_last_activity_timestamp"),
         "webcam_allowed": TelegramSettingsManager.get_bool("telegram_webcam_allowed", True),
         "screenshot_allowed": TelegramSettingsManager.get_bool("telegram_screenshot_allowed", True),
         "system_control_allowed": TelegramSettingsManager.get_bool("telegram_system_control_allowed", True),

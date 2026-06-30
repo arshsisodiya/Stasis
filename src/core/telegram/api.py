@@ -1,6 +1,7 @@
 # src/core/telegram/api.py
 
 import os
+import json
 import requests
 from typing import Optional, List, Dict
 
@@ -13,6 +14,14 @@ class TelegramAPI:
         self.chat_id = str(chat_id)
         self.base_url = f"https://api.telegram.org/bot{token}"
         self.offset: Optional[int] = None
+
+    def _update_activity(self):
+        try:
+            from src.config.settings_manager import SettingsManager
+            from datetime import datetime
+            SettingsManager.set("telegram_last_activity_timestamp", datetime.now().isoformat())
+        except:
+            pass
 
     # --------------------------
     # CORE API
@@ -31,32 +40,42 @@ class TelegramAPI:
         data = response.json()
         return data.get("result", [])
 
-    def send_message(self, text: str, parse_mode: str = "HTML") -> bool:
+    def send_message(self, text: str, parse_mode: str = "HTML", reply_markup: dict = None) -> bool:
+        payload = {
+            "chat_id": self.chat_id,
+            "text": text,
+            "parse_mode": parse_mode,
+        }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+
         response = requests.post(
             f"{self.base_url}/sendMessage",
-            json={
-                "chat_id": self.chat_id,
-                "text": text,
-                "parse_mode": parse_mode,
-            },
+            json=payload,
             timeout=REQUEST_TIMEOUT,
         )
         response.raise_for_status()
+        self._update_activity()
         data = response.json()
         return data.get("result", {}).get("message_id")
 
-    def send_photo(self, photo_path: str, caption: str = "") -> bool:
+    def send_photo(self, photo_path: str, caption: str = "", reply_markup: dict = None) -> bool:
         with open(photo_path, "rb") as photo:
+            data = {
+                "chat_id": self.chat_id,
+                "caption": caption,
+            }
+            if reply_markup:
+                data["reply_markup"] = json.dumps(reply_markup)
+
             response = requests.post(
                 f"{self.base_url}/sendPhoto",
                 files={"photo": photo},
-                data={
-                    "chat_id": self.chat_id,
-                    "caption": caption,
-                },
+                data=data,
                 timeout=60,
             )
         response.raise_for_status()
+        self._update_activity()
         return True
 
     def send_video(self, video_path: str, caption: str = "") -> bool:
@@ -78,6 +97,7 @@ class TelegramAPI:
                 timeout=(15, 600),
             )
         response.raise_for_status()
+        self._update_activity()
         return True
 
     def send_document(self, file_path: str, caption: str = "") -> bool:
@@ -92,18 +112,50 @@ class TelegramAPI:
                 timeout=60,
             )
         response.raise_for_status()
+        self._update_activity()
         return True
 
-    def edit_message(self, message_id: int, text: str, parse_mode: str = "HTML") -> bool:
+    def edit_message(self, message_id: int, text: str, parse_mode: str = "HTML", reply_markup: dict = None) -> bool:
+        payload = {
+            "chat_id": self.chat_id,
+            "message_id": message_id,
+            "text": text,
+            "parse_mode": parse_mode,
+        }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+
         response = requests.post(
             f"{self.base_url}/editMessageText",
+            json=payload,
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        self._update_activity()
+        return True
+
+    def answer_callback_query(self, callback_query_id: str, text: str = "", show_alert: bool = False) -> bool:
+        response = requests.post(
+            f"{self.base_url}/answerCallbackQuery",
             json={
-                "chat_id": self.chat_id,
-                "message_id": message_id,
+                "callback_query_id": callback_query_id,
                 "text": text,
-                "parse_mode": parse_mode,
+                "show_alert": show_alert,
             },
             timeout=REQUEST_TIMEOUT,
         )
         response.raise_for_status()
+        self._update_activity()
         return True
+
+    def set_my_commands(self, commands: List[Dict[str, str]]) -> bool:
+        response = requests.post(
+            f"{self.base_url}/setMyCommands",
+            json={"commands": commands},
+            timeout=REQUEST_TIMEOUT,
+        )
+        try:
+            response.raise_for_status()
+            return True
+        except Exception:
+            return False

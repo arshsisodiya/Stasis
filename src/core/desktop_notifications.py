@@ -22,6 +22,7 @@ class DesktopNotifier:
     EVENT_GOAL = "goal"
     EVENT_LIMIT = "limit"
     EVENT_DIGEST = "digest"
+    EVENT_EYECARE = "eyecare"
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -126,6 +127,8 @@ class DesktopNotifier:
         if event_type == self.EVENT_LIMIT and not SettingsManager.get_bool("notifications_enable_limit_events", True):
             return False
         if event_type == self.EVENT_DIGEST and not SettingsManager.get_bool("notifications_enable_digest_events", True):
+            return False
+        if event_type == self.EVENT_EYECARE and not SettingsManager.get_bool("notifications_enable_eyecare_events", False):
             return False
 
         if self._is_quiet_hours_now():

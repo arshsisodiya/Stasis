@@ -146,6 +146,71 @@ class CommandHandler:
             logger.exception(f"Error handling command {command}: {e}")
             self.api.send_message(f"⚠️ Internal error processing command: {str(e)}")
 
+    def handle_callback(self, callback_query: dict):
+        callback_id = callback_query.get("id")
+        data = callback_query.get("data", "")
+        message = callback_query.get("message", {})
+        chat_id = str(message.get("chat", {}).get("id", "")).strip()
+
+        if chat_id != self.api.chat_id:
+            return
+
+        from src.utils.logger import setup_logger
+        logger = setup_logger()
+        logger.info(f"Bot received callback query: {data}")
+
+        try:
+            if data == "cb_screenshot":
+                self.api.answer_callback_query(callback_id, text="Taking screenshot...")
+                self.handle({"text": "/screenshot", "chat": {"id": chat_id}})
+            
+            elif data == "cb_lock_pc":
+                self.api.answer_callback_query(callback_id, text="Locking PC...")
+                self.handle({"text": "/lock", "chat": {"id": chat_id}})
+                
+            elif data == "cb_top_apps":
+                self.api.answer_callback_query(callback_id)
+                try:
+                    from src.database.database import get_connection
+                    conn = get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        SELECT app_name, SUM(duration_seconds)
+                        FROM session_logs
+                        WHERE DATE(start_time) = DATE('now', 'localtime')
+                        GROUP BY app_name
+                        ORDER BY SUM(duration_seconds) DESC
+                        LIMIT 5
+                    ''')
+                    rows = cursor.fetchall()
+                    if not rows:
+                        self.api.send_message("No activity recorded today.")
+                    else:
+                        lines = ["<b>🏆 Top 5 Apps Today:</b>"]
+                        for row in rows:
+                            mins = int(row[1] / 60)
+                            lines.append(f"• {row[0]}: {mins}m")
+                        self.api.send_message("\n".join(lines))
+                except Exception as ex:
+                    logger.exception(f"DB Error fetching top apps: {ex}")
+                    self.api.send_message("Failed to fetch top apps.")
+                    
+            elif data == "cb_focus_breakdown":
+                self.api.answer_callback_query(callback_id, text="Feature coming soon!", show_alert=True)
+                
+            elif data == "cb_goals":
+                self.api.answer_callback_query(callback_id, text="Feature coming soon!", show_alert=True)
+                
+            else:
+                self.api.answer_callback_query(callback_id, text="Unknown action")
+                
+        except Exception as e:
+            logger.exception(f"Error handling callback {data}: {e}")
+            try:
+                self.api.answer_callback_query(callback_id, text="Internal error occurred", show_alert=True)
+            except:
+                pass
+
     def _send_logs(self):
         app_name = "Stasis"
         base_path = os.path.join(

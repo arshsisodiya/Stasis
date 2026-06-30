@@ -1629,8 +1629,20 @@ def api_send_weekly_report_telegram():
         from src.core.telegram.api import TelegramAPI
         api = TelegramAPI(token, chat_id)
         
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "📊 Top 5 Apps", "callback_data": "cb_top_apps"},
+                    {"text": "📸 Screenshot", "callback_data": "cb_screenshot"},
+                ],
+                [
+                    {"text": "🔒 Lock PC", "callback_data": "cb_lock_pc"},
+                ]
+            ]
+        }
+        
         logger.info("Sending text summary to Telegram...")
-        api.send_message(text)
+        api.send_message(text, reply_markup=keyboard)
         
         logger.info("Sending HTML document to Telegram...")
         api.send_document(file_path, caption=f"📄 Full Interactive Report ({report['period']['start']})")
@@ -1708,7 +1720,18 @@ def run_weekly_report_scheduler(stop_event=None, check_interval_sec=300):
 
                         from src.core.telegram.api import TelegramAPI
                         api = TelegramAPI(token, chat_id)
-                        if api.send_message(text):
+                        keyboard = {
+                            "inline_keyboard": [
+                                [
+                                    {"text": "📊 Top 5 Apps", "callback_data": "cb_top_apps"},
+                                    {"text": "📸 Screenshot", "callback_data": "cb_screenshot"},
+                                ],
+                                [
+                                    {"text": "🔒 Lock PC", "callback_data": "cb_lock_pc"},
+                                ]
+                            ]
+                        }
+                        if api.send_message(text, reply_markup=keyboard):
                             api.send_document(file_path, caption=f"📄 Full Interactive Report ({report_monday})")
                             SettingsManager.set("weekly_report_last_sent_week", report_monday, user_id=active_user_id)
                     

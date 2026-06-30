@@ -606,6 +606,10 @@ def start_logging():
     # Efficiency counters
     gc_throttle_ticks = 0
 
+    # Eye-Care state
+    eyecare_active_seconds = 0.0
+    last_eyecare_notify = 0.0
+
     def reset_session(new_info: dict | None):
         nonlocal session
         global _current_session_start_mono
@@ -658,6 +662,29 @@ def start_logging():
                 and idle_secs > IDLE_THRESHOLD
                 and not media_playing
             )
+
+            # ---- Eye-Care Rule (20-20-20) ----
+            eyecare_enabled = settings_cache.get("notifications_enable_eyecare_events", "false") in ("true", "1")
+            if eyecare_enabled:
+                is_eye_break = (idle_secs >= 20 and not media_playing) or (info is None) or sleep_manager.is_sleeping
+                if is_eye_break:
+                    eyecare_active_seconds = 0.0
+                else:
+                    eyecare_active_seconds += delta
+
+                if eyecare_active_seconds >= 1200 and (now_mono - last_eyecare_notify > 1200):
+                    try:
+                        from src.core.desktop_notifications import desktop_notifier, DesktopNotifier
+                        desktop_notifier.notify(
+                            title="Blink Time!",
+                            message="Time to give those peepers a break! Look at something 20 feet away for 20 seconds. Your eyes will thank you!",
+                            event_type=DesktopNotifier.EVENT_EYECARE,
+                            cooldown_seconds=1200,
+                            event_key="eye_care_20_20_20"
+                        )
+                    except Exception as e:
+                        print(f"[EyeCare] Failed to send notification: {e}")
+                    last_eyecare_notify = now_mono
 
             from src.config.ignored_apps_manager import is_ignored
 

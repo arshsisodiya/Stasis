@@ -30,6 +30,7 @@ def get_settings():
         "notifications_enable_limit_events": SettingsManager.get_bool("notifications_enable_limit_events", True, user_id=user_id),
         "notifications_enable_test_events": SettingsManager.get_bool("notifications_enable_test_events", True, user_id=user_id),
         "notifications_enable_digest_events": SettingsManager.get_bool("notifications_enable_digest_events", True, user_id=user_id),
+        "notifications_enable_eyecare_events": SettingsManager.get_bool("notifications_enable_eyecare_events", False, user_id=user_id),
         "notifications_quiet_hours_enabled": SettingsManager.get_bool("notifications_quiet_hours_enabled", False, user_id=user_id),
         "notifications_quiet_start": SettingsManager.get("notifications_quiet_start", user_id=user_id) or "22:00",
         "notifications_quiet_end": SettingsManager.get("notifications_quiet_end", user_id=user_id) or "07:00",
@@ -90,6 +91,9 @@ def update_settings():
 
     if "notifications_enable_digest_events" in data:
         SettingsManager.set("notifications_enable_digest_events", "true" if data["notifications_enable_digest_events"] else "false", user_id=user_id)
+
+    if "notifications_enable_eyecare_events" in data:
+        SettingsManager.set("notifications_enable_eyecare_events", "true" if data["notifications_enable_eyecare_events"] else "false", user_id=user_id)
 
     if "notifications_quiet_hours_enabled" in data:
         SettingsManager.set("notifications_quiet_hours_enabled", "true" if data["notifications_quiet_hours_enabled"] else "false", user_id=user_id)
@@ -246,6 +250,16 @@ def test_app_limit_notification():
             ("Keep blocked", desktop_notifier.build_action_url("keep-blocked", app="notepad++")),
         ],
     )
+
+
+@wellbeing_bp.route("/api/settings/notifications/test-eyecare", methods=["POST"])
+def test_eyecare_notification():
+    return _send_test_notification(
+        title="Blink Time! (20-20-20 Rule)",
+        message="Time to give those peepers a break! Look at something 20 feet away for 20 seconds. Your eyes will thank you!",
+        source="test-eyecare",
+    )
+
 
 
 @wellbeing_bp.route("/api/settings/notifications/history", methods=["GET"])

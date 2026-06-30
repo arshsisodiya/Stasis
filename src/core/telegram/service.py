@@ -77,6 +77,19 @@ class TelegramService:
 
         if notify:
             try:
+                # Set Bot Menu commands
+                commands = [
+                    {"command": "ping", "description": "Check if Stasis is online"},
+                    {"command": "screenshot", "description": "Capture current screen"},
+                    {"command": "lock", "description": "Lock the PC"},
+                    {"command": "shutdown", "description": "Request PC shutdown"},
+                    {"command": "restart", "description": "Request PC restart"},
+                    {"command": "camera", "description": "Take a webcam snapshot"},
+                    {"command": "video", "description": "Record a 10s webcam video"},
+                    {"command": "getlog", "description": "Download activity logs"},
+                ]
+                self.api.set_my_commands(commands)
+
                 status = self._build_status_text()
                 self.api.send_message(
                     "<b>Telegram Service Started</b>\n\n" + status,
@@ -201,7 +214,20 @@ class TelegramService:
                     summary += f"\n{i}. {name} — {format_duration(app['seconds'])}"
 
             self.logger.info(f"Starting daily digest transmission for {date_val}...")
-            self.api.send_message(summary, parse_mode="HTML")
+            
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "📊 Top 5 Apps", "callback_data": "cb_top_apps"},
+                        {"text": "📸 Screenshot", "callback_data": "cb_screenshot"},
+                    ],
+                    [
+                        {"text": "🔒 Lock PC", "callback_data": "cb_lock_pc"},
+                    ]
+                ]
+            }
+            
+            self.api.send_message(summary, parse_mode="HTML", reply_markup=keyboard)
             self.logger.info("Daily digest summary sent to Telegram successfully.")
             
             # Send detailed HTML report

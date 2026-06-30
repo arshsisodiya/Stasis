@@ -350,6 +350,7 @@ export default function OverviewPage({
   const [showGoalsInOverview, setShowGoalsInOverview] = useState(true);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [goalModalSeed, setGoalModalSeed] = useState(null);
+  const [notes, setNotes] = useState([]);
   const usage = stats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
 
   useEffect(() => {
@@ -367,6 +368,25 @@ export default function OverviewPage({
     window.addEventListener(OVERVIEW_GOALS_VISIBILITY_EVENT, onVisibilityChanged);
     return () => window.removeEventListener(OVERVIEW_GOALS_VISIBILITY_EVENT, onVisibilityChanged);
   }, []);
+
+  const fetchNotes = useCallback(async () => {
+    try {
+      const r = await fetch(`${BASE}/api/notes`);
+      const d = await r.json();
+      if (d.success) setNotes(d.notes || []);
+    } catch { }
+  }, [BASE]);
+
+  useEffect(() => {
+    fetchNotes();
+  }, [fetchNotes]);
+
+  const dismissNote = async (id) => {
+    try {
+      await fetch(`${BASE}/api/notes/${id}/read`, { method: "POST" });
+      setNotes(prev => prev.filter(n => n.id !== id));
+    } catch { }
+  };
 
   const loadGoals = useCallback(async () => {
     if (!showGoalsInOverview) {
@@ -482,12 +502,43 @@ export default function OverviewPage({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-
-      {/* Limit warnings */}
+    <>
       <LimitWarningBanner limits={limits} usage={usage} onGoToLimits={onGoToLimits} selectedDate={selectedDate} />
+      
+      {notes.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+          {notes.map(note => (
+            <div key={note.id} style={{
+              background: "linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(245, 158, 11, 0.05))",
+              border: "1px solid rgba(251, 191, 36, 0.2)",
+              borderRadius: 14,
+              padding: "12px 18px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              animation: "banner-in 0.3s ease",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 18 }}>📝</span>
+                <span style={{ fontSize: 14, color: "#f1f5f9", fontWeight: 500, fontFamily: "'DM Sans', sans-serif" }}>
+                  {note.text}
+                </span>
+              </div>
+              <button 
+                onClick={() => dismissNote(note.id)}
+                style={{
+                  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 8, padding: "6px 12px", color: "#94a3b8", cursor: "pointer", fontSize: 12
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
-      {/* ── Metric cards — staggered entrance, 20px gap ── */}
+      {/* OVERVIEW METRICS */}
       <div
         className="grid-4"
         style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 16, marginBottom: 20, alignItems: "stretch" }}
@@ -603,6 +654,6 @@ export default function OverviewPage({
         }}
         onSave={handleSaveGoal}
       />
-    </div>
+    </>
   );
 }

@@ -7,6 +7,7 @@ from src.api.wellbeing_routes import wellbeing_bp
 from src.api.update_routes import update_bp
 from src.api.auth_routes import auth_bp, set_app_controller_auth
 from src.api.badge_routes import badges_bp
+from src.api.note_routes import notes_bp
 
 def create_app(app_controller):
     app = Flask(__name__)
@@ -22,6 +23,7 @@ def create_app(app_controller):
     app.register_blueprint(update_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(badges_bp)
+    app.register_blueprint(notes_bp)
 
     return app
 

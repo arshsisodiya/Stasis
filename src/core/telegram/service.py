@@ -87,6 +87,20 @@ class TelegramService:
                     {"command": "camera", "description": "Take a webcam snapshot"},
                     {"command": "video", "description": "Record a 10s webcam video"},
                     {"command": "getlog", "description": "Download activity logs"},
+                    {"command": "block", "description": "Block an app"},
+                    {"command": "unblock", "description": "Unblock an app"},
+                    {"command": "close", "description": "Force close an app"},
+                    {"command": "note", "description": "Save a quick note"},
+                    {"command": "clip", "description": "Get PC clipboard"},
+                    {"command": "today", "description": "Get today's analytics"},
+                    {"command": "goals", "description": "Check goal progress"},
+                    {"command": "play", "description": "Play/Pause media"},
+                    {"command": "pause", "description": "Play/Pause media"},
+                    {"command": "next", "description": "Next track"},
+                    {"command": "prev", "description": "Previous track"},
+                    {"command": "mute", "description": "Mute volume"},
+                    {"command": "volup", "description": "Volume up"},
+                    {"command": "voldown", "description": "Volume down"},
                 ]
                 self.api.set_my_commands(commands)
 

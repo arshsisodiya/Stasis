@@ -72,6 +72,19 @@ def init_db():
     """)
 
     # ===============================
+    # QUICK NOTES (TELEGRAM)
+    # ===============================
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS quick_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        note_text TEXT,
+        created_at DATETIME,
+        is_read INTEGER DEFAULT 0
+    )
+    """)
+
+    # ===============================
     # DAILY AGGREGATED STATS
     # ===============================
     cursor.execute("""

@@ -48,6 +48,16 @@ class CommandHandler:
             if not command:
                 return
 
+            if not command.startswith("/"):
+                # Handle raw text as "set clipboard" if enabled
+                if TelegramSettingsManager.get_bool("telegram_clipboard_allowed", True):
+                    from src.core.telegram.clipboard_utils import set_clipboard_text
+                    if set_clipboard_text(text):
+                        self.api.send_message("✅ Copied to PC clipboard!")
+                    else:
+                        self.api.send_message("❌ Failed to copy to PC clipboard.")
+                return
+
             if command == "/ping":
                 self.api.send_message(get_status_text())
 
@@ -140,6 +150,304 @@ class CommandHandler:
                     os.remove(path)
                 else:
                     self.api.send_message("Failed to record video. Make sure dependencies are installed.")
+                    
+            elif command.startswith("/block "):
+                if not TelegramSettingsManager.get_bool("telegram_remote_blocking_allowed", True):
+                    self.api.send_message("❌ Remote app blocking is disabled in settings.")
+                    return
+                app_name = text[7:].strip()
+                if not app_name:
+                    return
+                
+                try:
+                    from src.database.database import get_connection
+                    from src.api.auth_routes import _app_controller
+                    uid = _app_controller.auth_manager.active_user_id if _app_controller else None
+                    conn = get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT OR IGNORE INTO blocked_apps (app_name, user_id) VALUES (?, ?)", (app_name, uid))
+                    conn.commit()
+                    conn.close()
+                    if _app_controller and hasattr(_app_controller, 'blocking_service') and _app_controller.blocking_service:
+                        _app_controller.blocking_service.force_reblock(app_name)
+                    self.api.send_message(f"✅ Added {app_name} to blocklist.")
+                except Exception as e:
+                    self.api.send_message(f"Failed to block {app_name}: {e}")
+
+            elif command.startswith("/unblock "):
+                if not TelegramSettingsManager.get_bool("telegram_remote_blocking_allowed", True):
+                    self.api.send_message("❌ Remote app blocking is disabled in settings.")
+                    return
+                app_name = text[9:].strip()
+                if not app_name:
+                    return
+                
+                try:
+                    from src.database.database import get_connection
+                    from src.api.auth_routes import _app_controller
+                    uid = _app_controller.auth_manager.active_user_id if _app_controller else None
+                    conn = get_connection()
+                    cursor = conn.cursor()
+                    if uid:
+                        cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id = ?", (app_name, uid))
+                    else:
+                        cursor.execute("DELETE FROM blocked_apps WHERE app_name = ? AND user_id IS NULL", (app_name,))
+                    conn.commit()
+                    conn.close()
+                    if _app_controller and hasattr(_app_controller, 'blocking_service') and _app_controller.blocking_service:
+                        _app_controller.blocking_service.force_unblock(app_name)
+                    self.api.send_message(f"✅ Removed {app_name} from blocklist.")
+                except Exception as e:
+                    self.api.send_message(f"Failed to unblock {app_name}: {e}")
+
+            elif command.startswith("/close "):
+                if not TelegramSettingsManager.get_bool("telegram_remote_blocking_allowed", True):
+                    self.api.send_message("❌ Remote app blocking is disabled in settings.")
+                    return
+                app_name = text[7:].strip().lower()
+                if not app_name:
+                    return
+                
+                try:
+                    from src.utils.dependency_manager import ensure_package
+                    ensure_package("psutil")
+                    import psutil
+                    closed_count = 0
+                    for proc in psutil.process_iter(['name']):
+                        try:
+                            if app_name in proc.info['name'].lower():
+                                proc.kill()
+                                closed_count += 1
+                        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                            pass
+                    self.api.send_message(f"✅ Force closed {closed_count} instances of {app_name}.")
+                except Exception as e:
+                    self.api.send_message(f"Failed to close {app_name}: {e}")
+
+            elif command.startswith("/note "):
+                if not TelegramSettingsManager.get_bool("telegram_quick_notes_enabled", True):
+                    self.api.send_message("❌ Quick notes are disabled in settings.")
+                    return
+                note_text = text[6:].strip()
+                if not note_text:
+                    return
+                
+                try:
+                    from src.database.database import get_connection
+                    from src.api.auth_routes import _app_controller
+                    uid = _app_controller.auth_manager.active_user_id if _app_controller else None
+                    conn = get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO quick_notes (user_id, note_text, created_at, is_read) VALUES (?, ?, ?, 0)",
+                        (uid, note_text, datetime.now().isoformat())
+                    )
+                    conn.commit()
+                    conn.close()
+                    self.api.send_message("📝 Note saved! It will be waiting on your dashboard.")
+                except Exception as e:
+                    self.api.send_message(f"Failed to save note: {e}")
+                    
+            elif command in ["/play", "/pause"]:
+                if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
+                    self.api.send_message("❌ Media controls are disabled in settings.")
+                    return
+                from src.core.telegram.media_controller import play_pause
+                play_pause()
+                self.api.send_message("⏯ Toggled Play/Pause")
+
+            elif command == "/next":
+                if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
+                    self.api.send_message("❌ Media controls are disabled in settings.")
+                    return
+                from src.core.telegram.media_controller import next_track
+                next_track()
+                self.api.send_message("⏭ Next Track")
+
+            elif command == "/prev":
+                if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
+                    self.api.send_message("❌ Media controls are disabled in settings.")
+                    return
+                from src.core.telegram.media_controller import prev_track
+                prev_track()
+                self.api.send_message("⏮ Previous Track")
+
+            elif command == "/mute":
+                if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
+                    self.api.send_message("❌ Media controls are disabled in settings.")
+                    return
+                from src.core.telegram.media_controller import mute
+                mute()
+                self.api.send_message("🔇 Toggled Mute")
+
+            elif command == "/volup":
+                if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
+                    self.api.send_message("❌ Media controls are disabled in settings.")
+                    return
+                from src.core.telegram.media_controller import volume_up
+                # Press multiple times to make a noticeable difference
+                for _ in range(5): volume_up()
+                self.api.send_message("🔊 Volume Up")
+
+            elif command == "/voldown":
+                if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
+                    self.api.send_message("❌ Media controls are disabled in settings.")
+                    return
+                from src.core.telegram.media_controller import volume_down
+                for _ in range(5): volume_down()
+                self.api.send_message("🔉 Volume Down")
+                
+            elif command == "/today":
+                if not TelegramSettingsManager.get_bool("telegram_on_demand_analytics_allowed", True):
+                    self.api.send_message("❌ On-demand analytics are disabled in settings.")
+                    return
+                
+                try:
+                    from src.database.database import get_connection
+                    from src.api.auth_routes import _app_controller
+                    uid = _app_controller.auth_manager.active_user_id if _app_controller else None
+                    conn = get_connection()
+                    cursor = conn.cursor()
+                    
+                    # Fetch today's activity
+                    if uid:
+                        cursor.execute("SELECT app_name, active_seconds FROM daily_stats WHERE date = DATE('now', 'localtime') AND user_id = ?", (uid,))
+                    else:
+                        cursor.execute("SELECT app_name, active_seconds FROM daily_stats WHERE date = DATE('now', 'localtime') AND user_id IS NULL")
+                        
+                    rows = cursor.fetchall()
+                    conn.close()
+                    
+                    if not rows:
+                        self.api.send_message("No activity recorded yet for today.")
+                        return
+                        
+                    total_active = sum(r[1] for r in rows)
+                    
+                    # Top 5 apps
+                    sorted_apps = sorted(rows, key=lambda x: x[1], reverse=True)[:5]
+                    
+                    from src.utils.time_utils import format_duration
+                    
+                    msg = "📊 <b>Today's Summary</b>\n\n"
+                    msg += f"<b>Total Active Time:</b> {format_duration(total_active)}\n\n"
+                    msg += "<b>Top Apps:</b>\n"
+                    for app, active in sorted_apps:
+                        msg += f"• {app.replace('.exe', '')}: {format_duration(active)}\n"
+                        
+                    self.api.send_message(msg, parse_mode="HTML")
+                except Exception as e:
+                    self.api.send_message(f"Failed to fetch today's stats: {e}")
+                    
+            elif command == "/goals":
+                try:
+                    from src.database.database import get_connection
+                    from src.api.auth_routes import _app_controller
+                    from src.config.ignored_apps_manager import is_ignored
+                    import datetime
+                    
+                    uid = _app_controller.auth_manager.active_user_id if _app_controller else None
+                    conn = get_connection()
+                    cursor = conn.cursor()
+                    
+                    date_str = datetime.datetime.now().strftime('%Y-%m-%d')
+                    
+                    # 1. Fetch active goals
+                    if uid:
+                        cursor.execute("SELECT goal_type, label, target_value, direction FROM goals WHERE is_active = 1 AND user_id = ?", (uid,))
+                    else:
+                        cursor.execute("SELECT goal_type, label, target_value, direction FROM goals WHERE is_active = 1 AND user_id IS NULL")
+                        
+                    goals = cursor.fetchall()
+                    if not goals:
+                        self.api.send_message("You don't have any active goals configured.")
+                        conn.close()
+                        return
+                        
+                    # 2. Fetch today's activity stats
+                    if uid:
+                        cursor.execute("SELECT app_name, main_category, active_seconds FROM daily_stats WHERE date = ? AND user_id = ?", (date_str, uid))
+                    else:
+                        cursor.execute("SELECT app_name, main_category, active_seconds FROM daily_stats WHERE date = ? AND user_id IS NULL", (date_str,))
+                        
+                    stats = cursor.fetchall()
+                    conn.close()
+                    
+                    total_time = 0
+                    prod_time = 0
+                    for app, cat, active in stats:
+                        if not is_ignored(app):
+                            total_time += active
+                            if cat == "productive":
+                                prod_time += active
+                                
+                    prod_pct = round((prod_time / total_time * 100), 1) if total_time > 0 else 0.0
+                    
+                    from src.utils.time_utils import format_duration
+                    
+                    msg = "🎯 <b>Goal Progress Check-in</b>\n\n"
+                    
+                    for goal_type, label, target_value, direction in goals:
+                        actual = 0
+                        pct = 0
+                        target_str = ""
+                        actual_str = ""
+                        
+                        if goal_type == "daily_screen_time":
+                            actual = total_time
+                            target_str = format_duration(target_value)
+                            actual_str = format_duration(actual)
+                        elif goal_type == "daily_productive_time":
+                            actual = prod_time
+                            target_str = format_duration(target_value)
+                            actual_str = format_duration(actual)
+                        elif goal_type == "daily_productivity_pct":
+                            actual = prod_pct
+                            target_str = f"{target_value}%"
+                            actual_str = f"{actual}%"
+                        else:
+                            continue
+                            
+                        # Calculate progress percentage for the bar
+                        if target_value > 0:
+                            if direction == "under":
+                                pct = min(100, (actual / target_value) * 100)
+                            else:
+                                pct = min(100, (actual / target_value) * 100)
+                        
+                        # Build progress bar (10 blocks)
+                        filled_blocks = int(round(pct / 10))
+                        # Cap at 10
+                        filled_blocks = min(10, filled_blocks)
+                        
+                        # Emoticons based on status
+                        status_emoji = "🟩"
+                        if direction == "under" and actual > target_value:
+                            status_emoji = "🟥"
+                        elif direction == "over" and actual < target_value:
+                            status_emoji = "🟨"
+                            
+                        bar = (status_emoji * filled_blocks) + ("⬜" * (10 - filled_blocks))
+                        
+                        msg += f"<b>{label}</b>\n"
+                        msg += f"[{bar}] {int(pct)}%\n"
+                        msg += f"Current: {actual_str} / Target: {target_str}\n\n"
+                        
+                    self.api.send_message(msg, parse_mode="HTML")
+                except Exception as e:
+                    self.api.send_message(f"Failed to fetch goals: {e}")
+                    
+            elif command == "/clip":
+                if not TelegramSettingsManager.get_bool("telegram_clipboard_allowed", True):
+                    self.api.send_message("❌ Clipboard syncing is disabled in settings.")
+                    return
+                from src.core.telegram.clipboard_utils import get_clipboard_text
+                clip_text = get_clipboard_text()
+                if clip_text:
+                    self.api.send_message(f"📋 <b>PC Clipboard:</b>\n\n{clip_text}", parse_mode="HTML")
+                else:
+                    self.api.send_message("📋 PC Clipboard is empty or contains non-text data.")
+
         except Exception as e:
             from src.utils.logger import setup_logger
             logger = setup_logger()

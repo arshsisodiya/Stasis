@@ -628,7 +628,40 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
         <SettingRow label="Allow remote screen capture" desc="Allow bot to send screenshots of your display" control={<Toggle on={config?.screenshot_allowed} onChange={v => togglePermission("screenshot_allowed", v)} loading={updatingPerms.screenshot_allowed} />} />
         <SettingRow label="Allow webcam access" desc="Allow bot to take photos or record video" control={<Toggle on={config?.webcam_allowed} onChange={v => togglePermission("webcam_allowed", v)} loading={updatingPerms.webcam_allowed} />} />
         <SettingRow label="System control commands" desc="Enable /shutdown, /restart and /lock" control={<Toggle on={config?.system_control_allowed} onChange={v => togglePermission("system_control_allowed", v)} loading={updatingPerms.system_control_allowed} />} />
+        <SettingRow label="Remote app blocking" desc="Allow bot to force close or block apps" control={<Toggle on={config?.remote_blocking_allowed} onChange={v => togglePermission("remote_blocking_allowed", v)} loading={updatingPerms.remote_blocking_allowed} />} />
+        <SettingRow label="Media & audio controls" desc="Allow bot to play, pause, and control volume" control={<Toggle on={config?.media_controls_allowed} onChange={v => togglePermission("media_controls_allowed", v)} loading={updatingPerms.media_controls_allowed} />} />
+        <SettingRow label="Quick notes capture" desc="Enable /note command to send notes to dashboard" control={<Toggle on={config?.quick_notes_enabled} onChange={v => togglePermission("quick_notes_enabled", v)} loading={updatingPerms.quick_notes_enabled} />} />
+        <SettingRow label="On-demand analytics" desc="Allow bot to fetch live activity stats (/today)" control={<Toggle on={config?.on_demand_analytics_allowed} onChange={v => togglePermission("on_demand_analytics_allowed", v)} loading={updatingPerms.on_demand_analytics_allowed} />} />
         <SettingRow borderless label="Interactive confirmation" desc="Ask for confirmation on destructive commands" control={<Toggle on={true} onChange={() => { }} />} />
+      </Card>
+
+      {/* ── AFK & Security Alerts ── */}
+      <Card style={{ marginTop: 24 }}>
+        <SectionLabel>AFK & Security Alerts</SectionLabel>
+        <SettingRow label="Send AFK Alerts" desc="Notify you via Telegram if your PC is left unattended" control={<Toggle on={config?.afk_alerts_enabled} onChange={v => togglePermission("afk_alerts_enabled", v)} loading={updatingPerms.afk_alerts_enabled} />} />
+        
+        {config?.afk_alerts_enabled && (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderBottom: `1px solid ${C.border}` }}>
+              <div>
+                <div style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>AFK Threshold (minutes)</div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>How long before PC is considered AFK</div>
+              </div>
+              <input
+                type="number"
+                min="1"
+                max="120"
+                value={config?.afk_alert_threshold || 15}
+                onChange={e => togglePermission("afk_alert_threshold", parseInt(e.target.value) || 15)}
+                style={{
+                  background: "rgba(255,255,255,0.04)", border: `1px solid ${C.borderMed}`, borderRadius: 8,
+                  padding: "6px 10px", color: C.text, width: 70, textAlign: "center", fontFamily: "'DM Sans',sans-serif", fontSize: 13
+                }}
+              />
+            </div>
+            <SettingRow borderless label="Auto-Lock PC on AFK" desc="Automatically lock the system when the AFK threshold is reached" control={<Toggle on={config?.auto_lock_on_idle} onChange={v => togglePermission("auto_lock_on_idle", v)} loading={updatingPerms.auto_lock_on_idle} />} />
+          </>
+        )}
       </Card>
 
       {showInstallModal && (
@@ -2491,7 +2524,7 @@ function SideNav({ active, onChange, tgStatus, tgConfig, updateState }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // DATA & EXPORT SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
-function DataExportSection({ push }) {
+function DataExportSection() {
   const handleExportCSV = () => {
     window.open(`${BASE_URL}/api/export/csv`, "_blank");
   };

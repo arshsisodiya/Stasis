@@ -609,6 +609,9 @@ def start_logging():
     # Eye-Care state
     eyecare_active_seconds = 0.0
     last_eyecare_notify = 0.0
+    
+    # AFK state
+    notified_afk = False
 
     def reset_session(new_info: dict | None):
         nonlocal session
@@ -662,6 +665,53 @@ def start_logging():
                 and idle_secs > IDLE_THRESHOLD
                 and not media_playing
             )
+            
+            # ---- Telegram AFK & Security Alerts ----
+            telegram_afk_alerts_enabled = settings_cache.get("telegram_afk_alerts_enabled", "true") in ("true", "1")
+            
+            if telegram_afk_alerts_enabled:
+                try:
+                    afk_threshold_mins = int(settings_cache.get("telegram_afk_alert_threshold", "15"))
+                except ValueError:
+                    afk_threshold_mins = 15
+                
+                afk_threshold_secs = afk_threshold_mins * 60
+
+                if currently_idle and idle_secs > afk_threshold_secs and afk_threshold_secs > 0:
+                    if not notified_afk:
+                        notified_afk = True
+                        auto_lock = settings_cache.get("telegram_auto_lock_on_idle", "false") in ("true", "1")
+                        
+                        try:
+                            from src.api.auth_routes import _app_controller
+                            if _app_controller and _app_controller.telegram_service and _app_controller.telegram_service.api:
+                                msg = f"⚠️ PC has been unattended for {afk_threshold_mins} minutes."
+                                if auto_lock:
+                                    msg = f"⚠️ PC locked due to {afk_threshold_mins} minutes of inactivity."
+                                    from src.core.system_actions import lock_system
+                                    lock_system()
+                                _app_controller.telegram_service.api.send_message(msg)
+                        except Exception as e:
+                            print(f"[AFK] Telegram alert failed: {e}")
+                
+                # Check for wake up
+                if not currently_idle and notified_afk and idle_secs < 5:
+                    notified_afk = False
+                    try:
+                        from src.api.auth_routes import _app_controller
+                        if _app_controller and _app_controller.telegram_service and _app_controller.telegram_service.api:
+                            _app_controller.telegram_service.api.send_message("🚨 PC woke up! Activity detected.")
+                            
+                            webcam_allowed = settings_cache.get("telegram_webcam_allowed", "true") in ("true", "1")
+                            if webcam_allowed:
+                                from src.core.telegram.webcam import capture_webcam
+                                path = capture_webcam()
+                                if path:
+                                    _app_controller.telegram_service.api.send_photo(path, "Webcam Snapshot on Wake")
+                                    import os
+                                    os.remove(path)
+                    except Exception as e:
+                        print(f"[AFK] Telegram wakeup alert failed: {e}")
 
             # ---- Eye-Care Rule (20-20-20) ----
             eyecare_enabled = settings_cache.get("notifications_enable_eyecare_events", "false") in ("true", "1")

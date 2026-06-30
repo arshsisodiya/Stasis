@@ -244,6 +244,13 @@ class TelegramSettingsManager(BaseSettingsManager):
             "telegram_webcam_allowed": "true",
             "telegram_screenshot_allowed": "true",
             "telegram_system_control_allowed": "true",
+            "telegram_remote_blocking_allowed": "true",
+            "telegram_afk_alerts_enabled": "true",
+            "telegram_afk_alert_threshold": "15",
+            "telegram_auto_lock_on_idle": "false",
+            "telegram_quick_notes_enabled": "true",
+            "telegram_media_controls_allowed": "true",
+            "telegram_on_demand_analytics_allowed": "true",
             "telegram_last_activity_timestamp": None,
         }
 

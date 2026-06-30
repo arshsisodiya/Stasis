@@ -154,6 +154,13 @@ def telegram_config():
         "webcam_allowed":           TelegramSettingsManager.get_bool("telegram_webcam_allowed", True, user_id=uid),
         "screenshot_allowed":       TelegramSettingsManager.get_bool("telegram_screenshot_allowed", True, user_id=uid),
         "system_control_allowed":   TelegramSettingsManager.get_bool("telegram_system_control_allowed", True, user_id=uid),
+        "remote_blocking_allowed":  TelegramSettingsManager.get_bool("telegram_remote_blocking_allowed", True, user_id=uid),
+        "afk_alerts_enabled":       TelegramSettingsManager.get_bool("telegram_afk_alerts_enabled", True, user_id=uid),
+        "afk_alert_threshold":      int(TelegramSettingsManager.get("telegram_afk_alert_threshold", "15", user_id=uid)),
+        "auto_lock_on_idle":        TelegramSettingsManager.get_bool("telegram_auto_lock_on_idle", False, user_id=uid),
+        "quick_notes_enabled":      TelegramSettingsManager.get_bool("telegram_quick_notes_enabled", True, user_id=uid),
+        "media_controls_allowed":   TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True, user_id=uid),
+        "on_demand_analytics_allowed": TelegramSettingsManager.get_bool("telegram_on_demand_analytics_allowed", True, user_id=uid),
     })
 
 
@@ -161,13 +168,22 @@ def telegram_config():
 def update_telegram_permissions():
     """Updates Telegram-specific security permissions."""
     data = request.get_json(silent=True) or {}
+    uid = _uid()
     
-    if "webcam_allowed" in data:
-        TelegramSettingsManager.set("telegram_webcam_allowed", "true" if data["webcam_allowed"] else "false")
-    if "screenshot_allowed" in data:
-        TelegramSettingsManager.set("telegram_screenshot_allowed", "true" if data["screenshot_allowed"] else "false")
-    if "system_control_allowed" in data:
-        TelegramSettingsManager.set("telegram_system_control_allowed", "true" if data["system_control_allowed"] else "false")
+    keys = [
+        "webcam_allowed", "screenshot_allowed", "system_control_allowed",
+        "remote_blocking_allowed", "afk_alerts_enabled", "auto_lock_on_idle",
+        "quick_notes_enabled", "media_controls_allowed", "on_demand_analytics_allowed",
+        "clipboard_allowed"
+    ]
+    
+    for key in keys:
+        if key in data:
+            val = "true" if data[key] else "false"
+            TelegramSettingsManager.set(f"telegram_{key}", val, user_id=uid)
+            
+    if "afk_alert_threshold" in data:
+        TelegramSettingsManager.set("telegram_afk_alert_threshold", str(data["afk_alert_threshold"]), user_id=uid)
         
     return jsonify({"success": True, "message": "Permissions updated"})
 

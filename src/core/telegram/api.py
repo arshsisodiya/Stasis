@@ -165,3 +165,28 @@ class TelegramAPI:
             return True
         except Exception:
             return False
+
+    def get_file(self, file_id: str) -> dict:
+        response = requests.get(
+            f"{self.base_url}/getFile",
+            params={"file_id": file_id},
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        self._update_activity()
+        return response.json().get("result", {})
+
+    def download_file(self, file_path: str, dest_path: str) -> bool:
+        url = f"https://api.telegram.org/file/bot{self.token}/{file_path}"
+        response = requests.get(url, stream=True, timeout=60)
+        response.raise_for_status()
+        
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        
+        with open(dest_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+                
+        self._update_activity()
+        return True

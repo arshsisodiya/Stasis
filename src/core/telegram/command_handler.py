@@ -31,16 +31,63 @@ class CommandHandler:
         SettingsManager.set("telegram_recent_commands", json.dumps(cmds))
 
     def handle(self, message: dict):
-        text = message.get("text", "").strip()
+        text = message.get("text", "")
+        if "caption" in message and not text:
+            text = message["caption"]
+        text = text.strip()
+        
         chat_id = str(message.get("chat", {}).get("id", "")).strip()
 
         if chat_id != self.api.chat_id:
             return
 
+        from src.utils.logger import setup_logger
+        logger = setup_logger()
+
+        # Check for media attachments (Drop-zone)
+        file_id = None
+        file_name = None
+        if "document" in message:
+            file_id = message["document"].get("file_id")
+            file_name = message["document"].get("file_name", "document.file")
+        elif "photo" in message and isinstance(message["photo"], list) and len(message["photo"]) > 0:
+            file_id = message["photo"][-1].get("file_id")
+            file_name = f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+        elif "video" in message:
+            file_id = message["video"].get("file_id")
+            file_name = message["video"].get("file_name", f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
+        elif "audio" in message:
+            file_id = message["audio"].get("file_id")
+            file_name = message["audio"].get("file_name", f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3")
+
+        if file_id and file_name:
+            self.api.send_message(f"📥 Downloading {file_name}...")
+            try:
+                file_info = self.api.get_file(file_id)
+                file_path = file_info.get("file_path")
+                if file_path:
+                    home_dir = os.path.expanduser("~")
+                    dest_dir = os.path.join(home_dir, "Downloads", "Stasis_Drops")
+                    dest_file = os.path.join(dest_dir, file_name)
+                    
+                    self.api.download_file(file_path, dest_file)
+                    self.api.send_message(f"✅ Saved to Downloads/Stasis_Drops/{file_name}")
+                    
+                    try:
+                        os.startfile(dest_file)
+                    except Exception as e:
+                        logger.error(f"Failed to open downloaded file: {e}")
+                else:
+                    self.api.send_message("❌ Failed to get file path from Telegram.")
+            except Exception as e:
+                logger.error(f"Download error: {e}")
+                self.api.send_message(f"❌ Error downloading file: {str(e)}")
+            
+            if not text:
+                return
+
         command = text.lower()
         if command:
-            from src.utils.logger import setup_logger
-            logger = setup_logger()
             logger.info(f"Bot received command: {command}")
             self._log_command(command)
 
@@ -303,6 +350,38 @@ class CommandHandler:
                 from src.core.telegram.media_controller import volume_down
                 for _ in range(5): volume_down()
                 self.api.send_message("🔉 Volume Down")
+
+            elif command == "/fwd10":
+                if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
+                    self.api.send_message("❌ Media controls are disabled in settings.")
+                    return
+                from src.core.telegram.media_controller import seek_forward
+                seek_forward()
+                self.api.send_message("⏩ Fast Forward 10s")
+
+            elif command == "/bwd10":
+                if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
+                    self.api.send_message("❌ Media controls are disabled in settings.")
+                    return
+                from src.core.telegram.media_controller import seek_backward
+                seek_backward()
+                self.api.send_message("⏪ Rewind 10s")
+
+            elif command == "/next_slide":
+                if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
+                    self.api.send_message("❌ Media controls are disabled in settings.")
+                    return
+                from src.core.telegram.media_controller import presentation_next
+                presentation_next()
+                self.api.send_message("📽 Next Slide")
+
+            elif command == "/prev_slide":
+                if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
+                    self.api.send_message("❌ Media controls are disabled in settings.")
+                    return
+                from src.core.telegram.media_controller import presentation_prev
+                presentation_prev()
+                self.api.send_message("📽 Previous Slide")
                 
             elif command == "/today":
                 if not TelegramSettingsManager.get_bool("telegram_on_demand_analytics_allowed", True):
@@ -444,6 +523,46 @@ class CommandHandler:
                 except Exception as e:
                     self.api.send_message(f"Failed to fetch goals: {e}")
                     
+            elif command.startswith("/fetch"):
+                parts = text.split(" ", 1)
+                if len(parts) < 2 or not parts[1].strip():
+                    self.api.send_message("❌ Usage: `/fetch <filename>`", parse_mode="Markdown")
+                    return
+                
+                target_file = parts[1].strip().lower()
+                self.api.send_message(f"🔍 Searching for '{target_file}' in Downloads, Desktop, and Documents...")
+                
+                home_dir = os.path.expanduser("~")
+                search_dirs = [
+                    os.path.join(home_dir, "Downloads"),
+                    os.path.join(home_dir, "Desktop"),
+                    os.path.join(home_dir, "Documents")
+                ]
+                
+                found_path = None
+                for d in search_dirs:
+                    if not os.path.exists(d): continue
+                    for root, dirs, files in os.walk(d):
+                        for f in files:
+                            if target_file in f.lower():
+                                found_path = os.path.join(root, f)
+                                break
+                        if found_path: break
+                    if found_path: break
+                
+                if found_path:
+                    size_mb = os.path.getsize(found_path) / (1024 * 1024)
+                    if size_mb > 50:
+                        self.api.send_message(f"❌ File '{os.path.basename(found_path)}' is too large ({size_mb:.1f}MB). Max is 50MB.")
+                    else:
+                        self.api.send_message(f"📤 Uploading {os.path.basename(found_path)} ({size_mb:.1f}MB)...")
+                        try:
+                            self.api.send_document(found_path)
+                        except Exception as e:
+                            self.api.send_message(f"❌ Upload failed: {e}")
+                else:
+                    self.api.send_message("❌ File not found.")
+                    
             elif command.startswith("/clip"):
                 if not TelegramSettingsManager.get_bool("telegram_clipboard_allowed", True):
                     self.api.send_message("❌ Clipboard syncing is disabled in settings.")
@@ -499,14 +618,9 @@ class CommandHandler:
             {"text": "📊 Today", "callback_data": "cb_today"},
             {"text": "🎯 Goals", "callback_data": "cb_goals"},
             {"text": "📋 Clip", "callback_data": "cb_clip"},
-            {"text": "⏯ Play/Pause", "callback_data": "cb_play"},
-            {"text": "⏭ Next", "callback_data": "cb_next"},
-            {"text": "⏮ Prev", "callback_data": "cb_prev"},
-            {"text": "🔇 Mute", "callback_data": "cb_mute"},
-            {"text": "🔊 Vol Up", "callback_data": "cb_volup"},
-            {"text": "🔉 Vol Down", "callback_data": "cb_voldown"},
             {"text": "⛔ Block App", "callback_data": "cb_menu_block"},
             {"text": "✅ Unblock App", "callback_data": "cb_menu_unblock"},
+            {"text": "🎵 Media & Present", "callback_data": "cb_menu_media"},
             {"text": "⚠️ Power", "callback_data": "cb_menu_power"}
         ]
         
@@ -549,6 +663,10 @@ class CommandHandler:
                 "cb_mute": "/mute",
                 "cb_volup": "/volup",
                 "cb_voldown": "/voldown",
+                "cb_fwd10": "/fwd10",
+                "cb_bwd10": "/bwd10",
+                "cb_next_slide": "/next_slide",
+                "cb_prev_slide": "/prev_slide",
             }
             
             if data in simple_commands:
@@ -594,6 +712,23 @@ class CommandHandler:
                         message_id=message["message_id"],
                         text="🎛️ <b>Stasis Main Menu</b>\nSelect an action:",
                         reply_markup=reply_markup
+                    )
+                    
+            elif data == "cb_menu_media":
+                self.api.answer_callback_query(callback_id)
+                if message.get("message_id"):
+                    buttons = [
+                        [{"text": "⏯ Play/Pause", "callback_data": "cb_play"}, {"text": "🔇 Mute", "callback_data": "cb_mute"}],
+                        [{"text": "🔉 Vol Down", "callback_data": "cb_voldown"}, {"text": "🔊 Vol Up", "callback_data": "cb_volup"}],
+                        [{"text": "⏮ Prev", "callback_data": "cb_prev"}, {"text": "⏭ Next", "callback_data": "cb_next"}],
+                        [{"text": "⏪ Bwd 10s", "callback_data": "cb_bwd10"}, {"text": "⏩ Fwd 10s", "callback_data": "cb_fwd10"}],
+                        [{"text": "📽 Prev Slide", "callback_data": "cb_prev_slide"}, {"text": "📽 Next Slide", "callback_data": "cb_next_slide"}],
+                        [{"text": "🔙 Back to Menu", "callback_data": "cb_menu_main"}]
+                    ]
+                    self.api.edit_message(
+                        message_id=message["message_id"],
+                        text="🎵 <b>Media & Presentation</b>\nControl your active media players or presentation slides:",
+                        reply_markup={"inline_keyboard": buttons}
                     )
                     
             elif data == "cb_menu_block":

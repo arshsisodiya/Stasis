@@ -103,6 +103,11 @@ class TelegramService:
                     {"command": "mute", "description": "Mute volume"},
                     {"command": "volup", "description": "Volume up"},
                     {"command": "voldown", "description": "Volume down"},
+                    {"command": "fwd10", "description": "Forward 10 sec"},
+                    {"command": "bwd10", "description": "Backward 10 sec"},
+                    {"command": "next_slide", "description": "Next slide"},
+                    {"command": "prev_slide", "description": "Previous slide"},
+                    {"command": "fetch", "description": "Fetch a file from PC"},
                 ]
                 self.api.set_my_commands(commands)
 

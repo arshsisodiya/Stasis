@@ -632,6 +632,8 @@ function TelegramLiveCard({ status, config, onAction, loadingAction, push, onRef
         <SettingRow label="Media & audio controls" desc="Allow bot to play, pause, and control volume" control={<Toggle on={config?.media_controls_allowed} onChange={v => togglePermission("media_controls_allowed", v)} loading={updatingPerms.media_controls_allowed} />} />
         <SettingRow label="Quick notes capture" desc="Enable /note command to send notes to dashboard" control={<Toggle on={config?.quick_notes_enabled} onChange={v => togglePermission("quick_notes_enabled", v)} loading={updatingPerms.quick_notes_enabled} />} />
         <SettingRow label="On-demand analytics" desc="Allow bot to fetch live activity stats (/today)" control={<Toggle on={config?.on_demand_analytics_allowed} onChange={v => togglePermission("on_demand_analytics_allowed", v)} loading={updatingPerms.on_demand_analytics_allowed} />} />
+        <SettingRow label="Clipboard syncing" desc="Allow syncing PC clipboard via bot (/clip)" control={<Toggle on={config?.clipboard_allowed} onChange={v => togglePermission("clipboard_allowed", v)} loading={updatingPerms.clipboard_allowed} />} />
+        <SettingRow label="Allow TTS Announcements" desc="Allow bot to speak messages aloud (/say)" control={<Toggle on={config?.tts_allowed} onChange={v => togglePermission("tts_allowed", v)} loading={updatingPerms.tts_allowed} />} />
         <SettingRow borderless label="Interactive confirmation" desc="Ask for confirmation on destructive commands" control={<Toggle on={true} onChange={() => { }} />} />
       </Card>
 

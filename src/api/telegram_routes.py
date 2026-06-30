@@ -28,9 +28,8 @@ import logging
 import json
 from flask import Blueprint, jsonify, request
 
-from src.core.app_controller import AppController
 from src.config.settings_manager import TelegramSettingsManager
-from src.config.crypto import decrypt, encrypt
+from src.config.crypto import decrypt
 
 logger = logging.getLogger(__name__)
 
@@ -156,11 +155,13 @@ def telegram_config():
         "system_control_allowed":   TelegramSettingsManager.get_bool("telegram_system_control_allowed", True, user_id=uid),
         "remote_blocking_allowed":  TelegramSettingsManager.get_bool("telegram_remote_blocking_allowed", True, user_id=uid),
         "afk_alerts_enabled":       TelegramSettingsManager.get_bool("telegram_afk_alerts_enabled", True, user_id=uid),
-        "afk_alert_threshold":      int(TelegramSettingsManager.get("telegram_afk_alert_threshold", "15", user_id=uid)),
+        "afk_alert_threshold":      int(TelegramSettingsManager.get("telegram_afk_alert_threshold", user_id=uid) or "15"),
         "auto_lock_on_idle":        TelegramSettingsManager.get_bool("telegram_auto_lock_on_idle", False, user_id=uid),
         "quick_notes_enabled":      TelegramSettingsManager.get_bool("telegram_quick_notes_enabled", True, user_id=uid),
         "media_controls_allowed":   TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True, user_id=uid),
         "on_demand_analytics_allowed": TelegramSettingsManager.get_bool("telegram_on_demand_analytics_allowed", True, user_id=uid),
+        "clipboard_allowed":        TelegramSettingsManager.get_bool("telegram_clipboard_allowed", True, user_id=uid),
+        "tts_allowed":              TelegramSettingsManager.get_bool("telegram_tts_allowed", True, user_id=uid),
     })
 
 
@@ -174,8 +175,9 @@ def update_telegram_permissions():
         "webcam_allowed", "screenshot_allowed", "system_control_allowed",
         "remote_blocking_allowed", "afk_alerts_enabled", "auto_lock_on_idle",
         "quick_notes_enabled", "media_controls_allowed", "on_demand_analytics_allowed",
-        "clipboard_allowed"
+        "clipboard_allowed", "tts_allowed"
     ]
+    
     
     for key in keys:
         if key in data:
@@ -233,7 +235,8 @@ def install_dependency():
 @telegram_bp.route("/api/telegram/full-status", methods=["GET"])
 def telegram_full_status():
     """Combined status + config. Use on settings page load."""
-    enabled = TelegramSettingsManager.get_bool("telegram_enabled")
+    uid = _uid()
+    enabled = TelegramSettingsManager.get_bool("telegram_enabled", user_id=uid)
     running = app_controller.is_telegram_running()
     has_creds = _has_credentials()
 
@@ -243,7 +246,7 @@ def telegram_full_status():
         token_masked = _mask(token, keep=6)
         chat_masked = _mask(chat_id, keep=4)
         
-    val = TelegramSettingsManager.get("telegram_recent_commands")
+    val = TelegramSettingsManager.get("telegram_recent_commands", user_id=uid)
     try:
         recent_cmds = json.loads(val) if val else []
     except Exception:
@@ -256,7 +259,7 @@ def telegram_full_status():
         "state": _state_string(enabled, running, has_creds),
         "token": token_masked,
         "chat_id": chat_masked,
-        "bot_username": TelegramSettingsManager.get("telegram_bot_username"),
+        "bot_username": TelegramSettingsManager.get("telegram_bot_username", user_id=uid),
         "recent_commands": recent_cmds,
     })
 

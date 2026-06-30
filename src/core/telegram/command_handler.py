@@ -212,9 +212,15 @@ class CommandHandler:
                     from src.utils.dependency_manager import ensure_package
                     ensure_package("psutil")
                     import psutil
+                    import os
+                    current_pid = os.getpid()
                     closed_count = 0
-                    for proc in psutil.process_iter(['name']):
+                    for proc in psutil.process_iter(['name', 'pid']):
                         try:
+                            # Prevent Stasis from committing suicide and causing a boot-loop
+                            if proc.info['pid'] == current_pid or "stasis" in proc.info['name'].lower():
+                                continue
+                                
                             if app_name in proc.info['name'].lower():
                                 proc.kill()
                                 closed_count += 1
@@ -235,12 +241,13 @@ class CommandHandler:
                 try:
                     from src.database.database import get_connection
                     from src.api.auth_routes import _app_controller
+                    import datetime
                     uid = _app_controller.auth_manager.active_user_id if _app_controller else None
                     conn = get_connection()
                     cursor = conn.cursor()
                     cursor.execute(
                         "INSERT INTO quick_notes (user_id, note_text, created_at, is_read) VALUES (?, ?, ?, 0)",
-                        (uid, note_text, datetime.now().isoformat())
+                        (uid, note_text, datetime.datetime.now().isoformat())
                     )
                     conn.commit()
                     conn.close()
@@ -437,22 +444,78 @@ class CommandHandler:
                 except Exception as e:
                     self.api.send_message(f"Failed to fetch goals: {e}")
                     
-            elif command == "/clip":
+            elif command.startswith("/clip"):
                 if not TelegramSettingsManager.get_bool("telegram_clipboard_allowed", True):
                     self.api.send_message("❌ Clipboard syncing is disabled in settings.")
                     return
-                from src.core.telegram.clipboard_utils import get_clipboard_text
-                clip_text = get_clipboard_text()
-                if clip_text:
-                    self.api.send_message(f"📋 <b>PC Clipboard:</b>\n\n{clip_text}", parse_mode="HTML")
+                
+                parts = text.split(" ", 1)
+                if len(parts) > 1 and parts[1].strip():
+                    from src.core.telegram.clipboard_utils import set_clipboard_text
+                    if set_clipboard_text(parts[1].strip()):
+                        self.api.send_message("✅ Copied to PC clipboard!")
+                    else:
+                        self.api.send_message("❌ Failed to copy to PC clipboard.")
                 else:
-                    self.api.send_message("📋 PC Clipboard is empty or contains non-text data.")
+                    from src.core.telegram.clipboard_utils import get_clipboard_text
+                    clip_text = get_clipboard_text()
+                    if clip_text:
+                        self.api.send_message(f"📋 <b>PC Clipboard:</b>\n\n{clip_text}", parse_mode="HTML")
+                    else:
+                        self.api.send_message("📋 PC Clipboard is empty or contains non-text data.")
+                    
+            elif command.startswith("/say ") or command == "/say":
+                if not TelegramSettingsManager.get_bool("telegram_tts_allowed", True):
+                    self.api.send_message("❌ TTS Announcements are disabled in settings.")
+                    return
+                
+                parts = text.split(" ", 1)
+                if len(parts) < 2 or not parts[1].strip():
+                    self.api.send_message("Please provide a message to speak. Usage: /say [message]")
+                    return
+                
+                msg_to_speak = parts[1].strip()
+                from src.core.telegram.tts_utils import speak_text_async
+                speak_text_async(msg_to_speak)
+                self.api.send_message("🗣️ Message spoken on PC!")
+
+            elif command == "/menu":
+                reply_markup = self._get_main_menu_markup()
+                self.api.send_message("🎛️ <b>Stasis Main Menu</b>\nSelect an action:", reply_markup=reply_markup)
 
         except Exception as e:
             from src.utils.logger import setup_logger
             logger = setup_logger()
             logger.exception(f"Error handling command {command}: {e}")
             self.api.send_message(f"⚠️ Internal error processing command: {str(e)}")
+
+    def _get_main_menu_markup(self):
+        buttons = [
+            {"text": "🏓 Ping", "callback_data": "cb_ping"},
+            {"text": "📸 Screenshot", "callback_data": "cb_screenshot"},
+            {"text": "📹 Camera", "callback_data": "cb_camera"},
+            {"text": "🎥 Video", "callback_data": "cb_video"},
+            {"text": "🔒 Lock", "callback_data": "cb_lock"},
+            {"text": "📊 Today", "callback_data": "cb_today"},
+            {"text": "🎯 Goals", "callback_data": "cb_goals"},
+            {"text": "📋 Clip", "callback_data": "cb_clip"},
+            {"text": "⏯ Play/Pause", "callback_data": "cb_play"},
+            {"text": "⏭ Next", "callback_data": "cb_next"},
+            {"text": "⏮ Prev", "callback_data": "cb_prev"},
+            {"text": "🔇 Mute", "callback_data": "cb_mute"},
+            {"text": "🔊 Vol Up", "callback_data": "cb_volup"},
+            {"text": "🔉 Vol Down", "callback_data": "cb_voldown"},
+            {"text": "⛔ Block App", "callback_data": "cb_menu_block"},
+            {"text": "✅ Unblock App", "callback_data": "cb_menu_unblock"},
+            {"text": "⚠️ Power", "callback_data": "cb_menu_power"}
+        ]
+        
+        inline_keyboard = []
+        for i in range(0, len(buttons), 2):
+            row = buttons[i:i+2]
+            inline_keyboard.append(row)
+            
+        return {"inline_keyboard": inline_keyboard}
 
     def handle_callback(self, callback_query: dict):
         callback_id = callback_query.get("id")
@@ -468,13 +531,30 @@ class CommandHandler:
         logger.info(f"Bot received callback query: {data}")
 
         try:
-            if data == "cb_screenshot":
-                self.api.answer_callback_query(callback_id, text="Taking screenshot...")
-                self.handle({"text": "/screenshot", "chat": {"id": chat_id}})
+            # Re-route simple commands
+            simple_commands = {
+                "cb_ping": "/ping",
+                "cb_screenshot": "/screenshot",
+                "cb_camera": "/camera",
+                "cb_video": "/video",
+                "cb_lock": "/lock",
+                "cb_lock_pc": "/lock", # Legacy from previous implementation
+                "cb_today": "/today",
+                "cb_goals": "/goals",
+                "cb_clip": "/clip",
+                "cb_play": "/play",
+                "cb_pause": "/pause",
+                "cb_next": "/next",
+                "cb_prev": "/prev",
+                "cb_mute": "/mute",
+                "cb_volup": "/volup",
+                "cb_voldown": "/voldown",
+            }
             
-            elif data == "cb_lock_pc":
-                self.api.answer_callback_query(callback_id, text="Locking PC...")
-                self.handle({"text": "/lock", "chat": {"id": chat_id}})
+            if data in simple_commands:
+                cmd = simple_commands[data]
+                self.api.answer_callback_query(callback_id, text=f"Executing {cmd}...")
+                self.handle({"text": cmd, "chat": {"id": chat_id}})
                 
             elif data == "cb_top_apps":
                 self.api.answer_callback_query(callback_id)
@@ -506,9 +586,138 @@ class CommandHandler:
             elif data == "cb_focus_breakdown":
                 self.api.answer_callback_query(callback_id, text="Feature coming soon!", show_alert=True)
                 
-            elif data == "cb_goals":
-                self.api.answer_callback_query(callback_id, text="Feature coming soon!", show_alert=True)
+            elif data == "cb_menu_main":
+                self.api.answer_callback_query(callback_id)
+                if message.get("message_id"):
+                    reply_markup = self._get_main_menu_markup()
+                    self.api.edit_message(
+                        message_id=message["message_id"],
+                        text="🎛️ <b>Stasis Main Menu</b>\nSelect an action:",
+                        reply_markup=reply_markup
+                    )
+                    
+            elif data == "cb_menu_block":
+                self.api.answer_callback_query(callback_id)
+                if message.get("message_id"):
+                    try:
+                        from src.database.database import get_connection
+                        conn = get_connection()
+                        cursor = conn.cursor()
+                        # Get top 10 apps used today to populate the block list
+                        cursor.execute('''
+                            SELECT app_name
+                            FROM activity_logs
+                            WHERE DATE(start_time) = DATE('now', 'localtime')
+                            GROUP BY app_name
+                            ORDER BY SUM(duration_seconds) DESC
+                            LIMIT 10
+                        ''')
+                        rows = cursor.fetchall()
+                        
+                        inline_keyboard = []
+                        for row in rows:
+                            app_name = row[0]
+                            # Truncate app name to fit within Telegram's 64-byte callback_data limit
+                            cb_data = f"cb_block_{app_name}"[:64]
+                            inline_keyboard.append([{"text": f"⛔ {app_name}", "callback_data": cb_data}])
+                            
+                        if not inline_keyboard:
+                            inline_keyboard.append([{"text": "No active apps today", "callback_data": "ignore"}])
+                            
+                        inline_keyboard.append([{"text": "🔙 Back to Menu", "callback_data": "cb_menu_main"}])
+                        
+                        self.api.edit_message(
+                            message_id=message["message_id"],
+                            text="⛔ <b>Block an App</b>\nSelect an active app to block:",
+                            reply_markup={"inline_keyboard": inline_keyboard}
+                        )
+                    except Exception as ex:
+                        logger.exception(f"DB Error fetching block menu: {ex}")
+                        
+            elif data == "cb_menu_unblock":
+                self.api.answer_callback_query(callback_id)
+                if message.get("message_id"):
+                    try:
+                        from src.database.database import get_blocked_app_names
+                        from src.api.auth_routes import _app_controller
+                        uid = _app_controller.auth_manager.active_user_id if _app_controller else None
+                        blocked_apps = get_blocked_app_names(user_id=uid)
+                        
+                        inline_keyboard = []
+                        for app_name in blocked_apps:
+                            cb_data = f"cb_unblock_{app_name}"[:64]
+                            inline_keyboard.append([{"text": f"✅ {app_name}", "callback_data": cb_data}])
+                            
+                        if not inline_keyboard:
+                            inline_keyboard.append([{"text": "No apps currently blocked", "callback_data": "ignore"}])
+                            
+                        inline_keyboard.append([{"text": "🔙 Back to Menu", "callback_data": "cb_menu_main"}])
+                        
+                        self.api.edit_message(
+                            message_id=message["message_id"],
+                            text="✅ <b>Unblock an App</b>\nSelect a blocked app to allow:",
+                            reply_markup={"inline_keyboard": inline_keyboard}
+                        )
+                    except Exception as ex:
+                        logger.exception(f"DB Error fetching unblock menu: {ex}")
+
+            elif data == "cb_menu_power":
+                self.api.answer_callback_query(callback_id)
+                if message.get("message_id"):
+                    inline_keyboard = [
+                        [{"text": "🛑 Shutdown", "callback_data": "cb_power_shutdown"}],
+                        [{"text": "🔄 Restart", "callback_data": "cb_power_restart"}],
+                        [{"text": "🔙 Back to Menu", "callback_data": "cb_menu_main"}]
+                    ]
+                    self.api.edit_message(
+                        message_id=message["message_id"],
+                        text="⚠️ <b>Power Options</b>\nSelect an action:",
+                        reply_markup={"inline_keyboard": inline_keyboard}
+                    )
+
+            elif data.startswith("cb_power_"):
+                self.api.answer_callback_query(callback_id)
+                if message.get("message_id"):
+                    action = data[len("cb_power_"):]
+                    inline_keyboard = [
+                        [{"text": f"✅ Yes, {action.capitalize()}", "callback_data": f"cb_confirm_{action}"}],
+                        [{"text": "❌ Cancel", "callback_data": "cb_menu_power"}]
+                    ]
+                    self.api.edit_message(
+                        message_id=message["message_id"],
+                        text=f"⚠️ <b>Confirm {action.capitalize()}</b>\nAre you sure you want to {action} the PC?",
+                        reply_markup={"inline_keyboard": inline_keyboard}
+                    )
+
+            elif data.startswith("cb_confirm_"):
+                action = data[len("cb_confirm_"):]
+                self.api.answer_callback_query(callback_id, text=f"Executing {action}...", show_alert=True)
+                self.handle({"text": f"/{action} confirm", "chat": {"id": chat_id}})
+                if message.get("message_id"):
+                    self.api.edit_message(
+                        message_id=message["message_id"],
+                        text=f"✅ <b>Command sent:</b> {action.capitalize()} PC.",
+                        reply_markup=None
+                    )
+
+            elif data.startswith("cb_block_"):
+                app_name = data[len("cb_block_"):]
+                self.api.answer_callback_query(callback_id, text=f"Blocking {app_name}...", show_alert=True)
+                self.handle({"text": f"/block {app_name}", "chat": {"id": chat_id}})
+                # Optional: refresh the menu? It will redraw automatically if we just re-call cb_menu_block, but toast is fine.
                 
+            elif data.startswith("cb_unblock_"):
+                app_name = data[len("cb_unblock_"):]
+                self.api.answer_callback_query(callback_id, text=f"Unblocking {app_name}...", show_alert=True)
+                self.handle({"text": f"/unblock {app_name}", "chat": {"id": chat_id}})
+                # Optional: refresh the unblock menu
+                if message.get("message_id"):
+                    # We can quickly refresh the unblock menu by calling handle_callback recursively
+                    self.handle_callback({"id": callback_id, "data": "cb_menu_unblock", "message": message})
+
+            elif data == "ignore":
+                self.api.answer_callback_query(callback_id)
+
             else:
                 self.api.answer_callback_query(callback_id, text="Unknown action")
                 

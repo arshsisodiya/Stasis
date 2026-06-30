@@ -92,8 +92,10 @@ class TelegramService:
                     {"command": "close", "description": "Force close an app"},
                     {"command": "note", "description": "Save a quick note"},
                     {"command": "clip", "description": "Get PC clipboard"},
+                    {"command": "menu", "description": "Show interactive bot menu"},
                     {"command": "today", "description": "Get today's analytics"},
                     {"command": "goals", "description": "Check goal progress"},
+                    {"command": "say", "description": "Speak message on PC"},
                     {"command": "play", "description": "Play/Pause media"},
                     {"command": "pause", "description": "Play/Pause media"},
                     {"command": "next", "description": "Next track"},
@@ -266,7 +268,6 @@ class TelegramService:
             # we need project root
             core_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # src/core
             src_dir = os.path.dirname(core_dir) # src
-            base_dir = os.path.dirname(src_dir) # project root
             
             template_path = os.path.join(src_dir, "utils", "digest_template.html")
             

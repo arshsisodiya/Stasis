@@ -251,6 +251,7 @@ class TelegramSettingsManager(BaseSettingsManager):
             "telegram_quick_notes_enabled": "true",
             "telegram_media_controls_allowed": "true",
             "telegram_on_demand_analytics_allowed": "true",
+            "telegram_tts_allowed": "true",
             "telegram_last_activity_timestamp": None,
         }
 

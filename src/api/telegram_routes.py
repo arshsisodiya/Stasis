@@ -154,6 +154,7 @@ def telegram_config():
         "screenshot_allowed":       TelegramSettingsManager.get_bool("telegram_screenshot_allowed", True, user_id=uid),
         "system_control_allowed":   TelegramSettingsManager.get_bool("telegram_system_control_allowed", True, user_id=uid),
         "remote_blocking_allowed":  TelegramSettingsManager.get_bool("telegram_remote_blocking_allowed", True, user_id=uid),
+        "remote_open_allowed":      TelegramSettingsManager.get_bool("telegram_remote_open_allowed", True, user_id=uid),
         "afk_alerts_enabled":       TelegramSettingsManager.get_bool("telegram_afk_alerts_enabled", True, user_id=uid),
         "afk_alert_threshold":      int(TelegramSettingsManager.get("telegram_afk_alert_threshold", user_id=uid) or "15"),
         "auto_lock_on_idle":        TelegramSettingsManager.get_bool("telegram_auto_lock_on_idle", False, user_id=uid),
@@ -173,7 +174,7 @@ def update_telegram_permissions():
     
     keys = [
         "webcam_allowed", "screenshot_allowed", "system_control_allowed",
-        "remote_blocking_allowed", "afk_alerts_enabled", "auto_lock_on_idle",
+        "remote_blocking_allowed", "remote_open_allowed", "afk_alerts_enabled", "auto_lock_on_idle",
         "quick_notes_enabled", "media_controls_allowed", "on_demand_analytics_allowed",
         "clipboard_allowed", "tts_allowed"
     ]

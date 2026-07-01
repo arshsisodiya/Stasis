@@ -309,6 +309,9 @@ class CommandHandler:
                     self.api.send_message(f"Failed to save note: {e}")
 
             elif command.startswith("/open "):
+                if not TelegramSettingsManager.get_bool("telegram_remote_open_allowed", True):
+                    self.api.send_message("❌ Remote link opening is disabled in settings.")
+                    return
                 url = text[6:].strip()
                 if not url:
                     self.api.send_message("❌ Usage: `/open <url>`", parse_mode="Markdown")

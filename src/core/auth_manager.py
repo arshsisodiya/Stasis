@@ -173,12 +173,16 @@ class AuthManager:
         user = self.validate_token(token)
         # Always merge any legacy data (from previous accounts or guest mode) into this single active account
         if user:
+            conn = get_connection()
+            cursor = conn.cursor()
             try:
                 self._merge_legacy_data(cursor, user["id"])
                 conn.commit()
             except Exception as e:
                 print(f"Error merging legacy data: {e}")
                 conn.rollback()
+            finally:
+                conn.close()
             self.active_user_id = user["id"]
             
         return user

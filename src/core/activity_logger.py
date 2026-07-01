@@ -686,11 +686,14 @@ def start_logging():
                             from src.api.auth_routes import _app_controller
                             if _app_controller and _app_controller.telegram_service and _app_controller.telegram_service.api:
                                 msg = f"⚠️ PC has been unattended for {afk_threshold_mins} minutes."
+                                keyboard = None
                                 if auto_lock:
                                     msg = f"⚠️ PC locked due to {afk_threshold_mins} minutes of inactivity."
                                     from src.core.system_actions import lock_system
                                     lock_system()
-                                _app_controller.telegram_service.api.send_message(msg)
+                                else:
+                                    keyboard = {"inline_keyboard": [[{"text": "🔒 Lock Now", "callback_data": "cb_lock"}]]}
+                                _app_controller.telegram_service.api.send_message(msg, reply_markup=keyboard)
                         except Exception as e:
                             print(f"[AFK] Telegram alert failed: {e}")
                 

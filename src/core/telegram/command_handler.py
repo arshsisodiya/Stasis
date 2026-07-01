@@ -307,6 +307,20 @@ class CommandHandler:
                     self.api.send_message("📝 Note saved! It will be waiting on your dashboard.")
                 except Exception as e:
                     self.api.send_message(f"Failed to save note: {e}")
+
+            elif command.startswith("/open "):
+                url = text[6:].strip()
+                if not url:
+                    self.api.send_message("❌ Usage: `/open <url>`", parse_mode="Markdown")
+                    return
+                if not url.startswith("http://") and not url.startswith("https://"):
+                    url = "https://" + url
+                try:
+                    import webbrowser
+                    webbrowser.open(url)
+                    self.api.send_message(f"🌐 Opened on PC: {url}")
+                except Exception as e:
+                    self.api.send_message(f"Failed to open URL: {e}")
                     
             elif command in ["/play", "/pause"]:
                 if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):

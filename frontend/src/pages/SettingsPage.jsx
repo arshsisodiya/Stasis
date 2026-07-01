@@ -1041,6 +1041,10 @@ function GeneralSection({ push }) {
     setOptimizingDb(false);
   };
 
+  const handleExportCSV = () => {
+    window.open(`${BASE_URL}/api/export/csv`, "_blank");
+  };
+
   if (loading) return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Skel h={100} /> <Skel h={200} />
@@ -1228,6 +1232,17 @@ function GeneralSection({ push }) {
             ℹ️ <strong>Programmatic Defragmentation:</strong> Deletes stale pages, defragments row indices, compiles SQLite schema query stats, and releases physical disk space back to your OS.
           </div>
         </div>
+      </Card>
+
+      <Card>
+        <SectionLabel>Data Export</SectionLabel>
+        
+        <SettingRow
+          borderless
+          label="Export to CSV"
+          desc="Download all your raw activity logs as a CSV file for custom analysis."
+          control={<Btn variant="secondary" size="sm" onClick={handleExportCSV}>Export CSV</Btn>}
+        />
       </Card>
 
       <Card>
@@ -2448,7 +2463,6 @@ function ContactSection() {
 const NAV_ITEMS = [
   { id: "account", icon: "👤", label: "Account", sub: "User profile & session" },
   { id: "general", icon: "⚙️", label: "General", sub: "App & tracking" },
-  { id: "data", icon: "📊", label: "Data & Privacy", sub: "Export & categorize" },
   { id: "telegram", icon: "✈️", label: "Telegram", sub: "Remote control" },
   { id: "security", icon: "🔐", label: "Security", sub: "Access & encryption" },
   { id: "updates", icon: "🚀", label: "Updates", sub: "Version & changelog" },
@@ -2525,40 +2539,6 @@ function SideNav({ active, onChange, tgStatus, tgConfig, updateState }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// DATA & EXPORT SECTION
-// ═══════════════════════════════════════════════════════════════════════════════
-function DataExportSection() {
-  const handleExportCSV = () => {
-    window.open(`${BASE_URL}/api/export/csv`, "_blank");
-  };
-
-  const handleExportPDF = () => {
-    window.print();
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <Card>
-        <SectionLabel>Data Export</SectionLabel>
-        
-        <SettingRow
-          label="Export to CSV"
-          desc="Download all your raw activity logs as a CSV file for custom analysis."
-          control={<Btn variant="secondary" size="sm" onClick={handleExportCSV}>Export CSV</Btn>}
-        />
-        
-        <SettingRow
-          borderless
-          label="Export to PDF"
-          desc="Print the current view or save it as a PDF report."
-          control={<Btn variant="secondary" size="sm" onClick={handleExportPDF}>Export PDF</Btn>}
-        />
-      </Card>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // ROOT SETTINGS PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function SettingsPage({ onClose, initialSection = "telegram" }) {
@@ -2627,7 +2607,6 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
   const meta = {
     account: { label: "Account", sub: "User profile and session management" },
     general: { label: "General", sub: "App behaviour and tracking" },
-    data: { label: "Data & Privacy", sub: "Data Export and Auto-Categorization" },
     telegram: { label: "Telegram Integration", sub: "Remote control via Telegram bot" },
     security: { label: "Security", sub: "Access control and encryption" },
     updates: { label: "Updates", sub: "Version history and changelog" },
@@ -2708,7 +2687,6 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
                       </div>
                       {id === "account" && <AccountSection push={push} />}
                       {id === "general" && <GeneralSection push={push} />}
-                      {id === "data" && <DataExportSection push={push} />}
                       {id === "developer" && <DeveloperSection push={push} />}
                       {id === "telegram" && <TelegramSection push={push} />}
                       {id === "security" && <SecuritySection push={push} />}

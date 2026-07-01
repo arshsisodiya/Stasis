@@ -747,8 +747,9 @@ def start_logging():
                     from src.config.category_manager import get_category
                     main_cat, _ = get_category(app_name, None, info.get("exe_path"))
                     if main_cat == "unproductive":
+                        # hwnd is NOT in the info dict — read it directly from win32
                         import win32gui as _w32gui
-                        hwnd = info.get("hwnd") or _w32gui.GetForegroundWindow()
+                        hwnd = _w32gui.GetForegroundWindow()
                         strict_mode = settings_cache.get("pomodoro_strict_mode", "false") in ("true", "1")
                         if strict_mode:
                             # Option A: Kill the process entirely

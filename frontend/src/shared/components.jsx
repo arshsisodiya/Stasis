@@ -610,24 +610,7 @@ export function HourlyBar({ data, peakHour, BASE, selectedDate }) {
                   cursor: v > 0 ? "pointer" : "default", height: "100%", justifyContent: "flex-end",
                   position: "relative"
                 }}>
-                {isNow && isToday && (
-                  <div style={{
-                    position: "absolute", bottom: 0,
-                    left: `${(nowFrac % 1) * 100}%`,
-                    height: "100%", width: 1,
-                    background: "linear-gradient(180deg, rgba(74,222,128,0) 0%, #4ade80 35%, #4ade80 100%)",
-                    pointerEvents: "none", zIndex: 4,
-                  }}>
-                    <div style={{
-                      position: "absolute", top: 0, left: "50%",
-                      transform: "translate(-50%, -4px)",
-                      width: 7, height: 7, borderRadius: "50%",
-                      background: "#4ade80",
-                      boxShadow: "0 0 0 3px rgba(74,222,128,0.25)",
-                      animation: "now-pulse 2s ease-in-out infinite",
-                    }} />
-                  </div>
-                )}
+
                 {isPeak && !isHov && (
                   <div style={{
                     width: 4, height: 4, borderRadius: "50%", background: "#fbbf24",

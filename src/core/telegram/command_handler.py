@@ -294,13 +294,12 @@ class CommandHandler:
                 try:
                     from src.database.database import get_connection
                     from src.api.auth_routes import _app_controller
-                    import datetime
                     uid = _app_controller.auth_manager.active_user_id if _app_controller else None
                     conn = get_connection()
                     cursor = conn.cursor()
                     cursor.execute(
                         "INSERT INTO quick_notes (user_id, note_text, created_at, is_read) VALUES (?, ?, ?, 0)",
-                        (uid, note_text, datetime.datetime.now().isoformat())
+                        (uid, note_text, datetime.now().isoformat())
                     )
                     conn.commit()
                     conn.close()
@@ -453,13 +452,12 @@ class CommandHandler:
                     from src.database.database import get_connection
                     from src.api.auth_routes import _app_controller
                     from src.config.ignored_apps_manager import is_ignored
-                    import datetime
                     
                     uid = _app_controller.auth_manager.active_user_id if _app_controller else None
                     conn = get_connection()
                     cursor = conn.cursor()
                     
-                    date_str = datetime.datetime.now().strftime('%Y-%m-%d')
+                    date_str = datetime.now().strftime('%Y-%m-%d')
                     
                     # 1. Fetch active goals
                     if uid:

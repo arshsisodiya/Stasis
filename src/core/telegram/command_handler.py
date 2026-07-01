@@ -681,11 +681,11 @@ class CommandHandler:
                     conn = get_connection()
                     cursor = conn.cursor()
                     cursor.execute('''
-                        SELECT app_name, SUM(duration_seconds)
+                        SELECT app_name, SUM(active_seconds)
                         FROM activity_logs
-                        WHERE DATE(start_time) = DATE('now', 'localtime')
+                        WHERE DATE(timestamp) = DATE('now', 'localtime')
                         GROUP BY app_name
-                        ORDER BY SUM(duration_seconds) DESC
+                        ORDER BY SUM(active_seconds) DESC
                         LIMIT 5
                     ''')
                     rows = cursor.fetchall()
@@ -742,9 +742,9 @@ class CommandHandler:
                         cursor.execute('''
                             SELECT app_name
                             FROM activity_logs
-                            WHERE DATE(start_time) = DATE('now', 'localtime')
+                            WHERE DATE(timestamp) = DATE('now', 'localtime')
                             GROUP BY app_name
-                            ORDER BY SUM(duration_seconds) DESC
+                            ORDER BY SUM(active_seconds) DESC
                             LIMIT 10
                         ''')
                         rows = cursor.fetchall()

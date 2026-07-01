@@ -621,11 +621,11 @@ export function HourlyBar({ data, peakHour, BASE, selectedDate }) {
                   width: "100%", height: Math.max(h, 2), borderRadius: 3,
                   background: isHov ? "linear-gradient(180deg,#86efac,#4ade80)"
                     : isPeak ? "linear-gradient(180deg,#fcd34d,#f59e0b)"
-                      : isNow ? "linear-gradient(180deg,#4ade80,#22c55e)"
+                      : isNow ? "linear-gradient(180deg,#60a5fa,#3b82f6)"
                         : v > max * 0.6 ? "rgba(74,222,128,0.5)" : "rgba(255, 255, 255, 0.06)",
                   boxShadow: isHov ? "0 0 12px rgba(74,222,128,0.8)"
                     : isPeak ? "0 0 8px rgba(251,191,36,0.6)"
-                      : isNow ? "0 0 8px rgba(74,222,128,0.6)" : "none",
+                      : isNow ? "0 0 8px rgba(96,165,250,0.6)" : "none",
                   transition: "height 0.8s cubic-bezier(0.34,1.56,0.64,1),background 0.15s",
                   transform: isHov ? "scaleY(1.06)" : "scaleY(1)", transformOrigin: "bottom"
                 }} />

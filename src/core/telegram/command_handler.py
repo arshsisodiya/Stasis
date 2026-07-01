@@ -127,8 +127,10 @@ class CommandHandler:
                 if not TelegramSettingsManager.get_bool("telegram_system_control_allowed", True):
                     self.api.send_message("❌ System control is disabled in settings.")
                     return
-                self.api.send_message("Locking system...")
+                msg_id = self.api.send_message("Locking system...")
                 lock_system()
+                if msg_id:
+                    self.api.edit_message(msg_id, f"🔒 System locked at {datetime.now().strftime('%I:%M %p')}")
 
             elif command == "/shutdown":
                 if not TelegramSettingsManager.get_bool("telegram_system_control_allowed", True):
@@ -141,8 +143,10 @@ class CommandHandler:
             elif command == "/shutdown confirm":
                 if not TelegramSettingsManager.get_bool("telegram_system_control_allowed", True):
                     return
-                self.api.send_message("Shutting down...")
+                msg_id = self.api.send_message("Shutting down...")
                 shutdown_system()
+                if msg_id:
+                    self.api.edit_message(msg_id, f"🛑 System shut down at {datetime.now().strftime('%I:%M %p')}")
 
             elif command == "/restart":
                 if not TelegramSettingsManager.get_bool("telegram_system_control_allowed", True):
@@ -155,8 +159,10 @@ class CommandHandler:
             elif command == "/restart confirm":
                 if not TelegramSettingsManager.get_bool("telegram_system_control_allowed", True):
                     return
-                self.api.send_message("Restarting...")
+                msg_id = self.api.send_message("Restarting...")
                 restart_system()
+                if msg_id:
+                    self.api.edit_message(msg_id, f"🔄 System restarting at {datetime.now().strftime('%I:%M %p')}")
 
             elif command == "/camera":
                 if not TelegramSettingsManager.get_bool("telegram_webcam_allowed", True):

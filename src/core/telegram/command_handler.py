@@ -259,7 +259,7 @@ class CommandHandler:
                     from src.utils.dependency_manager import ensure_package
                     ensure_package("psutil")
                     import psutil
-                    import os
+                    
                     current_pid = os.getpid()
                     closed_count = 0
                     for proc in psutil.process_iter(['name', 'pid']):

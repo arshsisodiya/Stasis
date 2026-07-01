@@ -50,14 +50,22 @@ def _url_matches_rule(url_lower: str, domain_rule: str) -> bool:
       - Subdomain match:       "github.com" matches "*.github.com"
       - Path match:            "youtube.com/watch?v=" matches "youtube.com/watch?v="
     """
-    # Path-based rule: contains a slash — do substring check on full URL
-    if "/" in domain_rule or "?" in domain_rule:
-        return domain_rule in url_lower
+    import re
+    # Strip protocols to normalize
+    u_norm = re.sub(r'^https?://', '', url_lower)
+    r_norm = re.sub(r'^https?://', '', domain_rule)
+    
+    # Strip trailing slash on rule if it has exactly one (prevents strict path rule for simple domains)
+    if r_norm.endswith("/") and r_norm.count("/") == 1:
+        r_norm = r_norm[:-1]
+
+    # Path-based rule: contains a slash — do substring check on normalized URL
+    if "/" in r_norm or "?" in r_norm:
+        return r_norm in u_norm
 
     # Domain/subdomain rule
-    host = _hostname(url_lower)
-    # Direct match OR subdomain: domain = "github.com" → host ends with ".github.com" or == "github.com"
-    return host == domain_rule or host.endswith("." + domain_rule)
+    host = _hostname(u_norm)
+    return host == r_norm or host.endswith("." + r_norm)
 
 
 def get_app_category(app_name: str) -> str:

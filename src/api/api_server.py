@@ -8,6 +8,7 @@ from src.api.update_routes import update_bp
 from src.api.auth_routes import auth_bp, set_app_controller_auth
 from src.api.badge_routes import badges_bp
 from src.api.note_routes import notes_bp
+from src.api.pomodoro_routes import pomodoro_bp, set_app_controller_pomodoro
 
 def create_app(app_controller):
     app = Flask(__name__)
@@ -16,6 +17,7 @@ def create_app(app_controller):
     # Inject controller into telegram routes
     set_app_controller(app_controller)
     set_app_controller_auth(app_controller)
+    set_app_controller_pomodoro(app_controller)
 
     # Register API modules
     app.register_blueprint(telegram_bp)
@@ -24,6 +26,7 @@ def create_app(app_controller):
     app.register_blueprint(auth_bp)
     app.register_blueprint(badges_bp)
     app.register_blueprint(notes_bp)
+    app.register_blueprint(pomodoro_bp)
 
     return app
 

@@ -10,6 +10,7 @@ import InputActivityCard from "./InputActivityCard";
 import HourlyActivityPattern from "./HourlyActivityPattern";
 import CategoryBreakdown from "./CategoryBreakdown";
 import BadgesCard from "./BadgesCard";
+import FocusWidget from "../shared/FocusWidget";
 
 const OVERVIEW_GOALS_VISIBILITY_EVENT = "stasis:overview-goals-visibility";
 
@@ -600,7 +601,11 @@ export default function OverviewPage({
         </div>
       </div>
 
+      {/* ── Focus Mode / Pomodoro ── */}
+      <FocusWidget />
+
       {/* ── Hourly activity ── */}
+
       <div style={{
         background: "rgba(15,18,30,0.5)", border: "1px solid rgba(255,255,255,0.06)",
         borderRadius: 20, padding: "20px 20px 16px", marginBottom: 16,

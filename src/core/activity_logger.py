@@ -739,7 +739,54 @@ def start_logging():
                         print(f"[EyeCare] Failed to send notification: {e}")
                     last_eyecare_notify = now_mono
 
+            # ---- Focus Mode / Pomodoro Enforcement ----
+            try:
+                from src.core.focus_manager import focus_manager
+                if focus_manager.is_active() and info is not None:
+                    app_name = info.get("app_name", "")
+                    from src.config.category_manager import get_category
+                    main_cat, _ = get_category(app_name, None, info.get("exe_path"))
+                    if main_cat == "unproductive":
+                        import win32gui as _w32gui
+                        hwnd = info.get("hwnd") or _w32gui.GetForegroundWindow()
+                        strict_mode = settings_cache.get("pomodoro_strict_mode", "false") in ("true", "1")
+                        if strict_mode:
+                            # Option A: Kill the process entirely
+                            import psutil
+                            pid = info.get("pid")
+                            if pid:
+                                try:
+                                    psutil.Process(pid).kill()
+                                except Exception:
+                                    pass
+                        else:
+                            # Option B (default): Force-minimise the window
+                            if hwnd:
+                                import win32con as _w32con
+                                _w32gui.ShowWindow(hwnd, _w32con.SW_MINIMIZE)
+
+                        # Notify user (at most once every 30 s per unique window)
+                        if hwnd and focus_manager.should_warn(hwnd):
+                            from src.core.desktop_notifications import desktop_notifier, DesktopNotifier
+                            status = focus_manager.get_status()
+                            mins_left = max(1, status.get("remaining_seconds", 0) // 60)
+                            action = "closed" if strict_mode else "minimised"
+                            desktop_notifier.notify(
+                                title="🍅 Focus Mode Active",
+                                message=(
+                                    f"{app_name.replace('.exe','')} was {action}. "
+                                    f"{mins_left} minute(s) remaining in your session."
+                                ),
+                                event_key=f"focus-block:{hwnd}",
+                                cooldown_seconds=30,
+                                event_type=DesktopNotifier.EVENT_GENERAL,
+                                priority="critical",
+                            )
+            except Exception as _fm_err:
+                print(f"[FocusMode] Enforcement error: {_fm_err}")
+
             from src.config.ignored_apps_manager import is_ignored
+
 
             if info is None:
                 # No foreground window (lock screen, UAC prompt, etc.)

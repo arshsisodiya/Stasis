@@ -11,11 +11,16 @@ class AppController:
 
     def __init__(self):
         self.telegram_service = None
+        self._is_initialized = False
         self.auth_manager = AuthManager()
         self.auth_manager.on_active_user_changed = self._on_active_user_changed
 
     def _on_active_user_changed(self, new_user_id):
         logger.info(f"[AppController] Active user changed to: {new_user_id}")
+        if not self._is_initialized:
+            logger.info("[AppController] Deferring Telegram start/stop until initialize() is called.")
+            return
+
         enabled = TelegramSettingsManager.get_bool("telegram_enabled", user_id=new_user_id)
         logger.info(f"[AppController] telegram_enabled for user {new_user_id}: {enabled}")
         if enabled:
@@ -36,6 +41,7 @@ class AppController:
 
         SettingsManager.initialize_defaults()
         TelegramSettingsManager.initialize_defaults()
+        self._is_initialized = True
 
         # Use the already-restored active_user_id so we read the correct row.
         uid = self.auth_manager.active_user_id

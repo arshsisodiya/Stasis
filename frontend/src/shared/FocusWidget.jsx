@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { SectionCard } from "./components";
 
 const BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:7432";
 
@@ -121,25 +122,21 @@ export default function FocusWidget() {
     : "#3b82f6";
 
   return (
-    <div style={{
-      background: "rgba(15,18,30,0.6)", border: "1px solid rgba(255,255,255,0.08)",
-      borderRadius: 24, padding: "24px", marginBottom: 20,
-      backdropFilter: "blur(16px)", boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
-    }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 18 }}>🎯</span>
-          <span style={{ fontSize: 15, fontWeight: 700, color: "#f8fafc", letterSpacing: "-0.3px" }}>
-            Focus Mode
-          </span>
+    <SectionCard style={{ marginBottom: 20, position: "relative" }}>
+      {/* Header aligned with SectionCard style but allowing right-side elements */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+        <div style={{
+          fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase",
+          letterSpacing: "0.15em"
+        }}>
+          Focus Mode
         </div>
         {isActive && (
           <span style={{
-            fontSize: 10, fontWeight: 800, color: "#4ade80", letterSpacing: "0.5px",
+            fontSize: 9, fontWeight: 800, color: "#4ade80", letterSpacing: "0.5px",
             background: "rgba(74,222,128,0.15)", border: "1px solid rgba(74,222,128,0.3)",
-            borderRadius: 20, padding: "4px 12px", animation: "pulse-glow 2s infinite"
-          }}>SESSION ACTIVE</span>
+            borderRadius: 20, padding: "3px 8px", animation: "pulse-glow 2s infinite"
+          }}>ACTIVE</span>
         )}
       </div>
 
@@ -235,19 +232,19 @@ export default function FocusWidget() {
                   disabled={loading || !selectedMins}
                   style={{
                     padding: "10px 24px", borderRadius: 10,
-                    background: "linear-gradient(135deg, #3b82f6, #2563eb)",
-                    border: "none", color: "#fff", fontSize: 13, fontWeight: 800,
+                    background: "rgba(74,222,128,0.15)",
+                    border: "1px solid rgba(74,222,128,0.3)",
+                    color: "#4ade80", fontSize: 12, fontWeight: 800,
                     letterSpacing: "0.5px",
                     cursor: (loading || !selectedMins) ? "not-allowed" : "pointer",
-                    boxShadow: "0 4px 12px rgba(59,130,246,0.3)",
-                    transition: "transform 0.1s, filter 0.2s",
+                    transition: "transform 0.1s, background 0.2s, color 0.2s",
                   }}
-                  onMouseEnter={e => e.target.style.filter = "brightness(1.1)"}
-                  onMouseLeave={e => e.target.style.filter = "none"}
+                  onMouseEnter={e => { e.target.style.background = "rgba(74,222,128,0.25)"; e.target.style.color = "#86efac"; }}
+                  onMouseLeave={e => { e.target.style.background = "rgba(74,222,128,0.15)"; e.target.style.color = "#4ade80"; }}
                   onMouseDown={e => e.target.style.transform = "scale(0.96)"}
                   onMouseUp={e => e.target.style.transform = "scale(1)"}
                 >
-                  START TIMER
+                  START FOCUS
                 </button>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -314,6 +311,6 @@ export default function FocusWidget() {
           )}
         </div>
       </div>
-    </div>
+    </SectionCard>
   );
 }

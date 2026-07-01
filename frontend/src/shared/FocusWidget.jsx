@@ -9,6 +9,19 @@ const PRESETS = [
   { label: "90m", minutes: 90 },
 ];
 
+// Inject once to hide native number spinners globally for this component
+const SPINNER_STYLE = `
+  .focus-custom-input::-webkit-outer-spin-button,
+  .focus-custom-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .focus-custom-input[type=number] { -moz-appearance: textfield; }
+`;
+if (typeof document !== "undefined" && !document.getElementById("focus-spinner-fix")) {
+  const s = document.createElement("style");
+  s.id = "focus-spinner-fix";
+  s.textContent = SPINNER_STYLE;
+  document.head.appendChild(s);
+}
+
 function formatTime(seconds) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -215,22 +228,64 @@ export default function FocusWidget() {
               {showCustom ? `${selectedMins}m ✎` : "···"}
             </button>
 
-            {/* Inline custom input — only appears when custom toggled */}
             {showCustom && (
-              <input
-                type="number" min={1} max={480} placeholder="min"
-                value={customMins}
-                onChange={e => {
-                  setCustomMins(e.target.value);
-                  const v = parseInt(e.target.value, 10);
-                  if (!isNaN(v) && v > 0) setSelectedMins(v);
-                }}
-                style={{
-                  width: 56, background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.12)",
-                  borderRadius: 7, padding: "4px 8px", color: "#f8fafc", fontSize: 11, outline: "none",
-                  flexShrink: 0,
-                }}
-              />
+              <div style={{
+                display: "flex", alignItems: "center", flexShrink: 0,
+                background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 8, overflow: "hidden",
+              }}>
+                {/* Decrement */}
+                <button
+                  onClick={() => {
+                    const next = Math.max(1, (selectedMins || 1) - 5);
+                    setSelectedMins(next);
+                    setCustomMins(String(next));
+                  }}
+                  style={{
+                    width: 22, height: 26, border: "none", background: "transparent",
+                    color: "#64748b", fontSize: 14, cursor: "pointer", lineHeight: 1,
+                    transition: "color 0.15s", flexShrink: 0,
+                  }}
+                  onMouseEnter={e => e.target.style.color = "#cbd5e1"}
+                  onMouseLeave={e => e.target.style.color = "#64748b"}
+                >−</button>
+
+                {/* Text value */}
+                <input
+                  className="focus-custom-input"
+                  type="number" min={1} max={480}
+                  value={customMins || selectedMins}
+                  onChange={e => {
+                    setCustomMins(e.target.value);
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v) && v > 0) setSelectedMins(v);
+                  }}
+                  style={{
+                    width: 38, background: "transparent", border: "none",
+                    borderLeft: "1px solid rgba(255,255,255,0.08)",
+                    borderRight: "1px solid rgba(255,255,255,0.08)",
+                    color: "#f8fafc", fontSize: 11, fontWeight: 700,
+                    textAlign: "center", outline: "none", padding: "4px 2px",
+                    fontFamily: "'DM Mono', monospace",
+                  }}
+                />
+
+                {/* Increment */}
+                <button
+                  onClick={() => {
+                    const next = Math.min(480, (selectedMins || 1) + 5);
+                    setSelectedMins(next);
+                    setCustomMins(String(next));
+                  }}
+                  style={{
+                    width: 22, height: 26, border: "none", background: "transparent",
+                    color: "#64748b", fontSize: 14, cursor: "pointer", lineHeight: 1,
+                    transition: "color 0.15s", flexShrink: 0,
+                  }}
+                  onMouseEnter={e => e.target.style.color = "#cbd5e1"}
+                  onMouseLeave={e => e.target.style.color = "#64748b"}
+                >+</button>
+              </div>
             )}
 
             <div style={{ flex: 1 }} />

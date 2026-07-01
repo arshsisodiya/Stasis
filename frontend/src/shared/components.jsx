@@ -596,25 +596,7 @@ export function HourlyBar({ data, peakHour, BASE, selectedDate }) {
           <span style={{ fontSize: 9, color: "#2d3f55", fontWeight: 500, whiteSpace: "nowrap", paddingRight: 4 }}>{max}m</span>
           <div style={{ flex: 1, height: 1, borderTop: "1px dashed rgba(255,255,255,0.07)" }} />
         </div>
-        {/* ── Live "now" needle ── */}
-        {isToday && (
-          <div style={{
-            position: "absolute", top: 0, bottom: 0,
-            left: `${(nowFrac / 24) * 100}%`,
-            width: 1,
-            background: "linear-gradient(180deg, rgba(74,222,128,0) 0%, #4ade80 35%, #4ade80 100%)",
-            pointerEvents: "none", zIndex: 4,
-          }}>
-            <div style={{
-              position: "absolute", top: 0, left: "50%",
-              transform: "translate(-50%, -4px)",
-              width: 7, height: 7, borderRadius: "50%",
-              background: "#4ade80",
-              boxShadow: "0 0 0 3px rgba(74,222,128,0.25)",
-              animation: "now-pulse 2s ease-in-out infinite",
-            }} />
-          </div>
-        )}
+
         <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 72, padding: "0 2px" }}>
           {data.map((v, i) => {
             const h = max > 0 ? (v / max) * 68 : 2;
@@ -625,8 +607,27 @@ export function HourlyBar({ data, peakHour, BASE, selectedDate }) {
               <div key={i} onMouseEnter={() => setTip(i)} onMouseLeave={() => setTip(null)}
                 style={{
                   flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
-                  cursor: v > 0 ? "pointer" : "default", height: "100%", justifyContent: "flex-end"
+                  cursor: v > 0 ? "pointer" : "default", height: "100%", justifyContent: "flex-end",
+                  position: "relative"
                 }}>
+                {isNow && isToday && (
+                  <div style={{
+                    position: "absolute", bottom: 0,
+                    left: `${(nowFrac % 1) * 100}%`,
+                    height: "100%", width: 1,
+                    background: "linear-gradient(180deg, rgba(74,222,128,0) 0%, #4ade80 35%, #4ade80 100%)",
+                    pointerEvents: "none", zIndex: 4,
+                  }}>
+                    <div style={{
+                      position: "absolute", top: 0, left: "50%",
+                      transform: "translate(-50%, -4px)",
+                      width: 7, height: 7, borderRadius: "50%",
+                      background: "#4ade80",
+                      boxShadow: "0 0 0 3px rgba(74,222,128,0.25)",
+                      animation: "now-pulse 2s ease-in-out infinite",
+                    }} />
+                  </div>
+                )}
                 {isPeak && !isHov && (
                   <div style={{
                     width: 4, height: 4, borderRadius: "50%", background: "#fbbf24",

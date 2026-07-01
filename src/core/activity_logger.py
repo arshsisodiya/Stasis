@@ -14,6 +14,9 @@ from src.core.process_cache import process_cache
 from src.core.shutdown import shutdown_event
 import win32con
 import threading
+from pynput.keyboard import Controller, Key
+
+_kb_controller = Controller()
 
 APP_NAME = "Stasis"
 IDLE_THRESHOLD = 120        # seconds of no input = idle
@@ -610,6 +613,9 @@ def start_logging():
     eyecare_active_seconds = 0.0
     last_eyecare_notify = 0.0
     
+    # URL Blocker state
+    last_url_block_time = 0.0
+    
     # AFK state
     notified_afk = False
 
@@ -786,7 +792,52 @@ def start_logging():
             except Exception as _fm_err:
                 print(f"[FocusMode] Enforcement error: {_fm_err}")
 
+            # ---- General URL Blocking (Soft-Block via Ctrl+W) ----
+            try:
+                from src.services.blocking_service import BlockingService
+                blocked_set = BlockingService().blocked_apps
+                active_url = info.get("url") if info else None
+                if active_url and active_url != "N/A" and blocked_set:
+                    # check if the domain or subdomain matches anything in blocked_set
+                    # we can use the same _url_matches_rule logic, or just a simple domain check
+                    from src.config.category_manager import _url_matches_rule
+                    is_url_blocked = False
+                    matched_rule = None
+                    for b_app in blocked_set:
+                        # b_app could be an app name (chrome.exe) or a URL (youtube.com)
+                        if "." in b_app and not b_app.endswith(".exe"):
+                            if _url_matches_rule(active_url.lower(), b_app.lower()):
+                                is_url_blocked = True
+                                matched_rule = b_app
+                                break
+                    
+                    if is_url_blocked:
+                        # Prevent spamming Ctrl+W if the browser is slow to close the tab
+                        if now_mono - last_url_block_time > 3.0:
+                            last_url_block_time = now_mono
+                            print(f"[URL Blocker] Blocking {active_url} (matched {matched_rule}) by sending Ctrl+W")
+                            
+                            # Use pynput to fire Ctrl+W
+                            with _kb_controller.pressed(Key.ctrl):
+                                _kb_controller.press('w')
+                                _kb_controller.release('w')
+                            
+                            # Show a quick notification
+                            from src.core.desktop_notifications import desktop_notifier, DesktopNotifier
+
+                        desktop_notifier.notify(
+                            title="Website Blocked",
+                            message=f"{matched_rule} is currently blocked by your limits.",
+                            event_key=f"url-block:{matched_rule}",
+                            cooldown_seconds=10,
+                            event_type=DesktopNotifier.EVENT_GENERAL,
+                            priority="high",
+                        )
+            except Exception as _url_err:
+                print(f"[URL Blocker] Error: {_url_err}")
+
             from src.config.ignored_apps_manager import is_ignored
+
 
 
             if info is None:

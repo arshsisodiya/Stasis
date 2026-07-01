@@ -39,19 +39,62 @@ def api_set_limit():
 def api_get_limits():
     user_id = get_active_user_id()
     limits = get_all_limits(user_id=user_id)
+    
+    from src.database.database import get_connection
+    from datetime import datetime
+    today = datetime.now().date().isoformat()
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    result = []
+    for row in limits:
+        limit_id, app_name, daily_limit_seconds, is_enabled, unblock_until, is_blocked, blocked_at = row
+        is_url = "." in app_name and not app_name.endswith(".exe")
+        
+        if is_url:
+            if user_id is not None:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(active_seconds), 0)
+                    FROM activity_logs
+                    WHERE url LIKE ? AND timestamp LIKE ? AND (user_id = ? OR user_id IS NULL)
+                """, (f"%{app_name}%", f"{today}%", user_id))
+            else:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(active_seconds), 0)
+                    FROM activity_logs
+                    WHERE url LIKE ? AND timestamp LIKE ? AND user_id IS NULL
+                """, (f"%{app_name}%", f"{today}%"))
+        else:
+            if user_id is not None:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(active_seconds), 0)
+                    FROM activity_logs
+                    WHERE app_name = ? AND timestamp LIKE ? AND (user_id = ? OR user_id IS NULL)
+                """, (app_name, f"{today}%", user_id))
+            else:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(active_seconds), 0)
+                    FROM activity_logs
+                    WHERE app_name = ? AND timestamp LIKE ? AND user_id IS NULL
+                """, (app_name, f"{today}%"))
+                
+        usage = cursor.fetchone()[0] or 0
+        
+        result.append({
+            "id": limit_id,
+            "app_name": app_name,
+            "daily_limit_seconds": daily_limit_seconds,
+            "is_enabled": bool(is_enabled),
+            "unblock_until": unblock_until,
+            "is_blocked": bool(is_blocked),
+            "blocked_at": blocked_at,
+            "current_usage": usage
+        })
+        
+    conn.close()
+    return jsonify(result)
 
-    return jsonify([
-        {
-            "id": row[0],
-            "app_name": row[1],
-            "daily_limit_seconds": row[2],
-            "is_enabled": bool(row[3]),
-            "unblock_until": row[4],
-            "is_blocked": bool(row[5]),
-            "blocked_at": row[6]
-        }
-        for row in limits
-    ])
+
 
 
 @wellbeing_bp.route("/limits/toggle", methods=["POST"])

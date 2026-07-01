@@ -37,6 +37,10 @@ export default function FocusWidget() {
   const [showCustom, setShowCustom] = useState(false);
   const pollRef = useRef(null);
 
+  // Smooth local timer state
+  const [localRemaining, setLocalRemaining] = useState(0);
+  const [localPct, setLocalPct] = useState(0);
+
   const fetchStatus = useCallback(async () => {
     try {
       const r = await fetch(`${BASE}/api/pomodoro/status`);
@@ -58,9 +62,39 @@ export default function FocusWidget() {
   useEffect(() => {
     fetchStatus();
     fetchSettings();
-    pollRef.current = setInterval(fetchStatus, 2000);
+    pollRef.current = setInterval(fetchStatus, 3000); // Polling can be slightly relaxed now
     return () => clearInterval(pollRef.current);
   }, [fetchStatus]);
+
+  // Smooth local timer synchronisation
+  useEffect(() => {
+    if (!status?.active || !status?.end_time) {
+      setLocalRemaining(0);
+      setLocalPct(0);
+      return;
+    }
+
+    const endTime = new Date(status.end_time).getTime();
+    const durationSecs = status.duration_minutes * 60;
+
+    const tick = () => {
+      const now = Date.now();
+      const leftMs = Math.max(0, endTime - now);
+      const leftSecs = Math.ceil(leftMs / 1000);
+      
+      setLocalRemaining(leftSecs);
+
+      // calculate butter smooth percentage
+      const elapsedSecs = durationSecs - (leftMs / 1000);
+      let pct = (elapsedSecs / durationSecs) * 100;
+      pct = Math.min(100, Math.max(0, pct));
+      setLocalPct(pct);
+    };
+
+    tick();
+    const intv = setInterval(tick, 50); // fast tick for smooth SVG circle
+    return () => clearInterval(intv);
+  }, [status?.active, status?.end_time, status?.duration_minutes]);
 
   const startSession = async () => {
     if (!selectedMins || selectedMins <= 0) return;
@@ -98,8 +132,8 @@ export default function FocusWidget() {
   };
 
   const isActive = status?.active;
-  const remaining = status?.remaining_seconds ?? 0;
-  const pct = status?.progress_pct ?? 0;
+  const remaining = isActive ? localRemaining : 0;
+  const pct = isActive ? localPct : 0;
   const durationMins = status?.duration_minutes ?? 25;
 
   const RADIUS = 14;

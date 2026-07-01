@@ -181,18 +181,35 @@ class BlockingService:
                                 pass
 
                         # 3. Today's usage for this app (same connection, no extra open/close)
-                        if active_user_id is not None:
-                            cursor.execute("""
-                                SELECT COALESCE(SUM(active_seconds), 0)
-                                FROM activity_logs
-                                WHERE app_name = ? AND timestamp LIKE ? AND (user_id = ? OR user_id IS NULL)
-                            """, (app_name, f"{today}%", active_user_id))
+                        is_url = "." in app_name and not app_name.endswith(".exe")
+
+                        if is_url:
+                            if active_user_id is not None:
+                                cursor.execute("""
+                                    SELECT COALESCE(SUM(active_seconds), 0)
+                                    FROM activity_logs
+                                    WHERE url LIKE ? AND timestamp LIKE ? AND (user_id = ? OR user_id IS NULL)
+                                """, (f"%{app_name}%", f"{today}%", active_user_id))
+                            else:
+                                cursor.execute("""
+                                    SELECT COALESCE(SUM(active_seconds), 0)
+                                    FROM activity_logs
+                                    WHERE url LIKE ? AND timestamp LIKE ? AND user_id IS NULL
+                                """, (f"%{app_name}%", f"{today}%"))
                         else:
-                            cursor.execute("""
-                                SELECT COALESCE(SUM(active_seconds), 0)
-                                FROM activity_logs
-                                WHERE app_name = ? AND timestamp LIKE ? AND user_id IS NULL
-                            """, (app_name, f"{today}%"))
+                            if active_user_id is not None:
+                                cursor.execute("""
+                                    SELECT COALESCE(SUM(active_seconds), 0)
+                                    FROM activity_logs
+                                    WHERE app_name = ? AND timestamp LIKE ? AND (user_id = ? OR user_id IS NULL)
+                                """, (app_name, f"{today}%", active_user_id))
+                            else:
+                                cursor.execute("""
+                                    SELECT COALESCE(SUM(active_seconds), 0)
+                                    FROM activity_logs
+                                    WHERE app_name = ? AND timestamp LIKE ? AND user_id IS NULL
+                                """, (app_name, f"{today}%"))
+
                         usage = cursor.fetchone()[0] or 0
 
                         if usage >= daily_limit:

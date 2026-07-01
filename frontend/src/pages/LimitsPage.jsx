@@ -682,6 +682,7 @@ function LimitModal({ onClose, onSave, knownApps, editTarget, BASE, stats = [] }
   const [showD, setShowD] = useState(false);
   const [query, setQuery] = useState(editTarget?.app_name ? fmtAppName(editTarget.app_name) : "");
   const [confirm, setConfirm] = useState(false);
+  const [limitType, setLimitType] = useState(editTarget ? (editTarget.app_name.includes(".") && !editTarget.app_name.endsWith(".exe") ? "website" : "app") : "app");
 
   useEffect(() => {
     if (editTarget || !BASE) return;
@@ -695,7 +696,17 @@ function LimitModal({ onClose, onSave, knownApps, editTarget, BASE, stats = [] }
   const hVal = parseInt(h) || 0;
   const mVal = parseInt(m) || 0;
   const secs = hVal * 3600 + mVal * 60;
-  const targetApp = app || (query.trim().length > 0 ? (query.trim().toLowerCase().endsWith(".exe") ? query.trim() : query.trim() + ".exe") : "");
+  let computedApp = "";
+  if (app) {
+    computedApp = app;
+  } else if (query.trim().length > 0) {
+    if (limitType === "website") {
+      computedApp = query.trim().toLowerCase();
+    } else {
+      computedApp = query.trim().toLowerCase().endsWith(".exe") ? query.trim() : query.trim() + ".exe";
+    }
+  }
+  const targetApp = computedApp;
   const ok = targetApp.length > 0 && secs > 0;
 
   const doSave = async () => {
@@ -739,14 +750,23 @@ function LimitModal({ onClose, onSave, knownApps, editTarget, BASE, stats = [] }
 
           {/* App Name */}
           <div style={{ marginBottom: 22, position: "relative" }}>
-            <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, fontWeight: 600 }}>App Name</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 600 }}>Target</div>
+              {!editTarget && (
+                <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.04)", padding: 3, borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <button onClick={() => setLimitType("app")} style={{ padding: "3px 10px", fontSize: 11, borderRadius: 6, cursor: "pointer", border: "none", background: limitType === "app" ? "rgba(74,222,128,0.12)" : "transparent", color: limitType === "app" ? "#4ade80" : "#64748b", fontFamily: "'DM Sans',sans-serif", fontWeight: limitType === "app" ? 600 : 500, transition: "all 0.15s" }}>App</button>
+                  <button onClick={() => setLimitType("website")} style={{ padding: "3px 10px", fontSize: 11, borderRadius: 6, cursor: "pointer", border: "none", background: limitType === "website" ? "rgba(74,222,128,0.12)" : "transparent", color: limitType === "website" ? "#4ade80" : "#64748b", fontFamily: "'DM Sans',sans-serif", fontWeight: limitType === "website" ? 600 : 500, transition: "all 0.15s" }}>Website</button>
+                </div>
+              )}
+            </div>
+            
             <div style={{ position: "relative" }}>
               <input value={query} onChange={e => { setQuery(e.target.value); setShowD(true); if (!editTarget) setApp(""); }}
-                placeholder="Search app or type .exe name" disabled={!!editTarget}
+                placeholder={limitType === "app" ? "Search app or type .exe name" : "e.g. youtube.com or netflix.com"} disabled={!!editTarget}
                 style={{ ...inp, opacity: editTarget ? 0.5 : 1, cursor: editTarget ? "not-allowed" : "text" }}
                 onFocus={e => { e.target.style.border = "1px solid rgba(74,222,128,0.45)"; e.target.style.boxShadow = "0 0 0 3px rgba(74,222,128,0.09)"; setShowD(true); }}
                 onBlur={e => { e.target.style.border = "1px solid rgba(255,255,255,0.09)"; e.target.style.boxShadow = "none"; setTimeout(() => setShowD(false), 200); }} />
-              {showD && filtered.length > 0 && (
+              {showD && filtered.length > 0 && limitType === "app" && (
                 <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 110, background: "rgba(10,14,28,0.99)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 13, overflow: "hidden", backdropFilter: "blur(28px)", boxShadow: "0 14px 52px rgba(0,0,0,0.7)" }}>
                   {filtered.map(a => (
                     <div key={a.appid + a.name} onClick={() => { setQuery(a.name); setApp(a.exe || a.name.toLowerCase().replace(/\s+/g, "") + ".exe"); setShowD(false); }}
@@ -761,7 +781,7 @@ function LimitModal({ onClose, onSave, knownApps, editTarget, BASE, stats = [] }
               )}
             </div>
             {!editTarget && app && <div style={{ marginTop: 8, fontSize: 11, color: "#4ade80", display: "flex", alignItems: "center", gap: 6 }}><div style={{ width: 5, height: 5, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80" }} />Target: <strong>{app}</strong></div>}
-            {!editTarget && knownApps.length > 0 && !app && query.length === 0 && (
+            {!editTarget && knownApps.length > 0 && !app && query.length === 0 && limitType === "app" && (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
                 {knownApps.slice(0, 6).map(a => (
                   <button key={a} onClick={() => { setApp(a); setQuery(fmtAppName(a)); }}
@@ -931,7 +951,8 @@ export default function LimitsPage({ BASE, stats, isActive = true }) {
   // Keep localStorage in sync whenever tempUnblocks changes
   useEffect(() => { saveTempUnblocks(tempUnblocks); }, [tempUnblocks]);
 
-  const usage = stats.reduce((a, s) => { a[s.app] = (a[s.app] || 0) + s.active; return a; }, {});
+  // Usage is now directly supplied per-limit by the backend via /limits/all
+  const usage = limits.reduce((a, l) => { a[l.app_name] = l.current_usage || 0; return a; }, {});
 
   const showT = useCallback((msg, type = "success") => {
     if (toastTimer.current) clearTimeout(toastTimer.current);

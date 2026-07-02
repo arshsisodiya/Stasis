@@ -169,15 +169,22 @@ class CommandHandler:
                     self.api.send_message("❌ Webcam access is disabled in settings.")
                     return
 
-                if not is_installed("opencv-python-headless"):
-                    self.api.send_message("First-time setup: Installing camera dependencies... This may take a minute.")
-                
+                msg_id = self.api.send_message("📸 Capturing webcam...")
                 path = capture_webcam()
                 if path:
-                    self.api.send_photo(path, "Webcam Snapshot")
-                    os.remove(path)
+                    self.api.edit_message(msg_id, "📤 Uploading photo...")
+                    try:
+                        self.api.send_photo(path, "Webcam Snapshot")
+                        self.api.edit_message(msg_id, "✅ Snapshot sent successfully.")
+                    except Exception as e:
+                        self.api.edit_message(msg_id, f"❌ Failed to upload photo: {e}")
+                    finally:
+                        try:
+                            os.remove(path)
+                        except Exception:
+                            pass
                 else:
-                    self.api.send_message("Failed to capture webcam snapshot. Make sure dependencies are installed.")
+                    self.api.edit_message(msg_id, "❌ Failed to capture webcam snapshot.")
 
             elif command == "/getlog":
                 self._send_logs()
@@ -192,17 +199,23 @@ class CommandHandler:
                 if len(parts) > 1 and parts[1].isdigit():
                     duration = int(parts[1])
 
-                if not is_installed("opencv-python-headless"):
-                    self.api.send_message("First-time setup: Installing camera dependencies... This may take a minute.")
-
-                self.api.send_message(f"Recording {duration}s video...")
+                msg_id = self.api.send_message(f"🎥 Recording {duration}s video... Please wait.")
                 path = record_video(duration)
 
                 if path:
-                    self.api.send_video(path, f"Webcam Clip ({duration}s)")
-                    os.remove(path)
+                    self.api.edit_message(msg_id, "📤 Uploading video...")
+                    try:
+                        self.api.send_video(path, f"Webcam Clip ({duration}s)")
+                        self.api.edit_message(msg_id, "✅ Video sent successfully.")
+                    except Exception as e:
+                        self.api.edit_message(msg_id, f"❌ Failed to upload video: {e}")
+                    finally:
+                        try:
+                            os.remove(path)
+                        except Exception:
+                            pass
                 else:
-                    self.api.send_message("Failed to record video. Make sure dependencies are installed.")
+                    self.api.edit_message(msg_id, "❌ Failed to record video.")
                     
             elif command.startswith("/block "):
                 if not TelegramSettingsManager.get_bool("telegram_remote_blocking_allowed", True):

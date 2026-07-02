@@ -3,6 +3,7 @@
 import os
 import glob
 import json
+import uuid
 from datetime import datetime
 from src.core.telegram.system_status import get_status_text
 from src.core.telegram.screenshot import capture_screenshot
@@ -15,6 +16,7 @@ from src.utils.dependency_manager import is_installed
 class CommandHandler:
     def __init__(self, api):
         self.api = api
+        self._fetch_results = {}
 
     def _log_command(self, cmd: str):
         try:
@@ -573,27 +575,42 @@ class CommandHandler:
                     os.path.join(home_dir, "Documents")
                 ]
                 
-                found_path = None
+                found_paths = []
                 for d in search_dirs:
                     if not os.path.exists(d): continue
                     for root, dirs, files in os.walk(d):
                         for f in files:
                             if target_file in f.lower():
-                                found_path = os.path.join(root, f)
-                                break
-                        if found_path: break
-                    if found_path: break
+                                found_paths.append(os.path.join(root, f))
+                                if len(found_paths) >= 10:
+                                    break
+                        if len(found_paths) >= 10:
+                            break
+                    if len(found_paths) >= 10:
+                        break
                 
-                if found_path:
-                    size_mb = os.path.getsize(found_path) / (1024 * 1024)
-                    if size_mb > 50:
-                        self.api.send_message(f"❌ File '{os.path.basename(found_path)}' is too large ({size_mb:.1f}MB). Max is 50MB.")
+                if found_paths:
+                    if len(found_paths) == 1:
+                        found_path = found_paths[0]
+                        size_mb = os.path.getsize(found_path) / (1024 * 1024)
+                        if size_mb > 50:
+                            self.api.send_message(f"❌ File '{os.path.basename(found_path)}' is too large ({size_mb:.1f}MB). Max is 50MB.")
+                        else:
+                            self.api.send_message(f"📤 Uploading {os.path.basename(found_path)} ({size_mb:.1f}MB)...")
+                            try:
+                                self.api.send_document(found_path)
+                            except Exception as e:
+                                self.api.send_message(f"❌ Upload failed: {e}")
                     else:
-                        self.api.send_message(f"📤 Uploading {os.path.basename(found_path)} ({size_mb:.1f}MB)...")
-                        try:
-                            self.api.send_document(found_path)
-                        except Exception as e:
-                            self.api.send_message(f"❌ Upload failed: {e}")
+                        buttons = []
+                        for path in found_paths:
+                            file_id = str(uuid.uuid4())[:8]
+                            self._fetch_results[file_id] = path
+                            btn_text = f"{os.path.basename(path)} ({os.path.getsize(path) / (1024 * 1024):.1f}MB)"
+                            buttons.append([{"text": btn_text, "callback_data": f"cb_fetch_{file_id}"}])
+                        
+                        reply_markup = {"inline_keyboard": buttons}
+                        self.api.send_message(f"📁 Found {len(found_paths)} matching files. Select one to download:", reply_markup=reply_markup)
                 else:
                     self.api.send_message("❌ File not found.")
                     
@@ -708,6 +725,26 @@ class CommandHandler:
                 self.api.answer_callback_query(callback_id, text=f"Executing {cmd}...")
                 self.handle({"text": cmd, "chat": {"id": chat_id}})
                 
+            elif data.startswith("cb_fetch_"):
+                file_id = data.replace("cb_fetch_", "")
+                if file_id in self._fetch_results:
+                    found_path = self._fetch_results[file_id]
+                    self.api.answer_callback_query(callback_id, text="Uploading file...")
+                    if not os.path.exists(found_path):
+                        self.api.send_message("❌ File no longer exists on disk.")
+                    else:
+                        size_mb = os.path.getsize(found_path) / (1024 * 1024)
+                        if size_mb > 50:
+                            self.api.send_message(f"❌ File '{os.path.basename(found_path)}' is too large ({size_mb:.1f}MB). Max is 50MB.")
+                        else:
+                            self.api.send_message(f"📤 Uploading {os.path.basename(found_path)} ({size_mb:.1f}MB)...")
+                            try:
+                                self.api.send_document(found_path)
+                            except Exception as e:
+                                self.api.send_message(f"❌ Upload failed: {e}")
+                else:
+                    self.api.answer_callback_query(callback_id, text="❌ File session expired or not found.", show_alert=True)
+                    
             elif data == "cb_top_apps":
                 self.api.answer_callback_query(callback_id)
                 try:

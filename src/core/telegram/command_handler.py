@@ -162,7 +162,7 @@ class CommandHandler:
                     "• <code>/menu</code> - Show interactive bot menu with quick actions\n\n"
                     "<b>🛡️ Security & Alerts</b>\n"
                     "• <code>/sentry</code> - Toggle webcam motion detection & recording\n"
-                    "• <b>Device Alerts</b> - Receive alerts if USB/Bluetooth/Wi-Fi connects while AFK\n\n"
+                    "• <code>/alerts</code> - Enable or disable USB/Bluetooth/Wi-Fi device alerts\n\n"
                     "<b>🎵 Media & Audio</b>\n"
                     "• <code>/play</code>, <code>/pause</code>, <code>/next</code>, <code>/prev</code> - Control media playback\n"
                     "• <code>/mute</code> - Mute system audio completely\n"
@@ -266,6 +266,15 @@ class CommandHandler:
                     else:
                         reply_markup = {"inline_keyboard": [[{"text": "🛡️ Enable Sentry", "callback_data": "cb_sentry_on"}]]}
                         self.api.send_message("🛑 Sentry Mode is currently OFF.", reply_markup=reply_markup)
+
+            elif command == "/alerts":
+                enabled = TelegramSettingsManager.get_bool("telegram_device_alerts_enabled", True)
+                if enabled:
+                    reply_markup = {"inline_keyboard": [[{"text": "🔕 Disable Device Alerts", "callback_data": "cb_alerts_off"}]]}
+                    self.api.send_message("🔔 Device alerts are currently <b>ON</b>.\nYou will receive alerts when USB/Bluetooth/Wi-Fi devices connect or disconnect.", parse_mode="HTML", reply_markup=reply_markup)
+                else:
+                    reply_markup = {"inline_keyboard": [[{"text": "🔔 Enable Device Alerts", "callback_data": "cb_alerts_on"}]]}
+                    self.api.send_message("🔕 Device alerts are currently <b>OFF</b>.\nYou will not receive alerts for device connections.", parse_mode="HTML", reply_markup=reply_markup)
 
             elif command == "/browse" or command.startswith("/browse "):
                 target = text[7:].strip()
@@ -892,6 +901,7 @@ class CommandHandler:
                 "cb_brightdown": "/brightdown",
                 "cb_sentry_on": "/sentry on",
                 "cb_sentry_off": "/sentry off",
+                "cb_alerts": "/alerts",
             }
             
             if data in simple_commands:
@@ -1098,6 +1108,26 @@ class CommandHandler:
                         text="⚠️ <b>Power Options</b>\nSelect an action:",
                         reply_markup={"inline_keyboard": inline_keyboard}
                     )
+
+            elif data in ("cb_alerts_on", "cb_alerts_off"):
+                self.api.answer_callback_query(callback_id)
+                turning_on = data == "cb_alerts_on"
+                TelegramSettingsManager.set("telegram_device_alerts_enabled", "true" if turning_on else "false")
+                if message.get("message_id"):
+                    if turning_on:
+                        self.api.edit_message(
+                            message_id=message["message_id"],
+                            text="🔔 Device alerts are now <b>ON</b>.\nYou will receive alerts when USB/Bluetooth/Wi-Fi devices connect or disconnect.",
+                            parse_mode="HTML",
+                            reply_markup={"inline_keyboard": [[{"text": "🔕 Disable Device Alerts", "callback_data": "cb_alerts_off"}]]}
+                        )
+                    else:
+                        self.api.edit_message(
+                            message_id=message["message_id"],
+                            text="🔕 Device alerts are now <b>OFF</b>.\nYou will not receive alerts for device connections.",
+                            parse_mode="HTML",
+                            reply_markup={"inline_keyboard": [[{"text": "🔔 Enable Device Alerts", "callback_data": "cb_alerts_on"}]]}
+                        )
 
             elif data.startswith("cb_power_"):
                 self.api.answer_callback_query(callback_id)

@@ -66,14 +66,14 @@ Function PrivacyConsentPage
   Pop $ViewLicenseButton
   ${NSD_OnClick} $ViewLicenseButton OpenLicenseDoc
 
-  ${NSD_CreateButton} 170u 30u 130u 14u "View Privacy Policy"
+  ${NSD_CreateButton} 160u 30u 140u 14u "View Privacy Policy & Data Consent"
   Pop $ViewPrivacyButton
   ${NSD_OnClick} $ViewPrivacyButton OpenPrivacyDoc
 
-  ${NSD_CreateLabel} 20u 54u 280u 20u "You must accept the Privacy Policy to continue installation."
+  ${NSD_CreateLabel} 20u 54u 280u 20u "You must accept the Privacy Policy & Data Consent to continue installation."
   Pop $0
 
-  ${NSD_CreateCheckbox} 20u 78u 280u 12u "I have read and accept the Privacy Policy"
+  ${NSD_CreateCheckbox} 20u 78u 280u 12u "I have read and accept the Privacy Policy and Data Consent"
   Pop $PrivacyConsentCheckbox
 
   nsDialogs::Show
@@ -82,7 +82,7 @@ FunctionEnd
 Function PrivacyConsentPageLeave
   ${NSD_GetState} $PrivacyConsentCheckbox $0
   ${If} $0 != ${BST_CHECKED}
-    MessageBox MB_ICONEXCLAMATION|MB_OK "You must accept the Privacy Policy to proceed."
+    MessageBox MB_ICONEXCLAMATION|MB_OK "You must accept the Privacy Policy and Data Consent to proceed."
     Abort
   ${EndIf}
 FunctionEnd

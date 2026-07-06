@@ -295,18 +295,24 @@ class TelegramAPI:
         return True
 
     def answer_callback_query(self, callback_query_id: str, text: str = "", show_alert: bool = False) -> bool:
-        response = requests.post(
-            f"{self.base_url}/answerCallbackQuery",
-            json={
-                "callback_query_id": callback_query_id,
-                "text": text,
-                "show_alert": show_alert,
-            },
-            timeout=REQUEST_TIMEOUT,
-        )
-        response.raise_for_status()
-        self._update_activity()
-        return True
+        try:
+            response = requests.post(
+                f"{self.base_url}/answerCallbackQuery",
+                json={
+                    "callback_query_id": callback_query_id,
+                    "text": text,
+                    "show_alert": show_alert,
+                },
+                timeout=REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            self._update_activity()
+            return True
+        except requests.exceptions.RequestException as e:
+            from src.utils.logger import setup_logger
+            logger = setup_logger()
+            logger.warning(f"[TelegramAPI] answer_callback_query failed: {e}")
+            return False
 
     def set_my_commands(self, commands: List[Dict[str, str]]) -> bool:
         response = requests.post(

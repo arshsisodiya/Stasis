@@ -13,6 +13,34 @@ REQUEST_TIMEOUT = 15
 _UPLOAD_RETRY_ATTEMPTS = 3
 
 
+class ProgressFileReader:
+    def __init__(self, filename, callback):
+        self.file = open(filename, 'rb')
+        self.len = os.path.getsize(filename)
+        self.callback = callback
+        self.read_bytes = 0
+        self.last_percent = 0
+        self.last_time = 0
+
+    def read(self, size=-1):
+        chunk = self.file.read(size)
+        self.read_bytes += len(chunk)
+        if self.len > 0:
+            percent = int((self.read_bytes / self.len) * 100)
+            now = time.time()
+            if (percent - self.last_percent >= 5 and now - self.last_time > 1.0) or percent == 100:
+                self.callback(percent)
+                self.last_percent = percent
+                self.last_time = now
+        return chunk
+        
+    def __len__(self):
+        return self.len
+
+    def close(self):
+        self.file.close()
+
+
 class TelegramAPI:
     def __init__(self, token: str, chat_id: str):
         self.token = token
@@ -86,7 +114,7 @@ class TelegramAPI:
             return True
         return False
 
-    def send_photo(self, photo_path: str, caption: str = "", reply_markup: dict = None) -> bool:
+    def send_photo(self, photo_path: str, caption: str = "", reply_markup: dict = None, progress_msg_id: int = None) -> bool:
         from src.utils.logger import setup_logger
         log = setup_logger()
         log.info(f"[TelegramAPI] Uploading photo: {os.path.basename(photo_path)}")
@@ -98,7 +126,12 @@ class TelegramAPI:
                 adapter = HTTPAdapter(max_retries=Retry(total=0))
                 session.mount("https://", adapter)
                 
-                with open(photo_path, "rb") as photo:
+                def progress_callback(percent):
+                    if progress_msg_id:
+                        self.edit_message(progress_msg_id, f"📤 Uploading photo... {percent}%")
+                
+                photo = ProgressFileReader(photo_path, progress_callback) if progress_msg_id else open(photo_path, "rb")
+                try:
                     data = {
                         "chat_id": self.chat_id,
                         "caption": caption,
@@ -113,6 +146,9 @@ class TelegramAPI:
                         timeout=(30, 300),
                         stream=False,
                     )
+                finally:
+                    if hasattr(photo, 'close'):
+                        photo.close()
                 response.raise_for_status()
                 self._update_activity()
                 log.info(f"[TelegramAPI] Photo sent successfully on attempt {attempt}")
@@ -130,7 +166,7 @@ class TelegramAPI:
         log.error(f"[TelegramAPI] Photo upload failed after {_UPLOAD_RETRY_ATTEMPTS} attempts. Last error: {last_exc}")
         raise last_exc
 
-    def send_video(self, video_path: str, caption: str = "") -> bool:
+    def send_video(self, video_path: str, caption: str = "", progress_msg_id: int = None) -> bool:
         ext = os.path.splitext(video_path)[1].lower()
         mime_map = {
             ".mp4": "video/mp4",
@@ -148,16 +184,18 @@ class TelegramAPI:
         last_exc = None
         for attempt in range(1, _UPLOAD_RETRY_ATTEMPTS + 1):
             try:
-                # Use a fresh session with a retry adapter for connection-level errors.
-                # NOTE: requests timeout=(connect, read) does NOT cover write/upload timeout.
-                # We work around it by chunked streaming and generous read timeout.
                 session = requests.Session()
                 adapter = HTTPAdapter(
-                    max_retries=Retry(total=0)  # We handle retries ourselves
+                    max_retries=Retry(total=0)
                 )
                 session.mount("https://", adapter)
 
-                with open(video_path, "rb") as video:
+                def progress_callback(percent):
+                    if progress_msg_id:
+                        self.edit_message(progress_msg_id, f"📤 Uploading video... {percent}%")
+                        
+                video = ProgressFileReader(video_path, progress_callback) if progress_msg_id else open(video_path, "rb")
+                try:
                     response = session.post(
                         f"{self.base_url}/sendVideo",
                         files={
@@ -172,23 +210,28 @@ class TelegramAPI:
                             "caption": caption,
                             "supports_streaming": True,
                         },
-                        # connect timeout=30s, read/write timeout=300s per attempt
                         timeout=(30, 300),
                         stream=False,
                     )
+                finally:
+                    if hasattr(video, 'close'):
+                        video.close()
 
                 log.info(f"[TelegramAPI] sendVideo response: status={response.status_code} attempt={attempt}")
 
-                # Telegram may reject non-mp4 — fall back to sendDocument
                 if not response.ok and ext != ".mp4":
                     log.warning(f"[TelegramAPI] sendVideo rejected ({response.status_code}), retrying as sendDocument")
-                    with open(video_path, "rb") as video:
+                    video_doc = ProgressFileReader(video_path, progress_callback) if progress_msg_id else open(video_path, "rb")
+                    try:
                         response = session.post(
                             f"{self.base_url}/sendDocument",
-                            files={"document": (os.path.basename(video_path), video, mime_type)},
+                            files={"document": (os.path.basename(video_path), video_doc, mime_type)},
                             data={"chat_id": self.chat_id, "caption": caption},
                             timeout=(30, 300),
                         )
+                    finally:
+                        if hasattr(video_doc, 'close'):
+                            video_doc.close()
                     log.info(f"[TelegramAPI] sendDocument response: status={response.status_code}")
 
                 response.raise_for_status()
@@ -209,8 +252,13 @@ class TelegramAPI:
         raise last_exc
 
 
-    def send_document(self, file_path: str, caption: str = "") -> bool:
-        with open(file_path, "rb") as doc:
+    def send_document(self, file_path: str, caption: str = "", progress_msg_id: int = None) -> bool:
+        def progress_callback(percent):
+            if progress_msg_id:
+                self.edit_message(progress_msg_id, f"📤 Uploading document... {percent}%")
+                
+        doc = ProgressFileReader(file_path, progress_callback) if progress_msg_id else open(file_path, "rb")
+        try:
             response = requests.post(
                 f"{self.base_url}/sendDocument",
                 files={"document": doc},
@@ -218,8 +266,11 @@ class TelegramAPI:
                     "chat_id": self.chat_id,
                     "caption": caption,
                 },
-                timeout=60,
+                timeout=(30, 300),
             )
+        finally:
+            if hasattr(doc, 'close'):
+                doc.close()
         response.raise_for_status()
         self._update_activity()
         return True

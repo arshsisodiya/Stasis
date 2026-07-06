@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime
 from src.core.telegram.system_status import get_status_text
 from src.core.telegram.screenshot import capture_screenshot
+from src.core.telegram.screenrecord import capture_screenrecord
 from src.core.system_actions import shutdown_system, restart_system, lock_system
 from src.core.telegram.webcam import capture_webcam, record_video
 from src.config.settings_manager import TelegramSettingsManager
@@ -98,13 +99,90 @@ class CommandHandler:
                 return
 
             if not command.startswith("/"):
+                # Check for URLs to prompt opening
+                import re
+                url_pattern = re.compile(r'(https?://\S+)')
+                urls = url_pattern.findall(text)
+                if urls:
+                    if not hasattr(self, '_pending_urls'):
+                        self._pending_urls = {}
+                    for u in urls:
+                        url_id = str(uuid.uuid4())[:8]
+                        self._pending_urls[url_id] = u
+                        reply_markup = {
+                            "inline_keyboard": [
+                                [
+                                    {"text": "🌐 Open Now", "callback_data": f"cb_openurl_{url_id}"},
+                                    {"text": "❌ Ignore", "callback_data": f"cb_ignoreurl_{url_id}"}
+                                ]
+                            ]
+                        }
+                        self.api.send_message(f"Received URL:\n{u}\n\nWould you like to open it on the PC?", reply_markup=reply_markup)
+                    return
+
                 # Handle raw text as "set clipboard" if enabled
                 if TelegramSettingsManager.get_bool("telegram_clipboard_allowed", True):
-                    from src.core.telegram.clipboard_utils import set_clipboard_text
-                    if set_clipboard_text(text):
-                        self.api.send_message("✅ Copied to PC clipboard!")
+                    if "-c" in text:
+                        text_to_copy = text.replace("-c", "").strip()
+                        from src.core.telegram.clipboard_utils import set_clipboard_text
+                        if set_clipboard_text(text_to_copy):
+                            self.api.send_message("✅ Copied to PC clipboard!")
+                        else:
+                            self.api.send_message("❌ Failed to copy to PC clipboard.")
                     else:
-                        self.api.send_message("❌ Failed to copy to PC clipboard.")
+                        if not hasattr(self, '_pending_clips'):
+                            self._pending_clips = {}
+                        clip_id = str(uuid.uuid4())[:8]
+                        self._pending_clips[clip_id] = text
+                        reply_markup = {
+                            "inline_keyboard": [
+                                [
+                                    {"text": "📋 Copy to Clipboard", "callback_data": f"cb_copyclip_{clip_id}"},
+                                    {"text": "❌ Ignore", "callback_data": f"cb_ignoreclip_{clip_id}"}
+                                ]
+                            ]
+                        }
+                        preview = text[:100] + ("..." if len(text) > 100 else "")
+                        self.api.send_message(f"Received text:\n{preview}\n\nWhat would you like to do?", reply_markup=reply_markup)
+                return
+
+            if command == "/help":
+                help_text = (
+                    "<b>🤖 Stasis Bot Help & Commands</b>\n\n"
+                    "<b>🖼️ Visuals & Monitoring</b>\n"
+                    "• <code>/screenshot</code> - Capture the current PC screen\n"
+                    "• <code>/screenrecord</code> - Record a 5-second video of the screen\n"
+                    "• <code>/camera</code> - Take a snapshot using the webcam\n"
+                    "• <code>/video</code> - Record a 10s video from the webcam\n\n"
+                    "<b>⚡ PC Control & Power</b>\n"
+                    "• <code>/lock</code> - Instantly lock the PC\n"
+                    "• <code>/shutdown</code> - Turn off the PC\n"
+                    "• <code>/restart</code> - Restart the PC\n"
+                    "• <code>/menu</code> - Show interactive bot menu with quick actions\n\n"
+                    "<b>🎵 Media & Audio</b>\n"
+                    "• <code>/play</code>, <code>/pause</code>, <code>/next</code>, <code>/prev</code> - Control media playback\n"
+                    "• <code>/mute</code> - Mute system audio completely\n"
+                    "• <code>/volup</code>, <code>/voldown</code> - Adjust system volume\n\n"
+                    "<b>📁 Files & Storage</b>\n"
+                    "• <code>/browse</code> - Interactive File Explorer to navigate and download files\n"
+                    "• <b>Send a file</b> - Automatically downloads to <code>Downloads/Stasis_Drops</code> on your PC\n\n"
+                    "<b>🌐 Quick URL Handling</b>\n"
+                    "• <b>Send a URL</b> - The bot will ask if you want to open it on your PC.\n"
+                    "• <b>Using <code>-o</code> flag</b>: Send <code>https://youtube.com -o</code> to instantly open the URL without a prompt.\n\n"
+                    "<b>📋 Clipboard & Text</b>\n"
+                    "• <b>Send text</b> - The bot will ask if you want to copy it to your PC's clipboard.\n"
+                    "• <b>Using <code>-c</code> flag</b>: Send <code>Hello -c</code> to instantly copy it to your clipboard.\n"
+                    "• <code>/clip</code> - Retrieve the current text from your PC's clipboard.\n"
+                    "• <code>/say &lt;msg&gt;</code> - Speak a message out loud on the PC.\n\n"
+                    "<b>🎯 Productivity & Stats</b>\n"
+                    "• <code>/today</code> - Get today's app usage analytics\n"
+                    "• <code>/goals</code> - Check your goal progress\n"
+                    "• <code>/block &lt;app&gt;</code> - Block an app\n"
+                    "• <code>/unblock &lt;app&gt;</code> - Unblock an app\n"
+                    "• <code>/close &lt;app&gt;</code> - Force close a running app\n"
+                    "• <code>/getlog</code> - Download your activity CSV logs"
+                )
+                self.api.send_message(help_text, parse_mode="HTML")
                 return
 
             if command == "/ping":
@@ -120,10 +198,34 @@ class CommandHandler:
                 
                 path = capture_screenshot()
                 if path:
-                    self.api.send_photo(path, "Current Screen")
+                    msg_id = self.api.send_message("📸 Uploading screenshot...")
+                    self.api.send_photo(path, "Current Screen", progress_msg_id=msg_id)
+                    if msg_id:
+                        self.api.edit_message(msg_id, "✅ Screenshot uploaded!")
                     os.remove(path)
                 else:
                     self.api.send_message("Failed to capture screenshot. Make sure dependencies are installed.")
+
+            elif command == "/screenrecord":
+                if not TelegramSettingsManager.get_bool("telegram_screenshot_allowed", True):
+                    self.api.send_message("❌ Screen record access is disabled in settings.")
+                    return
+
+                msg_id = self.api.send_message("🎥 Recording screen for 5 seconds...")
+                if not is_installed("Pillow") or not is_installed("opencv-python"):
+                    self.api.send_message("First-time setup: Installing screenrecord dependencies... This may take a minute.")
+                
+                path = capture_screenrecord(duration=5.0)
+                if path:
+                    self.api.send_video(path, "5-Second Screen Record", progress_msg_id=msg_id)
+                    if msg_id:
+                        self.api.edit_message(msg_id, "✅ Screen record uploaded!")
+                    os.remove(path)
+                else:
+                    if msg_id:
+                        self.api.edit_message(msg_id, "❌ Failed to capture screen record.")
+                    else:
+                        self.api.send_message("Failed to capture screen record. Make sure dependencies are installed.")
 
             elif command == "/lock":
                 if not TelegramSettingsManager.get_bool("telegram_system_control_allowed", True):
@@ -133,6 +235,10 @@ class CommandHandler:
                 lock_system()
                 if msg_id:
                     self.api.edit_message(msg_id, f"🔒 System locked at {datetime.now().strftime('%I:%M %p')}")
+
+            elif command == "/browse" or command.startswith("/browse "):
+                target = text[7:].strip()
+                self._handle_browse(target)
 
             elif command == "/shutdown":
                 if not TelegramSettingsManager.get_bool("telegram_system_control_allowed", True):
@@ -176,7 +282,7 @@ class CommandHandler:
                 if path:
                     self.api.edit_message(msg_id, "📤 Uploading photo...")
                     try:
-                        self.api.send_photo(path, "Webcam Snapshot")
+                        self.api.send_photo(path, "Webcam Snapshot", progress_msg_id=msg_id)
                         self.api.edit_message(msg_id, "✅ Snapshot sent successfully.")
                     except Exception as e:
                         self.api.edit_message(msg_id, f"❌ Failed to upload photo: {e}")
@@ -207,7 +313,7 @@ class CommandHandler:
                 if path:
                     self.api.edit_message(msg_id, "📤 Uploading video...")
                     try:
-                        self.api.send_video(path, f"Webcam Clip ({duration}s)")
+                        self.api.send_video(path, f"Webcam Clip ({duration}s)", progress_msg_id=msg_id)
                         self.api.edit_message(msg_id, "✅ Video sent successfully.")
                     except Exception as e:
                         self.api.edit_message(msg_id, f"❌ Failed to upload video: {e}")
@@ -596,9 +702,11 @@ class CommandHandler:
                         if size_mb > 50:
                             self.api.send_message(f"❌ File '{os.path.basename(found_path)}' is too large ({size_mb:.1f}MB). Max is 50MB.")
                         else:
-                            self.api.send_message(f"📤 Uploading {os.path.basename(found_path)} ({size_mb:.1f}MB)...")
+                            msg_id = self.api.send_message(f"📤 Uploading {os.path.basename(found_path)} ({size_mb:.1f}MB)...")
                             try:
-                                self.api.send_document(found_path)
+                                self.api.send_document(found_path, progress_msg_id=msg_id)
+                                if msg_id:
+                                    self.api.edit_message(msg_id, f"✅ {os.path.basename(found_path)} uploaded!")
                             except Exception as e:
                                 self.api.send_message(f"❌ Upload failed: {e}")
                     else:
@@ -663,6 +771,7 @@ class CommandHandler:
         buttons = [
             {"text": "🏓 Ping", "callback_data": "cb_ping"},
             {"text": "📸 Screenshot", "callback_data": "cb_screenshot"},
+            {"text": "🖥️ Scr. Record", "callback_data": "cb_screenrecord"},
             {"text": "📹 Camera", "callback_data": "cb_camera"},
             {"text": "🎥 Video", "callback_data": "cb_video"},
             {"text": "🔒 Lock", "callback_data": "cb_lock"},
@@ -700,6 +809,7 @@ class CommandHandler:
             simple_commands = {
                 "cb_ping": "/ping",
                 "cb_screenshot": "/screenshot",
+                "cb_screenrecord": "/screenrecord",
                 "cb_camera": "/camera",
                 "cb_video": "/video",
                 "cb_lock": "/lock",
@@ -737,13 +847,56 @@ class CommandHandler:
                         if size_mb > 50:
                             self.api.send_message(f"❌ File '{os.path.basename(found_path)}' is too large ({size_mb:.1f}MB). Max is 50MB.")
                         else:
-                            self.api.send_message(f"📤 Uploading {os.path.basename(found_path)} ({size_mb:.1f}MB)...")
+                            msg_id = self.api.send_message(f"📤 Uploading {os.path.basename(found_path)} ({size_mb:.1f}MB)...")
                             try:
-                                self.api.send_document(found_path)
+                                self.api.send_document(found_path, progress_msg_id=msg_id)
+                                if msg_id:
+                                    self.api.edit_message(msg_id, f"✅ {os.path.basename(found_path)} uploaded!")
                             except Exception as e:
                                 self.api.send_message(f"❌ Upload failed: {e}")
                 else:
                     self.api.answer_callback_query(callback_id, text="❌ File session expired or not found.", show_alert=True)
+
+            elif data.startswith("cb_openurl_"):
+                url_id = data.replace("cb_openurl_", "")
+                if hasattr(self, '_pending_urls') and url_id in self._pending_urls:
+                    url = self._pending_urls[url_id]
+                    import webbrowser
+                    webbrowser.open(url)
+                    self.api.answer_callback_query(callback_id, text="Opening URL...")
+                    self.api.edit_message(message.get("message_id"), f"🌐 Opened URL on PC:\n{url}")
+                    del self._pending_urls[url_id]
+                else:
+                    self.api.answer_callback_query(callback_id, text="❌ URL session expired or not found.", show_alert=True)
+                    
+            elif data.startswith("cb_ignoreurl_"):
+                url_id = data.replace("cb_ignoreurl_", "")
+                if hasattr(self, '_pending_urls') and url_id in self._pending_urls:
+                    del self._pending_urls[url_id]
+                self.api.answer_callback_query(callback_id, text="Ignored URL.")
+                self.api.edit_message(message.get("message_id"), "❌ Ignored URL.")
+                    
+            elif data.startswith("cb_copyclip_"):
+                clip_id = data.replace("cb_copyclip_", "")
+                if hasattr(self, '_pending_clips') and clip_id in self._pending_clips:
+                    text_to_copy = self._pending_clips[clip_id]
+                    from src.core.telegram.clipboard_utils import set_clipboard_text
+                    if set_clipboard_text(text_to_copy):
+                        self.api.answer_callback_query(callback_id, text="Copied to clipboard!")
+                        self.api.edit_message(message.get("message_id"), "✅ Copied to PC clipboard!")
+                    else:
+                        self.api.answer_callback_query(callback_id, text="Failed to copy to clipboard.", show_alert=True)
+                        self.api.edit_message(message.get("message_id"), "❌ Failed to copy to PC clipboard.")
+                    del self._pending_clips[clip_id]
+                else:
+                    self.api.answer_callback_query(callback_id, text="❌ Session expired or not found.", show_alert=True)
+
+            elif data.startswith("cb_ignoreclip_"):
+                clip_id = data.replace("cb_ignoreclip_", "")
+                if hasattr(self, '_pending_clips') and clip_id in self._pending_clips:
+                    del self._pending_clips[clip_id]
+                self.api.answer_callback_query(callback_id, text="Ignored text.")
+                self.api.edit_message(message.get("message_id"), "❌ Ignored text.")
                     
             elif data == "cb_top_apps":
                 self.api.answer_callback_query(callback_id)
@@ -921,6 +1074,41 @@ class CommandHandler:
                     # We can quickly refresh the unblock menu by calling handle_callback recursively
                     self.handle_callback({"id": callback_id, "data": "cb_menu_unblock", "message": message})
 
+            elif data == "cb_br_root":
+                self.api.answer_callback_query(callback_id)
+                self._handle_browse("", message_id=message.get("message_id"))
+
+            elif data.startswith("cb_br_"):
+                pid = data[len("cb_br_"):]
+                if hasattr(self, '_path_cache') and pid in self._path_cache:
+                    target = self._path_cache[pid]
+                    self.api.answer_callback_query(callback_id)
+                    self._handle_browse(target, message_id=message.get("message_id"))
+                else:
+                    self.api.answer_callback_query(callback_id, text="❌ Session expired. Please /browse again.", show_alert=True)
+
+            elif data.startswith("cb_dl_"):
+                pid = data[len("cb_dl_"):]
+                if hasattr(self, '_path_cache') and pid in self._path_cache:
+                    target = self._path_cache[pid]
+                    if os.path.exists(target) and os.path.isfile(target):
+                        size_mb = os.path.getsize(target) / (1024 * 1024)
+                        if size_mb > 50:
+                            self.api.answer_callback_query(callback_id, text=f"❌ File too large ({size_mb:.1f}MB). Max 50MB.", show_alert=True)
+                        else:
+                            self.api.answer_callback_query(callback_id, text="Uploading file...")
+                            msg_id = self.api.send_message(f"📤 Uploading {os.path.basename(target)}...")
+                            try:
+                                self.api.send_document(target, progress_msg_id=msg_id)
+                                if msg_id:
+                                    self.api.edit_message(msg_id, f"✅ {os.path.basename(target)} uploaded!")
+                            except Exception as e:
+                                self.api.send_message(f"❌ Upload failed: {e}")
+                    else:
+                        self.api.answer_callback_query(callback_id, text="❌ File not found.", show_alert=True)
+                else:
+                    self.api.answer_callback_query(callback_id, text="❌ Session expired. Please /browse again.", show_alert=True)
+
             elif data == "ignore":
                 self.api.answer_callback_query(callback_id)
 
@@ -949,11 +1137,121 @@ class CommandHandler:
         found = False
         for pattern in patterns:
             for log_path in glob.glob(pattern):
+                msg_id = self.api.send_message(f"📤 Uploading Log: {os.path.basename(log_path)}...")
                 self.api.send_document(
                     log_path,
                     f"Activity Log: {os.path.basename(log_path)}",
+                    progress_msg_id=msg_id
                 )
+                if msg_id:
+                    self.api.edit_message(msg_id, f"✅ {os.path.basename(log_path)} uploaded!")
                 found = True
 
         if not found:
             self.api.send_message("No log files found.")
+
+    def _handle_browse(self, target_path, message_id=None):
+        if not hasattr(self, '_path_cache'):
+            self._path_cache = {}
+            
+        import string
+        from ctypes import windll
+        
+        if not target_path or target_path.strip() == "":
+            drives = []
+            bitmask = windll.kernel32.GetLogicalDrives()
+            for letter in string.ascii_uppercase:
+                if bitmask & 1:
+                    drives.append(f"{letter}:\\")
+                bitmask >>= 1
+            
+            inline_keyboard = []
+            for drive in drives:
+                pid = str(uuid.uuid4())[:8]
+                self._path_cache[pid] = drive
+                inline_keyboard.append([{"text": f"💽 {drive}", "callback_data": f"cb_br_{pid}"}])
+                
+            text = "🗄️ <b>File Explorer</b>\nSelect a drive:"
+            reply_markup = {"inline_keyboard": inline_keyboard}
+            
+            if message_id:
+                self.api.edit_message(message_id, text, reply_markup=reply_markup)
+            else:
+                self.api.send_message(text, reply_markup=reply_markup)
+            return
+
+        target_path = target_path.strip()
+        if not os.path.exists(target_path):
+            text = f"❌ Path not found:\n{target_path}"
+            if message_id:
+                self.api.edit_message(message_id, text)
+            else:
+                self.api.send_message(text)
+            return
+
+        if os.path.isfile(target_path):
+            text = f"📄 <b>File:</b> {os.path.basename(target_path)}\nSize: {os.path.getsize(target_path) / (1024*1024):.2f} MB"
+            pid = str(uuid.uuid4())[:8]
+            self._path_cache[pid] = target_path
+            reply_markup = {"inline_keyboard": [[{"text": "📥 Download", "callback_data": f"cb_dl_{pid}"}]]}
+            
+            parent_dir = os.path.dirname(target_path)
+            ppid = str(uuid.uuid4())[:8]
+            self._path_cache[ppid] = parent_dir
+            reply_markup["inline_keyboard"].append([{"text": "⬆️ Back to folder", "callback_data": f"cb_br_{ppid}"}])
+            
+            if message_id:
+                self.api.edit_message(message_id, text, reply_markup=reply_markup)
+            else:
+                self.api.send_message(text, reply_markup=reply_markup)
+            return
+
+        try:
+            items = os.listdir(target_path)
+        except Exception as e:
+            text = f"❌ Access denied or error:\n{target_path}\n{e}"
+            if message_id:
+                self.api.edit_message(message_id, text)
+            else:
+                self.api.send_message(text)
+            return
+
+        dirs = []
+        files = []
+        for item in items:
+            full_path = os.path.join(target_path, item)
+            if os.path.isdir(full_path):
+                dirs.append(item)
+            else:
+                files.append(item)
+
+        dirs.sort(key=str.lower)
+        files.sort(key=str.lower)
+
+        inline_keyboard = []
+        
+        parent_dir = os.path.dirname(target_path)
+        if parent_dir and parent_dir != target_path:
+            ppid = str(uuid.uuid4())[:8]
+            self._path_cache[ppid] = parent_dir
+            inline_keyboard.append([{"text": "⬆️ Go Up", "callback_data": f"cb_br_{ppid}"}])
+        else:
+            inline_keyboard.append([{"text": "⬆️ Drives", "callback_data": "cb_br_root"}])
+
+        for d in dirs[:15]:
+            pid = str(uuid.uuid4())[:8]
+            self._path_cache[pid] = os.path.join(target_path, d)
+            inline_keyboard.append([{"text": f"📁 {d}", "callback_data": f"cb_br_{pid}"}])
+
+        for f in files[:15]:
+            pid = str(uuid.uuid4())[:8]
+            self._path_cache[pid] = os.path.join(target_path, f)
+            inline_keyboard.append([{"text": f"📄 {f}", "callback_data": f"cb_br_{pid}"}])
+
+        text = f"📁 <b>{os.path.basename(target_path) or target_path}</b>\n<code>{target_path}</code>"
+        reply_markup = {"inline_keyboard": inline_keyboard}
+
+        if message_id:
+            self.api.edit_message(message_id, text, reply_markup=reply_markup)
+        else:
+            self.api.send_message(text, reply_markup=reply_markup)

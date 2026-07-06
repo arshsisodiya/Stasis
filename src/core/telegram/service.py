@@ -79,8 +79,10 @@ class TelegramService:
             try:
                 # Set Bot Menu commands
                 commands = [
+                    {"command": "help", "description": "List all bot commands and features"},
                     {"command": "ping", "description": "Check if Stasis is online"},
                     {"command": "screenshot", "description": "Capture current screen"},
+                    {"command": "screenrecord", "description": "Record 5s screen clip"},
                     {"command": "lock", "description": "Lock the PC"},
                     {"command": "shutdown", "description": "Request PC shutdown"},
                     {"command": "restart", "description": "Request PC restart"},
@@ -93,6 +95,7 @@ class TelegramService:
                     {"command": "note", "description": "Save a quick note"},
                     {"command": "clip", "description": "Get PC clipboard"},
                     {"command": "menu", "description": "Show interactive bot menu"},
+                    {"command": "browse", "description": "Interactive File Explorer"},
                     {"command": "today", "description": "Get today's analytics"},
                     {"command": "goals", "description": "Check goal progress"},
                     {"command": "say", "description": "Speak message on PC"},

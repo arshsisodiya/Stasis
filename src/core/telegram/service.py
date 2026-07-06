@@ -74,6 +74,18 @@ class TelegramService:
             daemon=True,
         )
         self.thread.start()
+        
+        # Start background security monitors
+        from src.core.telegram.sentry import SentryMonitor
+        from src.core.telegram.device_monitor import DeviceMonitor
+        
+        sentry = SentryMonitor()
+        sentry.set_callback(lambda msg, path=None: self.api.send_message(msg) if not path else self.api.send_video(path, msg))
+        sentry.start()
+        
+        device_monitor = DeviceMonitor()
+        device_monitor.set_callback(lambda msg: self.api.send_message(msg))
+        device_monitor.start()
 
         if notify:
             try:
@@ -89,6 +101,8 @@ class TelegramService:
                     {"command": "camera", "description": "Take a webcam snapshot"},
                     {"command": "video", "description": "Record a 10s webcam video"},
                     {"command": "getlog", "description": "Download activity logs"},
+                    {"command": "sentry", "description": "Toggle webcam motion alerts"},
+                    {"command": "monitors", "description": "Turn off PC displays"},
                     {"command": "block", "description": "Block an app"},
                     {"command": "unblock", "description": "Unblock an app"},
                     {"command": "close", "description": "Force close an app"},
@@ -138,6 +152,14 @@ class TelegramService:
         if self.thread:
             self.thread.join(timeout=5)
             self.thread = None
+            
+        try:
+            from src.core.telegram.sentry import SentryMonitor
+            from src.core.telegram.device_monitor import DeviceMonitor
+            SentryMonitor().stop()
+            DeviceMonitor().stop()
+        except Exception:
+            pass
 
     def send_shutdown_notification(self, duration_seconds: int = None, status: str = "graceful"):
         """

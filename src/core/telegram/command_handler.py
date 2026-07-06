@@ -156,9 +156,13 @@ class CommandHandler:
                     "• <code>/video</code> - Record a 10s video from the webcam\n\n"
                     "<b>⚡ PC Control & Power</b>\n"
                     "• <code>/lock</code> - Instantly lock the PC\n"
+                    "• <code>/monitors</code> - Turn off displays without locking\n"
                     "• <code>/shutdown</code> - Turn off the PC\n"
                     "• <code>/restart</code> - Restart the PC\n"
                     "• <code>/menu</code> - Show interactive bot menu with quick actions\n\n"
+                    "<b>🛡️ Security & Alerts</b>\n"
+                    "• <code>/sentry</code> - Toggle webcam motion detection & recording\n"
+                    "• <b>Device Alerts</b> - Receive alerts if USB/Bluetooth/Wi-Fi connects while AFK\n\n"
                     "<b>🎵 Media & Audio</b>\n"
                     "• <code>/play</code>, <code>/pause</code>, <code>/next</code>, <code>/prev</code> - Control media playback\n"
                     "• <code>/mute</code> - Mute system audio completely\n"
@@ -236,6 +240,33 @@ class CommandHandler:
                 if msg_id:
                     self.api.edit_message(msg_id, f"🔒 System locked at {datetime.now().strftime('%I:%M %p')}")
 
+            elif command == "/monitors":
+                import ctypes
+                self.api.send_message("🖥️ Turning off displays...")
+                # SC_MONITORPOWER = 0xF170, 2 = Power off
+                ctypes.windll.user32.SendMessageW(0xFFFF, 0x0112, 0xF170, 2)
+
+            elif command.startswith("/sentry"):
+                from src.core.telegram.sentry import SentryMonitor
+                sentry = SentryMonitor()
+                
+                parts = command.split()
+                if len(parts) > 1:
+                    action = parts[1].lower()
+                    if action == "on":
+                        sentry.enable()
+                        self.api.send_message("🛡️ Sentry Mode is now ON.")
+                    elif action == "off":
+                        sentry.disable()
+                        self.api.send_message("🛑 Sentry Mode is now OFF.")
+                else:
+                    if sentry.enabled:
+                        reply_markup = {"inline_keyboard": [[{"text": "🛑 Disable Sentry", "callback_data": "cb_sentry_off"}]]}
+                        self.api.send_message("🛡️ Sentry Mode is currently ON.", reply_markup=reply_markup)
+                    else:
+                        reply_markup = {"inline_keyboard": [[{"text": "🛡️ Enable Sentry", "callback_data": "cb_sentry_on"}]]}
+                        self.api.send_message("🛑 Sentry Mode is currently OFF.", reply_markup=reply_markup)
+
             elif command == "/browse" or command.startswith("/browse "):
                 target = text[7:].strip()
                 self._handle_browse(target)
@@ -277,8 +308,16 @@ class CommandHandler:
                     self.api.send_message("❌ Webcam access is disabled in settings.")
                     return
 
+                from src.core.telegram.sentry import SentryMonitor
+                SentryMonitor().pause()
+                import time
+                time.sleep(0.5) # Give sentry thread time to release the camera
+                
                 msg_id = self.api.send_message("📸 Capturing webcam...")
                 path = capture_webcam()
+                
+                SentryMonitor().resume()
+                
                 if path:
                     self.api.edit_message(msg_id, "📤 Uploading photo...")
                     try:
@@ -307,8 +346,15 @@ class CommandHandler:
                 if len(parts) > 1 and parts[1].isdigit():
                     duration = int(parts[1])
 
+                from src.core.telegram.sentry import SentryMonitor
+                SentryMonitor().pause()
+                import time
+                time.sleep(0.5) # Give sentry thread time to release the camera
+                
                 msg_id = self.api.send_message(f"🎥 Recording {duration}s video... Please wait.")
                 path = record_video(duration)
+
+                SentryMonitor().resume()
 
                 if path:
                     self.api.edit_message(msg_id, "📤 Uploading video...")
@@ -468,6 +514,20 @@ class CommandHandler:
                 from src.core.telegram.media_controller import prev_track
                 prev_track()
                 self.api.send_message("⏮ Previous Track")
+
+            elif command == "/brightup":
+                from src.core.telegram.media_controller import brightness_up
+                if brightness_up():
+                    self.api.send_message("🔆 Brightness Increased")
+                else:
+                    self.api.send_message("❌ Failed to increase brightness.")
+
+            elif command == "/brightdown":
+                from src.core.telegram.media_controller import brightness_down
+                if brightness_down():
+                    self.api.send_message("🔅 Brightness Decreased")
+                else:
+                    self.api.send_message("❌ Failed to decrease brightness.")
 
             elif command == "/mute":
                 if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
@@ -828,6 +888,10 @@ class CommandHandler:
                 "cb_bwd10": "/bwd10",
                 "cb_next_slide": "/next_slide",
                 "cb_prev_slide": "/prev_slide",
+                "cb_brightup": "/brightup",
+                "cb_brightdown": "/brightdown",
+                "cb_sentry_on": "/sentry on",
+                "cb_sentry_off": "/sentry off",
             }
             
             if data in simple_commands:
@@ -947,6 +1011,7 @@ class CommandHandler:
                         [{"text": "⏮ Prev", "callback_data": "cb_prev"}, {"text": "⏭ Next", "callback_data": "cb_next"}],
                         [{"text": "⏪ Bwd 10s", "callback_data": "cb_bwd10"}, {"text": "⏩ Fwd 10s", "callback_data": "cb_fwd10"}],
                         [{"text": "📽 Prev Slide", "callback_data": "cb_prev_slide"}, {"text": "📽 Next Slide", "callback_data": "cb_next_slide"}],
+                        [{"text": "🔅 Bright Down", "callback_data": "cb_brightdown"}, {"text": "🔆 Bright Up", "callback_data": "cb_brightup"}],
                         [{"text": "🔙 Back to Menu", "callback_data": "cb_menu_main"}]
                     ]
                     self.api.edit_message(

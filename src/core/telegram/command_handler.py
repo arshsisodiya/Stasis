@@ -392,7 +392,7 @@ class CommandHandler:
                     
             elif command.startswith("/record"):
                 from src.utils.dependency_manager import ensure_package
-                if not ensure_package("PyAudio"):
+                if not ensure_package("pyaudio"):
                     self.api.send_message("❌ PyAudio is not installed or failed to install.")
                     return
                     
@@ -988,7 +988,7 @@ class CommandHandler:
                 
             elif data == "cb_record_start":
                 from src.utils.dependency_manager import ensure_package
-                if not ensure_package("PyAudio"):
+                if not ensure_package("pyaudio"):
                     self.api.answer_callback_query(callback_id, text="❌ PyAudio not installed.", show_alert=True)
                     return
                 

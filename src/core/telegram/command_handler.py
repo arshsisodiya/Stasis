@@ -155,6 +155,7 @@ class CommandHandler:
                     "• <code>/camera</code> - Take a snapshot using the webcam\n"
                     "• <code>/video</code> - Record a 10s video from the webcam\n\n"
                     "<b>⚡ PC Control & Power</b>\n"
+                    "• <code>/ping</code> - Check bot status and PC connection\n"
                     "• <code>/lock</code> - Instantly lock the PC\n"
                     "• <code>/monitors</code> - Turn off displays without locking\n"
                     "• <code>/shutdown</code> - Turn off the PC\n"
@@ -165,12 +166,17 @@ class CommandHandler:
                     "• <code>/alerts</code> - Enable or disable USB/Bluetooth/Wi-Fi device alerts\n\n"
                     "<b>🎵 Media & Audio</b>\n"
                     "• <code>/play</code>, <code>/pause</code>, <code>/next</code>, <code>/prev</code> - Control media playback\n"
+                    "• <code>/fwd10</code>, <code>/bwd10</code> - Fast forward or rewind media by 10s\n"
                     "• <code>/mute</code> - Mute system audio completely\n"
-                    "• <code>/volup</code>, <code>/voldown</code> - Adjust system volume\n\n"
+                    "• <code>/volup</code>, <code>/voldown</code> - Adjust system volume\n"
+                    "• <code>/brightup</code>, <code>/brightdown</code> - Adjust screen brightness\n"
+                    "• <code>/next_slide</code>, <code>/prev_slide</code> - Presentation slide controls\n\n"
                     "<b>📁 Files & Storage</b>\n"
                     "• <code>/browse</code> - Interactive File Explorer to navigate and download files\n"
+                    "• <code>/fetch &lt;filename&gt;</code> - Search and download a file from common folders\n"
                     "• <b>Send a file</b> - Automatically downloads to <code>Downloads/Stasis_Drops</code> on your PC\n\n"
-                    "<b>🌐 Quick URL Handling</b>\n"
+                    "<b>🌐 Links & Quick Actions</b>\n"
+                    "• <code>/open &lt;url&gt;</code> - Instantly open a URL in the PC's browser\n"
                     "• <b>Send a URL</b> - The bot will ask if you want to open it on your PC.\n"
                     "• <b>Using <code>-o</code> flag</b>: Send <code>https://youtube.com -o</code> to instantly open the URL without a prompt.\n\n"
                     "<b>📋 Clipboard & Text</b>\n"
@@ -184,6 +190,7 @@ class CommandHandler:
                     "• <code>/block &lt;app&gt;</code> - Block an app\n"
                     "• <code>/unblock &lt;app&gt;</code> - Unblock an app\n"
                     "• <code>/close &lt;app&gt;</code> - Force close a running app\n"
+                    "• <code>/note &lt;text&gt;</code> - Save a quick note to your dashboard\n"
                     "• <code>/getlog</code> - Download your activity CSV logs"
                 )
                 self.api.send_message(help_text, parse_mode="HTML")
@@ -506,7 +513,6 @@ class CommandHandler:
                     return
                 from src.core.telegram.media_controller import play_pause
                 play_pause()
-                self.api.send_message("⏯ Toggled Play/Pause")
 
             elif command == "/next":
                 if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
@@ -514,7 +520,6 @@ class CommandHandler:
                     return
                 from src.core.telegram.media_controller import next_track
                 next_track()
-                self.api.send_message("⏭ Next Track")
 
             elif command == "/prev":
                 if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
@@ -522,19 +527,18 @@ class CommandHandler:
                     return
                 from src.core.telegram.media_controller import prev_track
                 prev_track()
-                self.api.send_message("⏮ Previous Track")
 
             elif command == "/brightup":
                 from src.core.telegram.media_controller import brightness_up
                 if brightness_up():
-                    self.api.send_message("🔆 Brightness Increased")
+                    pass
                 else:
                     self.api.send_message("❌ Failed to increase brightness.")
 
             elif command == "/brightdown":
                 from src.core.telegram.media_controller import brightness_down
                 if brightness_down():
-                    self.api.send_message("🔅 Brightness Decreased")
+                    pass
                 else:
                     self.api.send_message("❌ Failed to decrease brightness.")
 
@@ -544,7 +548,6 @@ class CommandHandler:
                     return
                 from src.core.telegram.media_controller import mute
                 mute()
-                self.api.send_message("🔇 Toggled Mute")
 
             elif command == "/volup":
                 if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
@@ -553,7 +556,6 @@ class CommandHandler:
                 from src.core.telegram.media_controller import volume_up
                 # Press multiple times to make a noticeable difference
                 for _ in range(5): volume_up()
-                self.api.send_message("🔊 Volume Up")
 
             elif command == "/voldown":
                 if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
@@ -561,7 +563,6 @@ class CommandHandler:
                     return
                 from src.core.telegram.media_controller import volume_down
                 for _ in range(5): volume_down()
-                self.api.send_message("🔉 Volume Down")
 
             elif command == "/fwd10":
                 if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
@@ -569,7 +570,6 @@ class CommandHandler:
                     return
                 from src.core.telegram.media_controller import seek_forward
                 seek_forward()
-                self.api.send_message("⏩ Fast Forward 10s")
 
             elif command == "/bwd10":
                 if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
@@ -577,7 +577,6 @@ class CommandHandler:
                     return
                 from src.core.telegram.media_controller import seek_backward
                 seek_backward()
-                self.api.send_message("⏪ Rewind 10s")
 
             elif command == "/next_slide":
                 if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
@@ -585,7 +584,6 @@ class CommandHandler:
                     return
                 from src.core.telegram.media_controller import presentation_next
                 presentation_next()
-                self.api.send_message("📽 Next Slide")
 
             elif command == "/prev_slide":
                 if not TelegramSettingsManager.get_bool("telegram_media_controls_allowed", True):
@@ -593,7 +591,6 @@ class CommandHandler:
                     return
                 from src.core.telegram.media_controller import presentation_prev
                 presentation_prev()
-                self.api.send_message("📽 Previous Slide")
                 
             elif command == "/today":
                 if not TelegramSettingsManager.get_bool("telegram_on_demand_analytics_allowed", True):
@@ -844,9 +841,14 @@ class CommandHandler:
             {"text": "📹 Camera", "callback_data": "cb_camera"},
             {"text": "🎥 Video", "callback_data": "cb_video"},
             {"text": "🔒 Lock", "callback_data": "cb_lock"},
+            {"text": "🖥️ Monitors Off", "callback_data": "cb_monitors"},
             {"text": "📊 Today", "callback_data": "cb_today"},
             {"text": "🎯 Goals", "callback_data": "cb_goals"},
             {"text": "📋 Clip", "callback_data": "cb_clip"},
+            {"text": "🛡️ Sentry", "callback_data": "cb_sentry"},
+            {"text": "🔔 Alerts", "callback_data": "cb_alerts"},
+            {"text": "📁 Browse Files", "callback_data": "cb_browse"},
+            {"text": "📝 Get Logs", "callback_data": "cb_getlog"},
             {"text": "⛔ Block App", "callback_data": "cb_menu_block"},
             {"text": "✅ Unblock App", "callback_data": "cb_menu_unblock"},
             {"text": "🎵 Media & Present", "callback_data": "cb_menu_media"},
@@ -899,9 +901,13 @@ class CommandHandler:
                 "cb_prev_slide": "/prev_slide",
                 "cb_brightup": "/brightup",
                 "cb_brightdown": "/brightdown",
+                "cb_sentry": "/sentry",
                 "cb_sentry_on": "/sentry on",
                 "cb_sentry_off": "/sentry off",
                 "cb_alerts": "/alerts",
+                "cb_browse": "/browse",
+                "cb_getlog": "/getlog",
+                "cb_monitors": "/monitors",
             }
             
             if data in simple_commands:

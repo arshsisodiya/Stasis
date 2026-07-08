@@ -215,7 +215,7 @@ def find_uwp_via_powershell(app_name: str) -> str | None:
         
     try:
         cmd = f'powershell -Command "Get-AppxPackage -Name {pattern} | Select-Object -ExpandProperty InstallLocation"'
-        output = subprocess.check_output(cmd, shell=True, text=True).strip()
+        output = subprocess.check_output(cmd, shell=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
         if output and os.path.exists(output):
             # Try to find an EXE in the root folder with a similar name
             exes = glob.glob(os.path.join(output, "*.exe"))

@@ -108,7 +108,8 @@ def _get_real_site_packages() -> list:
         result = subprocess.run(
             [_PYTHON_EXE, "-c",
              "import site, json; print(json.dumps(site.getsitepackages()))"],
-            capture_output=True, text=True, timeout=10
+            capture_output=True, text=True, timeout=10,
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         if result.returncode == 0 and result.stdout.strip():
             paths = json.loads(result.stdout.strip())
@@ -169,7 +170,7 @@ def _can_import_in_subprocess(import_name: str) -> bool:
     cmd = [_PYTHON_EXE, "-c", f"import {import_name}; print('ok')"]
     logger.info(f"[DependencyManager] Subprocess import check | cmd={cmd}")
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, creationflags=subprocess.CREATE_NO_WINDOW)
         stdout = result.stdout.strip()
         stderr = result.stderr.strip()
         ok = result.returncode == 0 and "ok" in stdout
@@ -307,7 +308,8 @@ def install_package(package_name: str) -> bool:
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=0,
-            universal_newlines=True
+            universal_newlines=True,
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         logger.info(f"[DependencyManager] pip process started | PID={process.pid}")
 

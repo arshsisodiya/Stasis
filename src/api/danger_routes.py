@@ -76,7 +76,8 @@ def reset_everything():
 
             subprocess.Popen(
                 [sys.executable, "-m", "src.main"],
-                cwd=os.getcwd()
+                cwd=os.getcwd(),
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
 
             os._exit(0)

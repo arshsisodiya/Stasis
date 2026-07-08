@@ -153,7 +153,10 @@ class CommandHandler:
                     "• <code>/screenshot</code> - Capture the current PC screen\n"
                     "• <code>/screenrecord</code> - Record a 5-second video of the screen\n"
                     "• <code>/camera</code> - Take a snapshot using the webcam\n"
-                    "• <code>/video</code> - Record a 10s video from the webcam\n\n"
+                    "• <code>/video</code> - Record a 10s video from the webcam\n"
+                    "• <code>/record</code> - Record 10s audio from the microphone\n"
+                    "• <code>/record &lt;seconds&gt;</code> - Record audio for a specific duration\n"
+                    "• <code>/record start</code> & <code>/record stop</code> - Start/stop background audio recording\n\n"
                     "<b>⚡ PC Control & Power</b>\n"
                     "• <code>/ping</code> - Check bot status and PC connection\n"
                     "• <code>/lock</code> - Instantly lock the PC\n"
@@ -387,6 +390,65 @@ class CommandHandler:
                 else:
                     self.api.edit_message(msg_id, "❌ Failed to record video.")
                     
+            elif command.startswith("/record"):
+                from src.utils.dependency_manager import ensure_package
+                if not ensure_package("PyAudio"):
+                    self.api.send_message("❌ PyAudio is not installed or failed to install.")
+                    return
+                    
+                parts = command.split()
+                from src.core.telegram.audio_recorder import MicRecorder
+                recorder = MicRecorder()
+                
+                if len(parts) > 1:
+                    arg = parts[1].lower()
+                    if arg == "start":
+                        def on_limit_hit(filepath):
+                            msg_text = "⚠️ Recording limit reached (10 minutes or 48MB). Your audio file is being sent."
+                            reply_markup = {"inline_keyboard": [[{"text": "🎙️ Start Recording Again", "callback_data": "cb_record_start"}]]}
+                            self.api.send_message(msg_text, reply_markup=reply_markup)
+                            self.api.send_document(filepath)
+                            
+                        if recorder.start_async_recording(limit_callback=on_limit_hit):
+                            reply_markup = {"inline_keyboard": [[{"text": "🛑 Stop Recording", "callback_data": "cb_record_stop"}]]}
+                            self.api.send_message("🎙️ Recording started! Max limit is 10 mins or 48MB.", reply_markup=reply_markup)
+                        else:
+                            self.api.send_message("❌ Failed to start recording.")
+                    
+                    elif arg == "stop":
+                        filepath = recorder.stop_async_recording()
+                        if filepath:
+                            msg_id = self.api.send_message("📤 Uploading recording...")
+                            self.api.send_document(filepath, progress_msg_id=msg_id)
+                            if msg_id:
+                                self.api.edit_message(msg_id, "✅ Audio recording uploaded!")
+                        else:
+                            self.api.send_message("❌ No active recording to stop.")
+                    else:
+                        # Fixed duration
+                        try:
+                            duration = int(arg)
+                            msg_id = self.api.send_message(f"🎙️ Recording for {duration} seconds... Please wait.")
+                            filepath = recorder.record_fixed_duration(duration)
+                            if filepath:
+                                self.api.edit_message(msg_id, "📤 Uploading audio...")
+                                self.api.send_document(filepath, progress_msg_id=msg_id)
+                                if msg_id: self.api.edit_message(msg_id, "✅ Audio recording uploaded!")
+                            else:
+                                if msg_id: self.api.edit_message(msg_id, "❌ Failed to record audio.")
+                        except ValueError:
+                            self.api.send_message("❌ Invalid duration. Usage: `/record <seconds>`", parse_mode="Markdown")
+                else:
+                    # Default 10 seconds
+                    msg_id = self.api.send_message("🎙️ Recording for 10 seconds... Please wait.")
+                    filepath = recorder.record_fixed_duration(10)
+                    if filepath:
+                        self.api.edit_message(msg_id, "📤 Uploading audio...")
+                        self.api.send_document(filepath, progress_msg_id=msg_id)
+                        if msg_id: self.api.edit_message(msg_id, "✅ Audio recording uploaded!")
+                    else:
+                        if msg_id: self.api.edit_message(msg_id, "❌ Failed to record audio.")
+                        
             elif command.startswith("/block "):
                 if not TelegramSettingsManager.get_bool("telegram_remote_blocking_allowed", True):
                     self.api.send_message("❌ Remote app blocking is disabled in settings.")
@@ -834,12 +896,21 @@ class CommandHandler:
             self.api.send_message(f"⚠️ Internal error processing command: {str(e)}")
 
     def _get_main_menu_markup(self):
+        try:
+            from src.core.telegram.audio_recorder import MicRecorder
+            is_recording = MicRecorder().is_recording
+        except Exception:
+            is_recording = False
+            
+        record_btn = {"text": "🛑 Stop Recording", "callback_data": "cb_record_stop"} if is_recording else {"text": "🎙️ Start Recording", "callback_data": "cb_record_start"}
+        
         buttons = [
             {"text": "🏓 Ping", "callback_data": "cb_ping"},
             {"text": "📸 Screenshot", "callback_data": "cb_screenshot"},
             {"text": "🖥️ Scr. Record", "callback_data": "cb_screenrecord"},
             {"text": "📹 Camera", "callback_data": "cb_camera"},
             {"text": "🎥 Video", "callback_data": "cb_video"},
+            record_btn,
             {"text": "🔒 Lock", "callback_data": "cb_lock"},
             {"text": "🖥️ Monitors Off", "callback_data": "cb_monitors"},
             {"text": "📊 Today", "callback_data": "cb_today"},
@@ -915,6 +986,48 @@ class CommandHandler:
                 self.api.answer_callback_query(callback_id, text=f"Executing {cmd}...")
                 self.handle({"text": cmd, "chat": {"id": chat_id}})
                 
+            elif data == "cb_record_start":
+                from src.utils.dependency_manager import ensure_package
+                if not ensure_package("PyAudio"):
+                    self.api.answer_callback_query(callback_id, text="❌ PyAudio not installed.", show_alert=True)
+                    return
+                
+                self.api.answer_callback_query(callback_id, text="Starting recording...", show_alert=False)
+                from src.core.telegram.audio_recorder import MicRecorder
+                recorder = MicRecorder()
+                def on_limit_hit(filepath):
+                    msg_text = "⚠️ Recording limit reached (10 minutes or 48MB). Your audio file is being sent."
+                    reply_markup = {"inline_keyboard": [[{"text": "🎙️ Start Recording Again", "callback_data": "cb_record_start"}]]}
+                    self.api.send_message(msg_text, reply_markup=reply_markup)
+                    self.api.send_document(filepath)
+                    
+                if recorder.start_async_recording(limit_callback=on_limit_hit):
+                    if message.get("message_id") and "Stasis Main Menu" in message.get("text", ""):
+                        self.handle_callback({"id": callback_id, "data": "cb_menu_main", "message": message})
+                    else:
+                        reply_markup = {"inline_keyboard": [[{"text": "🛑 Stop Recording", "callback_data": "cb_record_stop"}]]}
+                        self.api.edit_message(message["message_id"], message.get("text", "🎙️ Recording started!"), reply_markup=reply_markup)
+                else:
+                    self.api.answer_callback_query(callback_id, text="Failed to start recording.", show_alert=True)
+
+            elif data == "cb_record_stop":
+                self.api.answer_callback_query(callback_id, text="Stopping recording...", show_alert=False)
+                from src.core.telegram.audio_recorder import MicRecorder
+                filepath = MicRecorder().stop_async_recording()
+                
+                if message.get("message_id") and "Stasis Main Menu" in message.get("text", ""):
+                    self.handle_callback({"id": callback_id, "data": "cb_menu_main", "message": message})
+                else:
+                    reply_markup = {"inline_keyboard": [[{"text": "🎙️ Start Recording", "callback_data": "cb_record_start"}]]}
+                    self.api.edit_message(message["message_id"], message.get("text", "✅ Recording stopped."), reply_markup=reply_markup)
+                    
+                if filepath:
+                    msg_id = self.api.send_message("📤 Uploading recording...")
+                    self.api.send_document(filepath, progress_msg_id=msg_id)
+                    if msg_id: self.api.edit_message(msg_id, "✅ Audio recording uploaded!")
+                else:
+                    self.api.send_message("❌ No active recording to stop.")
+                    
             elif data.startswith("cb_fetch_"):
                 file_id = data.replace("cb_fetch_", "")
                 if file_id in self._fetch_results:

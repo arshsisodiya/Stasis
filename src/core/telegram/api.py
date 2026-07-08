@@ -261,7 +261,7 @@ class TelegramAPI:
         try:
             response = requests.post(
                 f"{self.base_url}/sendDocument",
-                files={"document": doc},
+                files={"document": (os.path.basename(file_path), doc)},
                 data={
                     "chat_id": self.chat_id,
                     "caption": caption,

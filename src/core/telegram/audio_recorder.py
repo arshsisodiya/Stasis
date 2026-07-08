@@ -58,7 +58,7 @@ class MicRecorder:
         
         app_dir = get_data_dir()
         os.makedirs(app_dir, exist_ok=True)
-        self._filepath = os.path.join(app_dir, f"audio_{int(time.time())}.wav")
+        self._filepath = os.path.join(app_dir, f"stasis_{time.strftime('%Y_%m_%d_%H_%M_%S')}.wav")
 
         self.FORMAT = pyaudio_module.paInt16
 
@@ -151,7 +151,7 @@ class MicRecorder:
 
         app_dir = get_data_dir()
         os.makedirs(app_dir, exist_ok=True)
-        filepath = os.path.join(app_dir, f"audio_{int(time.time())}.wav")
+        filepath = os.path.join(app_dir, f"stasis_{time.strftime('%Y_%m_%d_%H_%M_%S')}.wav")
 
         self.FORMAT = pyaudio_module.paInt16
         p = pyaudio_module.PyAudio()

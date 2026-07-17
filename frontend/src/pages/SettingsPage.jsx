@@ -443,6 +443,8 @@ function TelegramSetupForm({ onSuccess, push }) {
           ))}
         </div>
       </Card>
+
+
     </div>
   );
 }
@@ -831,6 +833,7 @@ function GeneralSection({ push }) {
   const [savingStatsRetention, setSavingStatsRetention] = useState(false);
   const [optimizingDb, setOptimizingDb] = useState(false);
 
+
   useEffect(() => {
     let alive = true;
 
@@ -909,7 +912,8 @@ function GeneralSection({ push }) {
           // but Rust store is now the primary source
           widget_enabled: s.widget_enabled,
           widget_details_hover_enabled: s.widget_details_hover_enabled,
-          widget_theme: s.widget_theme
+          widget_theme: s.widget_theme,
+          keystroke_dynamics_logging_enabled: s.keystroke_dynamics_logging_enabled
         })
       });
 
@@ -1724,9 +1728,144 @@ function TypedConfirmModal({ title, subtitle, bullets, confirmWord, confirmLabel
 // ═══════════════════════════════════════════════════════════════════════════════
 function SecuritySection({ push }) {
   const { token } = useAuth();
-  // "clearData" | "factoryReset" | "exportBackup" | "restoreBackup" | null
+  // "clearData" | "factoryReset" | "exportBackup" | "restoreBackup" | "clearLogs" | null
   const [activeModal, setActiveModal] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Input monitoring state
+  const [kbEnabled, setKbEnabled]         = useState(false);
+  const [mouseEnabled, setMouseEnabled]   = useState(false);
+  const [mouseCoords, setMouseCoords]     = useState(false);
+  const [consentModal, setConsentModal]   = useState(null);   // "keyboard" | "mouse" | null
+  const [consentStep, setConsentStep]     = useState(1);      // 1 = disclosure, 2 = typed confirm
+  const [consentInput, setConsentInput]   = useState("");
+
+  const CONSENT_PHRASES = {
+    keyboard: "I consent to keyboard logging",
+    mouse:    "I consent to mouse logging",
+    export:   "I confirm this export",
+  };
+
+  // Viewer state
+  const [logFiles, setLogFiles]             = useState([]);
+  const [logFilter, setLogFilter]           = useState("all");
+  const [viewerState, setViewerState]       = useState({ step: "list", file: null, data: null }); // list -> consent -> view
+  const [exportTarget, setExportTarget]     = useState(null);
+  const [exportConsent, setExportConsent]   = useState("");
+
+  const fetchLogFiles = async () => {
+    try {
+      const r = await fetch(`${BASE_URL}/api/input-dynamics/files`);
+      const d = await r.json();
+      if (d.files) setLogFiles(d.files);
+    } catch {}
+  };
+
+  const fetchLogData = async (type, date) => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BASE_URL}/api/input-dynamics/read?type=${type}&date=${date}`);
+      const d = await r.json();
+      if (d.success !== false) {
+        setViewerState({ step: "view", file: { type, date }, data: d });
+      } else {
+        push(d.error || "Failed to read logs", "error");
+        setViewerState({ ...viewerState, step: "list" });
+      }
+    } catch {
+      push("Network error", "error");
+      setViewerState({ ...viewerState, step: "list" });
+    }
+    setLoading(false);
+  };
+
+  const handleExport = (type, date) => {
+    // Triggers standard browser download
+    window.location.href = `${BASE_URL}/api/input-dynamics/export?type=${type}&date=${date}`;
+    setActiveModal(null);
+    setExportTarget(null);
+  };
+
+  // Load initial input-monitoring states from the API
+  useEffect(() => {
+    fetch(`${BASE_URL}/api/settings`)
+      .then(r => r.json())
+      .then(d => {
+        setKbEnabled(d.keystroke_dynamics_logging_enabled === true || d.keystroke_dynamics_logging_enabled === "true");
+        setMouseEnabled(d.mouse_dynamics_logging_enabled === true || d.mouse_dynamics_logging_enabled === "true");
+        setMouseCoords(d.keystroke_dynamics_log_mouse_position === true || d.keystroke_dynamics_log_mouse_position === "true");
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveSetting = async (key, value) => {
+    try {
+      await fetch(`${BASE_URL}/api/settings/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ [key]: value }),
+      });
+    } catch { }
+  };
+
+  const openConsentModal = (feature) => {
+    setConsentModal(feature);
+    setConsentStep(1);
+    setConsentInput("");
+  };
+
+  const closeConsentModal = () => {
+    setConsentModal(null);
+    setConsentStep(1);
+    setConsentInput("");
+  };
+
+  const handleConsentEnable = async () => {
+    if (consentModal === "keyboard") {
+      setKbEnabled(true);
+      await saveSetting("keystroke_dynamics_logging_enabled", true);
+    } else if (consentModal === "mouse") {
+      setMouseEnabled(true);
+      await saveSetting("mouse_dynamics_logging_enabled", true);
+    }
+    closeConsentModal();
+    if (push) push("Feature enabled. Data will be encrypted at rest.", "success");
+  };
+
+  const handleDisableKb = async () => {
+    setKbEnabled(false);
+    await saveSetting("keystroke_dynamics_logging_enabled", false);
+  };
+
+  const handleDisableMouse = async () => {
+    setMouseEnabled(false);
+    await saveSetting("mouse_dynamics_logging_enabled", false);
+  };
+
+  const handleToggleMouseCoords = async (val) => {
+    setMouseCoords(val);
+    await saveSetting("keystroke_dynamics_log_mouse_position", val);
+  };
+
+  const handleClearEncryptedLogs = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BASE_URL}/api/input-dynamics/clear`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` },
+      });
+      const d = await r.json();
+      if (d.success) {
+        push("All encrypted input log files deleted.", "warn");
+        setActiveModal(null);
+      } else {
+        push(d.error || "Failed to clear logs", "error");
+      }
+    } catch {
+      push("Network error — is the API server running?", "error");
+    }
+    setLoading(false);
+  };
 
   // Export states
   const [exportPassword, setExportPassword] = useState("");
@@ -1928,7 +2067,105 @@ function SecuritySection({ push }) {
 
         <Card danger>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {/* Clear Data */}
+
+            {/* ── INPUT MONITORING ── */}
+            <div style={{
+              padding: "16px 18px",
+              background: "rgba(251,191,36,0.04)",
+              border: "1px solid rgba(251,191,36,0.14)",
+              borderRadius: 14,
+              display: "flex", flexDirection: "column", gap: 12,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                <span style={{ fontSize: 16 }}>⌨️</span>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.yellow }}>Input Monitoring</div>
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+                  <button 
+                    onClick={() => { setActiveModal("logViewer"); fetchLogFiles(); }}
+                    style={{
+                      background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.3)",
+                      color: C.yellow, fontSize: 11, fontWeight: 600, padding: "2px 10px",
+                      borderRadius: 6, cursor: "pointer", transition: "all 0.2s"
+                    }}>
+                    View Logs
+                  </button>
+                  <div style={{ fontSize: 11, color: C.textMuted, background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 6, padding: "2px 8px" }}>Encrypted at rest</div>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.55, marginBottom: 4 }}>
+                These features record raw input events to encrypted local files (<code style={{ color: C.textSub }}>input_dynamics/</code>). Enable only on devices you personally own and control. Activating either feature requires explicit written consent.
+              </div>
+
+              {/* Keyboard Logging row */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>🎹 Keyboard Logging</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Records every keystroke — key name, timestamp, active app. Stored as <code>keyboard_YYYY-MM-DD.csv.enc</code>.</div>
+                </div>
+                <Toggle
+                  on={kbEnabled}
+                  onChange={v => {
+                    if (v) openConsentModal("keyboard");
+                    else handleDisableKb();
+                  }}
+                />
+              </div>
+
+              {/* Mouse Logging row */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>🖱️ Mouse Click Logging</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Records mouse clicks — button, timestamp, active app. Stored as <code>mouse_YYYY-MM-DD.csv.enc</code>.</div>
+                </div>
+                <Toggle
+                  on={mouseEnabled}
+                  onChange={v => {
+                    if (v) openConsentModal("mouse");
+                    else handleDisableMouse();
+                  }}
+                />
+              </div>
+
+              {/* Mouse coordinates sub-option (only when mouse enabled) */}
+              {mouseEnabled && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingLeft: 24, paddingTop: 4, borderTop: `1px dashed rgba(251,191,36,0.1)` }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: C.textSub }}>📍 Log mouse coordinates (x, y)</div>
+                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>Stores the screen position of each click. Off by default.</div>
+                  </div>
+                  <Toggle on={mouseCoords} onChange={handleToggleMouseCoords} />
+                </div>
+              )}
+            </div>
+
+            {/* Clear Encrypted Logs */}
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+              padding: "16px 18px", background: "rgba(248,113,113,0.03)",
+              border: "1px solid rgba(248,113,113,0.10)", borderRadius: 14
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 16 }}>🔐</span>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Clear encrypted input logs</div>
+                </div>
+                <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
+                  Permanently deletes all <code>keyboard_*.csv.enc</code> and <code>mouse_*.csv.enc</code> files from the <code>input_dynamics/</code> folder.
+                  <span style={{ color: C.red, fontWeight: 500 }}> This cannot be undone.</span>
+                </div>
+              </div>
+              <button onClick={() => setActiveModal("clearLogs")}
+                className="sp-action sp-danger"
+                style={{
+                  padding: "8px 16px", borderRadius: 10, border: "1px solid rgba(248,113,113,0.3)",
+                  background: "transparent", color: C.red, fontSize: 12, fontWeight: 600,
+                  fontFamily: "'DM Sans',sans-serif", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0
+                }}>
+                Clear Logs
+              </button>
+            </div>
+
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
               padding: "16px 18px", background: "rgba(248,113,113,0.04)",
@@ -2133,7 +2370,453 @@ function SecuritySection({ push }) {
           onCancel={() => setActiveModal(null)}
         />
       )}
+
+      {/* ── CLEAR ENCRYPTED LOGS MODAL ── */}
+      {activeModal === "clearLogs" && (
+        <TypedConfirmModal
+          title="Clear all encrypted input logs?"
+          subtitle="This permanently deletes all keyboard and mouse .csv.enc files from the input_dynamics folder. The log files cannot be recovered."
+          confirmWord="CLEAR"
+          confirmLabel="Yes, Delete Encrypted Logs"
+          loading={loading}
+          bullets={[
+            { icon: "🎹", text: "All keyboard_*.csv.enc daily files" },
+            { icon: "🖱️", text: "All mouse_*.csv.enc daily files" },
+            { icon: "🔐", text: "The encryption key is NOT deleted — only the log files" },
+          ]}
+          onConfirm={handleClearEncryptedLogs}
+          onCancel={() => setActiveModal(null)}
+        />
+      )}
+
+      {/* ── TWO-STEP CONSENT MODAL ── */}
+      {consentModal && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 24, background: "rgba(0,0,0,0.88)", backdropFilter: "blur(6px)"
+        }}>
+          <div style={{
+            background: C.panel, border: "1px solid rgba(248,113,113,0.25)",
+            borderRadius: 18, padding: "28px 28px 24px", maxWidth: 500, width: "100%",
+            boxShadow: "0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(248,113,113,0.08)"
+          }}>
+
+            {/* Step 1 — Legal Disclosure */}
+            {consentStep === 1 && (
+              <>
+                {/* Header */}
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+                    background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22
+                  }}>⚠️</div>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: C.red }}>Privacy Disclosure</div>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                      {consentModal === "keyboard" ? "Keyboard Logging" : "Mouse Click Logging"}
+                    </div>
+                  </div>
+                  <div style={{
+                    marginLeft: "auto", fontSize: 10, color: C.textMuted,
+                    background: "rgba(248,113,113,0.07)", border: "1px solid rgba(248,113,113,0.15)",
+                    borderRadius: 6, padding: "3px 10px", fontWeight: 600
+                  }}>Step 1 of 2</div>
+                </div>
+
+                {/* What is recorded */}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>📋 What will be recorded</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {consentModal === "keyboard" ? (
+                      <>
+                        <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.55 }}>• The <strong>exact key name</strong> of every keystroke on this computer — including letters, numbers, special characters, passwords, and private messages.</div>
+                        <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.55 }}>• A <strong>precise timestamp</strong> (date + time to millisecond) for each key press and release.</div>
+                        <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.55 }}>• The <strong>active application</strong> at the moment of each keystroke.</div>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.55 }}>• The <strong>mouse button</strong> pressed (left, right, middle) for every click.</div>
+                        <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.55 }}>• A <strong>precise timestamp</strong> (date + time to millisecond) for each click.</div>
+                        <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.55 }}>• The <strong>active application</strong> at the moment of each click.</div>
+                        <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.55 }}>• Optionally: the <strong>screen coordinates (x, y)</strong> of each click (disabled by default, toggleable separately).</div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* How it is stored */}
+                <div style={{ marginBottom: 14, padding: "12px 14px", background: "rgba(96,165,250,0.05)", border: "1px solid rgba(96,165,250,0.12)", borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.blue, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>🔒 How it is stored</div>
+                  <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.6 }}>
+                    Data is <strong>AES-128 encrypted</strong> at rest using a machine-local key (<code>input_dynamics.key</code>). Files are saved to:
+                  </div>
+                  <div style={{ fontSize: 11, color: C.textMuted, fontFamily: "monospace", background: "rgba(0,0,0,0.3)", borderRadius: 6, padding: "6px 10px", marginTop: 6 }}>
+                    %LOCALAPPDATA%\Stasis\data\input_dynamics\
+                  </div>
+                  <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.55, marginTop: 8 }}>
+                    Files are automatically deleted after <strong>30 days</strong>. Data never leaves your device.
+                  </div>
+                </div>
+
+                {/* Legal notice */}
+                <div style={{ marginBottom: 22, padding: "12px 14px", background: "rgba(248,113,113,0.05)", border: "1px solid rgba(248,113,113,0.15)", borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.red, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>⚖️ Legal notice</div>
+                  <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.6 }}>
+                    This feature is intended <strong>only for personal self-monitoring</strong> on a device you solely own and control. Recording input events on a shared or workplace device — or on any device used by others — without their <strong>explicit informed consent</strong> may constitute a criminal offence under computer misuse, privacy, or wiretapping laws in your jurisdiction. By proceeding, you confirm this is your personal device and you <strong>accept full legal responsibility</strong> for any consequences.
+                  </div>
+                </div>
+
+                {/* Buttons */}
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={closeConsentModal} style={{
+                    flex: 1, padding: "11px", borderRadius: 10, border: `1px solid ${C.border}`,
+                    background: "rgba(255,255,255,0.04)", color: C.textSub, fontSize: 13, fontWeight: 600,
+                    fontFamily: "'DM Sans',sans-serif", cursor: "pointer"
+                  }}>Cancel</button>
+                  <button onClick={() => { setConsentStep(2); setConsentInput(""); }} style={{
+                    flex: 1, padding: "11px", borderRadius: 10, border: "1px solid rgba(248,113,113,0.4)",
+                    background: "rgba(248,113,113,0.08)", color: C.red, fontSize: 13, fontWeight: 700,
+                    fontFamily: "'DM Sans',sans-serif", cursor: "pointer"
+                  }}>I Understand →</button>
+                </div>
+              </>
+            )}
+
+            {/* Step 2 — Typed Consent */}
+            {consentStep === 2 && (() => {
+              const phrase = CONSENT_PHRASES[consentModal] || "";
+              const trimmed = consentInput.trim().toLowerCase();
+              const matches = trimmed === phrase.toLowerCase();
+              return (
+                <>
+                  {/* Header */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                    <div style={{
+                      width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+                      background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)",
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22
+                    }}>✍️</div>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: C.yellow }}>Confirm Your Consent</div>
+                      <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                        {consentModal === "keyboard" ? "Keyboard Logging" : "Mouse Click Logging"}
+                      </div>
+                    </div>
+                    <div style={{
+                      marginLeft: "auto", fontSize: 10, color: C.textMuted,
+                      background: "rgba(251,191,36,0.07)", border: "1px solid rgba(251,191,36,0.15)",
+                      borderRadius: 6, padding: "3px 10px", fontWeight: 600
+                    }}>Step 2 of 2</div>
+                  </div>
+
+                  <div style={{ fontSize: 13, color: C.textSub, lineHeight: 1.6, marginBottom: 18 }}>
+                    To confirm you have read and understood the privacy disclosure, please type the following phrase <strong>exactly</strong>:
+                  </div>
+
+                  {/* Phrase to type */}
+                  <div style={{
+                    padding: "12px 16px", background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.09)", borderRadius: 10, marginBottom: 14,
+                    fontSize: 13, fontFamily: "monospace", color: C.text, letterSpacing: "0.02em",
+                    textAlign: "center", fontWeight: 600
+                  }}>
+                    {phrase}
+                  </div>
+
+                  {/* Input */}
+                  <input
+                    autoFocus
+                    type="text"
+                    value={consentInput}
+                    onChange={e => setConsentInput(e.target.value)}
+                    placeholder="Type the phrase above…"
+                    style={{
+                      width: "100%", boxSizing: "border-box", padding: "11px 14px",
+                      borderRadius: 10, fontSize: 13, fontFamily: "'DM Sans',sans-serif",
+                      background: matches ? "rgba(74,222,128,0.06)" : "rgba(255,255,255,0.04)",
+                      border: `1px solid ${matches ? "rgba(74,222,128,0.4)" : consentInput ? "rgba(248,113,113,0.35)" : C.border}`,
+                      color: C.text, outline: "none", transition: "border 0.2s, background 0.2s",
+                      marginBottom: 6,
+                    }}
+                  />
+                  {consentInput && !matches && (
+                    <div style={{ fontSize: 11, color: "rgba(248,113,113,0.75)", marginBottom: 14, animation: "sp-banner-in 0.2s ease" }}>
+                      Phrase doesn't match — type it exactly as shown above.
+                    </div>
+                  )}
+                  {matches && (
+                    <div style={{ fontSize: 11, color: "rgba(74,222,128,0.8)", marginBottom: 14, animation: "sp-banner-in 0.2s ease" }}>
+                      ✓ Phrase confirmed
+                    </div>
+                  )}
+                  {!consentInput && <div style={{ marginBottom: 14 }} />}
+
+                  {/* Buttons */}
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={() => { setConsentStep(1); setConsentInput(""); }} style={{
+                      flex: 1, padding: "11px", borderRadius: 10, border: `1px solid ${C.border}`,
+                      background: "rgba(255,255,255,0.04)", color: C.textSub, fontSize: 13, fontWeight: 600,
+                      fontFamily: "'DM Sans',sans-serif", cursor: "pointer"
+                    }}>← Back</button>
+                    <button
+                      onClick={handleConsentEnable}
+                      disabled={!matches}
+                      style={{
+                        flex: 1, padding: "11px", borderRadius: 10, border: "none",
+                        background: matches ? "linear-gradient(135deg,#4ade80,#22c55e)" : "rgba(255,255,255,0.06)",
+                        color: matches ? "#0a1a0a" : C.textMuted, fontSize: 13, fontWeight: 700,
+                        fontFamily: "'DM Sans',sans-serif",
+                        cursor: matches ? "pointer" : "not-allowed",
+                        boxShadow: matches ? "0 0 24px rgba(74,222,128,0.35)" : "none",
+                        transition: "all 0.2s",
+                      }}>
+                      Enable Feature
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ── LOG VIEWER BROWSER & VIEWER ── */}
+      {activeModal === "logViewer" && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 9999,
+          display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(6px)"
+        }}>
+          <div style={{
+            background: C.bgLight, border: `1px solid ${C.border}`, borderRadius: 16,
+            width: 700, maxWidth: "90%", maxHeight: "85vh", display: "flex", flexDirection: "column",
+            boxShadow: "0 24px 64px rgba(0,0,0,0.6)"
+          }}>
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", padding: "18px 24px", borderBottom: `1px solid ${C.border}` }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: C.text, fontFamily: "'DM Serif Display',serif" }}>Input Dynamics Viewer</div>
+                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
+                  {viewerState.step === "list" ? "Encrypted log files stored on disk" : `Viewing decrypted ${viewerState.file?.type} data for ${viewerState.file?.date}`}
+                </div>
+              </div>
+              <button 
+                onClick={() => { setActiveModal(null); setViewerState({ step: "list", file: null, data: null }); }}
+                style={{ marginLeft: "auto", background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 20 }}>
+                &times;
+              </button>
+            </div>
+
+            {/* Content Area */}
+            <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+              {/* STEP: LIST */}
+              {viewerState.step === "list" && (
+                <>
+                  {/* Filters */}
+                  <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                    {["all", "keyboard", "mouse"].map(f => (
+                      <button key={f} onClick={() => setLogFilter(f)} style={{
+                        padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+                        background: logFilter === f ? "rgba(251,191,36,0.15)" : "rgba(255,255,255,0.04)",
+                        color: logFilter === f ? C.yellow : C.textMuted,
+                        transition: "all 0.2s"
+                      }}>
+                        {f.charAt(0).toUpperCase() + f.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+
+                  {logFiles.filter(f => logFilter === "all" || f.type === logFilter).length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "40px 0", color: C.textMuted, fontSize: 13 }}>
+                      No {logFilter !== "all" ? logFilter : ""} encrypted log files found.
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {logFiles.filter(f => logFilter === "all" || f.type === logFilter).map((f, i) => (
+                        <div key={i} style={{
+                          display: "flex", alignItems: "center", padding: "12px 16px",
+                          background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`, borderRadius: 10
+                        }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 14 }}>{f.type === "keyboard" ? "🎹" : "🖱️"}</span>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{f.date}</span>
+                              <span style={{ fontSize: 11, color: C.textSub, padding: "2px 6px", background: "rgba(255,255,255,0.05)", borderRadius: 4 }}>{f.size_kb} KB</span>
+                            </div>
+                            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4, fontFamily: "monospace" }}>{f.filename}</div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button onClick={() => setViewerState({ step: "consent", file: f, data: null })} style={{
+                              padding: "6px 12px", background: "rgba(255,255,255,0.06)", border: "none", borderRadius: 6,
+                              color: C.text, fontSize: 11, fontWeight: 600, cursor: "pointer"
+                            }}>View</button>
+                            <button onClick={() => { setExportTarget(f); setExportConsent(""); setActiveModal("logExporter"); }} style={{
+                              padding: "6px 12px", background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: 6,
+                              color: C.yellow, fontSize: 11, fontWeight: 600, cursor: "pointer"
+                            }}>Export</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* STEP: VIEWING CONSENT */}
+              {viewerState.step === "consent" && (
+                <div style={{ textAlign: "center", padding: "20px 40px" }}>
+                  <div style={{ fontSize: 40, marginBottom: 16 }}>👀</div>
+                  <div style={{ fontSize: 18, color: C.text, fontWeight: 700, fontFamily: "'DM Serif Display',serif", marginBottom: 12 }}>
+                    Decrypt & View Data
+                  </div>
+                  <div style={{ fontSize: 13, color: C.textSub, lineHeight: 1.6, marginBottom: 24, background: "rgba(255,255,255,0.03)", padding: 16, borderRadius: 12, border: `1px solid ${C.border}` }}>
+                    You are about to decrypt and display raw recorded input events on your screen.<br/><br/>
+                    This data may include sensitive information like passwords, private messages, and web searches.<br/>
+                    Data is decrypted <b>on-demand in memory</b> and is never stored in plaintext by this viewer.
+                  </div>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <button onClick={() => setViewerState({ step: "list", file: null, data: null })} style={{
+                      flex: 1, padding: "10px", background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`,
+                      borderRadius: 8, color: C.text, cursor: "pointer", fontSize: 13, fontWeight: 600
+                    }}>Cancel</button>
+                    <button onClick={() => fetchLogData(viewerState.file.type, viewerState.file.date)} style={{
+                      flex: 1, padding: "10px", background: C.blue, border: "none",
+                      borderRadius: 8, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600
+                    }}>
+                      {loading ? "Decrypting..." : "Show Data →"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP: DATA TABLE */}
+              {viewerState.step === "view" && viewerState.data && (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, color: C.textMuted }}>
+                      Found <span style={{ color: C.text, fontWeight: 600 }}>{viewerState.data.count}</span> events
+                    </div>
+                    <button onClick={() => { setExportTarget(viewerState.file); setExportConsent(""); setActiveModal("logExporter"); }} style={{
+                      padding: "4px 10px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6,
+                      color: C.text, fontSize: 11, cursor: "pointer"
+                    }}>
+                      Export this day ↓
+                    </button>
+                  </div>
+
+                  <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 8 }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead style={{ background: "rgba(255,255,255,0.03)", textAlign: "left" }}>
+                        <tr>
+                          {viewerState.data.columns.map(col => (
+                            <th key={col} style={{ padding: "8px 12px", color: C.textSub, fontWeight: 600, borderBottom: `1px solid ${C.border}` }}>
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewerState.data.events.slice(0, 1000).map((row, i) => (
+                          <tr key={i} style={{ borderBottom: `1px solid rgba(255,255,255,0.03)` }}>
+                            {viewerState.data.columns.map(col => (
+                              <td key={col} style={{ padding: "6px 12px", color: C.textMuted, fontFamily: col === 'key_name' ? 'monospace' : 'inherit' }}>
+                                {row[col]}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {viewerState.data.count > 1000 && (
+                    <div style={{ fontSize: 11, color: C.textMuted, textAlign: "center", marginTop: 12 }}>
+                      Showing first 1000 rows. Use export to view full dataset.
+                    </div>
+                  )}
+                  
+                  <div style={{ marginTop: 24, textAlign: "center" }}>
+                    <button onClick={() => setViewerState({ step: "list", file: null, data: null })} style={{
+                      padding: "8px 20px", background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`,
+                      borderRadius: 8, color: C.text, cursor: "pointer", fontSize: 12, fontWeight: 600
+                    }}>← Back to Files</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LOG EXPORTER ── */}
+      {activeModal === "logExporter" && exportTarget && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 9999,
+          display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(6px)"
+        }}>
+          <div style={{
+            background: C.bgLight, border: `1px solid rgba(251,191,36,0.3)`, borderRadius: 16,
+            width: 440, padding: 24, boxShadow: "0 24px 64px rgba(0,0,0,0.6)"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+              <div style={{ fontSize: 24 }}>⚠️</div>
+              <div style={{ fontSize: 18, color: C.text, fontWeight: 700, fontFamily: "'DM Serif Display',serif" }}>Export Unencrypted Data</div>
+            </div>
+            
+            <div style={{ fontSize: 13, color: C.textSub, lineHeight: 1.5, marginBottom: 16 }}>
+              You are about to decrypt and export <b style={{color:C.text}}>{exportTarget.type} data for {exportTarget.date}</b> to a plaintext <code style={{color:C.text}}>.csv</code> file.
+            </div>
+            
+            <div style={{ fontSize: 12, color: C.yellow, background: "rgba(251,191,36,0.08)", padding: 12, borderRadius: 8, marginBottom: 20, border: "1px solid rgba(251,191,36,0.2)", lineHeight: 1.5 }}>
+              <b>Legal Reminder:</b> Once exported, this file is completely unprotected. Sharing this file with third parties or storing it insecurely carries significant privacy risks.
+            </div>
+
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>
+              To proceed, please type:
+            </div>
+            <div style={{
+              padding: "10px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.09)", 
+              borderRadius: 8, marginBottom: 12, fontSize: 13, fontFamily: "monospace", color: C.text, 
+              textAlign: "center", fontWeight: 600
+            }}>
+              {CONSENT_PHRASES.export}
+            </div>
+
+            <input
+              autoFocus
+              type="text"
+              value={exportConsent}
+              onChange={e => setExportConsent(e.target.value)}
+              placeholder="Type phrase..."
+              style={{
+                width: "100%", boxSizing: "border-box", padding: "10px", borderRadius: 8, fontSize: 13,
+                background: exportConsent === CONSENT_PHRASES.export ? "rgba(74,222,128,0.06)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${exportConsent === CONSENT_PHRASES.export ? "rgba(74,222,128,0.4)" : C.border}`,
+                color: C.text, outline: "none", marginBottom: 20
+              }}
+            />
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { setActiveModal(viewerState.step === "list" ? "logViewer" : null); setExportTarget(null); setExportConsent(""); }} style={{
+                flex: 1, padding: "10px", background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`,
+                borderRadius: 8, color: C.text, cursor: "pointer", fontSize: 13, fontWeight: 600
+              }}>Cancel</button>
+              <button 
+                onClick={() => handleExport(exportTarget.type, exportTarget.date)}
+                disabled={exportConsent !== CONSENT_PHRASES.export}
+                style={{
+                  flex: 1, padding: "10px", background: exportConsent === CONSENT_PHRASES.export ? "linear-gradient(135deg,#fbbf24,#f59e0b)" : "rgba(255,255,255,0.06)", 
+                  border: "none", borderRadius: 8, color: exportConsent === CONSENT_PHRASES.export ? "#451a03" : C.textMuted, 
+                  cursor: exportConsent === CONSENT_PHRASES.export ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 700
+                }}>
+                Export File
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+
   );
 }
 

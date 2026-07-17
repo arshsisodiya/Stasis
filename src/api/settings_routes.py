@@ -54,7 +54,11 @@ def get_settings():
         "auto_delete_days": SettingsManager.get("auto_delete_days", user_id=user_id) or "30",
         "auto_delete_stats_days": SettingsManager.get("auto_delete_stats_days", user_id=user_id) or "0",
         "database_size_mb": db_info["size_mb"],
-        "database_last_optimized": db_info["last_optimized"]
+        "database_last_optimized": db_info["last_optimized"],
+        "keystroke_dynamics_logging_enabled": SettingsManager.get_bool("keystroke_dynamics_logging_enabled", False, user_id=user_id),
+        "mouse_dynamics_logging_enabled": SettingsManager.get_bool("mouse_dynamics_logging_enabled", False, user_id=user_id),
+        "keystroke_dynamics_log_mouse_position": SettingsManager.get_bool("keystroke_dynamics_log_mouse_position", False, user_id=user_id),
+        "keystroke_dynamics_retention_days": SettingsManager.get("keystroke_dynamics_retention_days", user_id=user_id) or "30",
     })
 
 
@@ -138,6 +142,21 @@ def update_settings():
     if "show_yesterday_comparison" in data:
         val = "true" if data["show_yesterday_comparison"] else "false"
         SettingsManager.set("show_yesterday_comparison", val, user_id=user_id)
+
+    if "keystroke_dynamics_logging_enabled" in data:
+        val = "true" if data["keystroke_dynamics_logging_enabled"] else "false"
+        SettingsManager.set("keystroke_dynamics_logging_enabled", val, user_id=user_id)
+
+    if "mouse_dynamics_logging_enabled" in data:
+        val = "true" if data["mouse_dynamics_logging_enabled"] else "false"
+        SettingsManager.set("mouse_dynamics_logging_enabled", val, user_id=user_id)
+
+    if "keystroke_dynamics_log_mouse_position" in data:
+        val = "true" if data["keystroke_dynamics_log_mouse_position"] else "false"
+        SettingsManager.set("keystroke_dynamics_log_mouse_position", val, user_id=user_id)
+
+    if "keystroke_dynamics_retention_days" in data:
+        SettingsManager.set("keystroke_dynamics_retention_days", str(data["keystroke_dynamics_retention_days"]).strip(), user_id=user_id)
 
     if "show_goals_in_overview" in data:
         val = "true" if data["show_goals_in_overview"] else "false"

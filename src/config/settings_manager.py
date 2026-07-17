@@ -207,7 +207,11 @@ class SettingsManager(BaseSettingsManager):
             "widget_anchor_y": "0",
             "auto_delete_days": "30",
             "auto_delete_stats_days": "0",
-            "database_last_optimized": ""
+            "database_last_optimized": "",
+            "keystroke_dynamics_logging_enabled": "false",
+            "mouse_dynamics_logging_enabled": "false",
+            "keystroke_dynamics_log_mouse_position": "false",
+            "keystroke_dynamics_retention_days": "30",
         }
 
         for key, value in defaults.items():

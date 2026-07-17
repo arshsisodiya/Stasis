@@ -103,15 +103,18 @@ class MicRecorder:
             self._save_wav(p)
             self.is_recording = False
             
-            # If stopped naturally because of limits (and not by user manual stop)
-            if not self._stop_event.is_set():
-                if self._callback:
-                    self._callback(self._filepath)
-                    
         except Exception as e:
             logger.error(f"[audio_recorder] Recording failed: {e}")
             self.is_recording = False
             p.terminate()
+
+        # If stopped naturally because of limits (and not by user manual stop)
+        if not self._stop_event.is_set():
+            if self._callback:
+                try:
+                    self._callback(self._filepath)
+                except Exception as cb_e:
+                    logger.error(f"[audio_recorder] Callback failed: {cb_e}")
 
     def stop_async_recording(self):
         if not self.is_recording:

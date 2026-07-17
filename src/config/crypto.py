@@ -1,6 +1,5 @@
 # src/config/crypto.py
 
-import base64
 import os
 from cryptography.fernet import Fernet
 from pathlib import Path
@@ -36,3 +35,23 @@ def encrypt(value: str) -> str:
 
 def decrypt(value: str) -> str:
     return _fernet.decrypt(value.encode()).decode()
+
+
+def get_or_create_named_fernet(name: str) -> Fernet:
+    """
+    Load or create a named Fernet key file at:
+        %LOCALAPPDATA%\Stasis\<name>.key
+
+    Using named keys isolates encryption contexts so rotating one key
+    (e.g. input_dynamics.key) never affects others (e.g. secret.key).
+    """
+    base_dir = Path(os.getenv("LOCALAPPDATA", Path.home()))
+    key_path = base_dir / APP_NAME / f"{name}.key"
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if key_path.exists():
+        return Fernet(key_path.read_bytes())
+
+    key = Fernet.generate_key()
+    key_path.write_bytes(key)
+    return Fernet(key)

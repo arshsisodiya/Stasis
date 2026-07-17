@@ -257,23 +257,47 @@ class TelegramAPI:
             if progress_msg_id:
                 self.edit_message(progress_msg_id, f"📤 Uploading document... {percent}%")
                 
-        doc = ProgressFileReader(file_path, progress_callback) if progress_msg_id else open(file_path, "rb")
-        try:
-            response = requests.post(
-                f"{self.base_url}/sendDocument",
-                files={"document": (os.path.basename(file_path), doc)},
-                data={
-                    "chat_id": self.chat_id,
-                    "caption": caption,
-                },
-                timeout=(30, 300),
-            )
-        finally:
-            if hasattr(doc, 'close'):
-                doc.close()
-        response.raise_for_status()
-        self._update_activity()
-        return True
+        last_exc = None
+        for attempt in range(1, _UPLOAD_RETRY_ATTEMPTS + 1):
+            try:
+                session = requests.Session()
+                adapter = requests.adapters.HTTPAdapter(
+                    max_retries=requests.adapters.Retry(
+                        total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504]
+                    )
+                )
+                session.mount("https://", adapter)
+
+                doc = ProgressFileReader(file_path, progress_callback) if progress_msg_id else open(file_path, "rb")
+                try:
+                    response = session.post(
+                        f"{self.base_url}/sendDocument",
+                        files={"document": (os.path.basename(file_path), doc)},
+                        data={
+                            "chat_id": self.chat_id,
+                            "caption": caption,
+                        },
+                        timeout=(30, 600),
+                    )
+                finally:
+                    if hasattr(doc, 'close'):
+                        doc.close()
+                response.raise_for_status()
+                self._update_activity()
+                log.info(f"[TelegramAPI] Document sent successfully on attempt {attempt}")
+                return True
+
+            except (requests.ConnectionError, requests.Timeout) as e:
+                last_exc = e
+                wait = 2 ** (attempt - 1)
+                log.warning(
+                    f"[TelegramAPI] Document upload failed (attempt {attempt}/{_UPLOAD_RETRY_ATTEMPTS}): "
+                    f"{type(e).__name__}: {e}. Retrying in {wait}s..."
+                )
+                time.sleep(wait)
+
+        log.error(f"[TelegramAPI] Document upload failed after {_UPLOAD_RETRY_ATTEMPTS} attempts. Last error: {last_exc}")
+        raise last_exc
 
     def edit_message(self, message_id: int, text: str, parse_mode: str = "HTML", reply_markup: dict = None) -> bool:
         payload = {

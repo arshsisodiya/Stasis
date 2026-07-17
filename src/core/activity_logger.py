@@ -15,6 +15,8 @@ from src.core.shutdown import shutdown_event
 import win32con
 import threading
 from pynput.keyboard import Controller, Key
+from src.core.keystroke_dynamics import keystroke_dynamics_writer
+from src.core.mouse_dynamics import mouse_dynamics_writer
 
 _kb_controller = Controller()
 
@@ -251,8 +253,12 @@ class InputCounter:
         self.kb_count    = 0
         self.mouse_count = 0
         self._lock       = threading.Lock()
+        self.current_app_name = "Unknown"
 
-        self.kb_listener = keyboard.Listener(on_press=self._on_key_press)
+        self.kb_listener = keyboard.Listener(
+            on_press=self._on_key_press,
+            on_release=self._on_key_release
+        )
         self.mouse_listener = mouse.Listener(
             on_click=self._on_mouse_click,
             # on_move deliberately omitted — kills idle detection
@@ -263,11 +269,34 @@ class InputCounter:
     def _on_key_press(self, key):
         with self._lock:
             self.kb_count += 1
+            
+        try:
+            key_name = getattr(key, 'name', str(key))
+            keystroke_dynamics_writer.log_event(time.time(), 'down', key_name, self.current_app_name)
+        except Exception:
+            pass
+
+    def _on_key_release(self, key):
+        try:
+            key_name = getattr(key, 'name', str(key))
+            keystroke_dynamics_writer.log_event(time.time(), 'up', key_name, self.current_app_name)
+        except Exception:
+            pass
 
     def _on_mouse_click(self, x, y, button, pressed):
         if pressed:
             with self._lock:
                 self.mouse_count += 1
+            try:
+                button_name = str(button).replace("Button.", "")
+                mouse_dynamics_writer.log_mouse_event(
+                    unix_ts=time.time(),
+                    button=button_name,
+                    x=x, y=y,
+                    active_app=self.current_app_name
+                )
+            except Exception:
+                pass
 
     def get_idle_seconds(self) -> float:
         """True hardware idle time from the OS kernel."""
@@ -658,6 +687,8 @@ def start_logging():
 
             # ---- get current window ----
             info = get_active_window_info()
+            if info:
+                input_tracker.current_app_name = info["app_name"]
 
             # ---- determine idle state ----
             idle_detection_enabled = settings_cache.get("idle_detection", "true") in ("true", "1")

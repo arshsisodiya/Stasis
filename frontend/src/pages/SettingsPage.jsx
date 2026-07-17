@@ -3231,8 +3231,7 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
   const [tgConfig, setTgConfig] = useState(null);
   const [updateState, setUpdateState] = useState(null);
   const [mountedSections, setMountedSections] = useState({ [initialSection]: true });
-  const [activePanelHeight, setActivePanelHeight] = useState(0);
-  const panelRefs = useRef({});
+  const scrollRef = useRef(null);
   const { toasts, push } = useToast();
 
   useEffect(() => { const t = setTimeout(() => setMounted(true), 40); return () => clearTimeout(t); }, []);
@@ -3265,27 +3264,10 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
   }, [section]);
 
   useEffect(() => {
-    const el = panelRefs.current[section];
-    if (!el) return;
-
-    const updateHeight = () => {
-      const h = Math.ceil(el.scrollHeight || 0);
-      if (h > 0) setActivePanelHeight(h);
-    };
-
-    updateHeight();
-    let ro;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(updateHeight);
-      ro.observe(el);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
     }
-    window.addEventListener("resize", updateHeight);
-
-    return () => {
-      if (ro) ro.disconnect();
-      window.removeEventListener("resize", updateHeight);
-    };
-  }, [section, mountedSections]);
+  }, [section]);
 
   const meta = {
     account: { label: "Account", sub: "User profile and session management" },
@@ -3302,10 +3284,10 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
     <>
       <style>{GLOBAL_CSS}</style>
 
-      <div style={{ position: "fixed", inset: 0, zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "rgba(0,0,0,0.82)", backdropFilter: "blur(18px)", animation: "sp-overlay-in 0.22s ease" }}
+      <div style={{ position: "fixed", inset: 0, zIndex: 500, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "8vh 24px 24px", background: "rgba(0,0,0,0.82)", backdropFilter: "blur(18px)", animation: "sp-overlay-in 0.22s ease" }}
         onClick={e => e.target === e.currentTarget && onClose()}>
 
-        <div style={{ width: "100%", maxWidth: 960, maxHeight: "88vh", background: C.panel, border: `1px solid ${C.borderMed}`, borderRadius: 26, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 48px 120px rgba(0,0,0,0.85),0 0 0 1px rgba(255,255,255,0.04)", opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(30px) scale(0.97)", transition: "opacity 0.4s ease,transform 0.4s ease" }}>
+        <div style={{ width: "100%", maxWidth: 960, maxHeight: "84vh", background: C.panel, border: `1px solid ${C.borderMed}`, borderRadius: 26, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 48px 120px rgba(0,0,0,0.85),0 0 0 1px rgba(255,255,255,0.04)", opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(30px) scale(0.97)", transition: "opacity 0.4s ease,transform 0.4s ease" }}>
 
           {/* Header */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: `1px solid ${C.border}`, background: "rgba(255,255,255,0.015)", flexShrink: 0 }}>
@@ -3342,26 +3324,18 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
             <div style={{ width: 200, flexShrink: 0, padding: "16px 12px", borderRight: `1px solid ${C.border}`, background: "rgba(255,255,255,0.008)", overflowY: "auto" }}>
               <SideNav active={section} onChange={setSection} tgStatus={tgStatus} tgConfig={tgConfig} updateState={updateState} />
             </div>
-            {/* Keep mounted panels for smooth switching; height tracks active panel to avoid blank tail scroll. */}
-            <div className="sp-scroll" style={{ flex: 1, overflowY: "auto", padding: "24px 28px", position: "relative" }}>
-              <div style={{ position: "relative", minHeight: Math.max(activePanelHeight, 320), transition: "min-height 0.2s ease" }}>
+            {/* Scroll area using display: none for inactive tabs to fix blank tail scroll and scroll position issues. */}
+            <div className="sp-scroll" ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "24px 28px", position: "relative" }}>
+              <div style={{ position: "relative", minHeight: 320 }}>
                 {Object.keys(meta).map(id => {
                   if (!mountedSections[id]) return null;
                   const isActive = id === section;
                   return (
                     <div
                       key={id}
-                      ref={el => { panelRefs.current[id] = el; }}
                       style={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        opacity: isActive ? 1 : 0,
-                        transform: isActive ? "translateY(0)" : "translateY(6px)",
-                        pointerEvents: isActive ? "auto" : "none",
-                        visibility: isActive ? "visible" : "hidden",
-                        transition: "opacity 0.18s ease, transform 0.18s ease",
+                        display: isActive ? "block" : "none",
+                        animation: isActive ? "sp-fade-in 0.18s ease" : "none",
                       }}
                     >
                       <div style={{ marginBottom: 24, paddingBottom: 18, borderBottom: `1px solid ${C.border}` }}>

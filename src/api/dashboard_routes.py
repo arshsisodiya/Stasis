@@ -1,9 +1,11 @@
 from flask import jsonify, request
+from collections import defaultdict
 
 from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date, get_active_user_id, user_filter_sql
 from src.database.database import get_connection
 from src.config.ignored_apps_manager import is_ignored
 from src.core.activity_logger import get_current_session_duration
+from src.core.engagement_scorer import compute_productivity_score
 
 
 @wellbeing_bp.route("/api/dashboard")
@@ -165,98 +167,53 @@ def wellbeing():
     try:
 
         cursor.execute(f"""
-            SELECT main_category, SUM(active_seconds), app_name
+            SELECT app_name, main_category, sub_category,
+                   SUM(active_seconds), SUM(idle_seconds), SUM(keystrokes), SUM(clicks), SUM(sessions)
             FROM daily_stats
             WHERE date = ? AND {uid_sql}
-            GROUP BY app_name, main_category
-        """, (selected_date, *uid_params))
-
-        category_rows = cursor.fetchall()
-
-        category_data = {}
-
-        top_app = "N/A"
-        app_totals = {}  # track per-app total for top_app without extra query
-
-        for main_cat, active_secs, app_name in category_rows:
-
-            if is_ignored(app_name):
-                continue
-
-            category_data[main_cat] = (
-                category_data.get(main_cat, 0) + active_secs
-            )
-            app_totals[app_name] = app_totals.get(app_name, 0) + safe(active_secs)
-
-        # Determine top app from the data we already have
-        if app_totals:
-            top_app = max(app_totals, key=app_totals.get)
-
-        productive = safe(category_data.get("productive", 0))
-
-        neutral = (
-            safe(category_data.get("neutral", 0)) +
-            safe(category_data.get("other", 0))
-        )
-
-        unproductive = safe(category_data.get("unproductive", 0))
-
-        # Screen time = ALL non-ignored usage (entertainment, communication, system, etc.)
-        total_active = sum(category_data.values())
-
-        cursor.execute(f"""
-            SELECT
-                SUM(idle_seconds),
-                SUM(keystrokes),
-                SUM(clicks),
-                SUM(sessions),
-                app_name
-            FROM daily_stats
-            WHERE date = ? AND {uid_sql}
-            GROUP BY app_name
+            GROUP BY app_name, main_category, sub_category
         """, (selected_date, *uid_params))
 
         rows = cursor.fetchall()
-
+        
+        app_rows = []
+        app_totals = {}
+        total_active = 0
         total_idle = 0
         total_keys = 0
         total_clicks = 0
         total_sessions = 0
-
-        for idle, keys, clicks, sessions, app_name in rows:
-
+        
+        for app_name, main_cat, sub_cat, act, idle, keys, clicks, sessions in rows:
             if is_ignored(app_name):
                 continue
-
+                
+            a = safe(act)
+            k = safe(keys)
+            c = safe(clicks)
+            
+            total_active += a
             total_idle += safe(idle)
-            total_keys += safe(keys)
-            total_clicks += safe(clicks)
+            total_keys += k
+            total_clicks += c
             total_sessions += safe(sessions)
+            app_totals[app_name] = app_totals.get(app_name, 0) + a
+            
+            app_rows.append({
+                "app_name": app_name,
+                "main_category": main_cat,
+                "sub_category": sub_cat or "other",
+                "active_seconds": a,
+                "keystrokes": k,
+                "clicks": c
+            })
 
-        if total_active == 0:
+        top_app = max(app_totals, key=app_totals.get) if app_totals else "N/A"
 
-            productivity_percent = 0.0
-
+        if total_active > 0:
+            productivity_percent = compute_productivity_score(app_rows)
         else:
-
-            minutes_active = total_active / 60
-
-            kpm = total_keys / minutes_active if minutes_active > 0 else 0
-
-            engagement_factor = min(1.0, kpm / BASELINE_KPM)
-
-            effective_productive = productive * engagement_factor
-
-            weighted_time = (
-                effective_productive * 1.0 +
-                neutral * 0.4 +
-                unproductive * 0.0
-            )
-
-            productivity_percent = round(
-                (weighted_time / total_active) * 100,
-                1
-            )
+            productivity_percent = 0.0
 
         return jsonify({
             "totalScreenTime": total_active,

@@ -30,6 +30,7 @@ from flask import jsonify, request
 from src.api.wellbeing_routes import wellbeing_bp, safe
 from src.database.database import get_connection
 from src.config.ignored_apps_manager import is_ignored
+from src.core.engagement_scorer import compute_productivity_score, compute_app_weighted_seconds
 
 
 @wellbeing_bp.route("/api/spark-series")
@@ -50,6 +51,7 @@ def spark_series():
             SELECT
                 date,
                 main_category,
+                sub_category,
                 SUM(active_seconds)  AS active,
                 SUM(idle_seconds)    AS idle,
                 SUM(keystrokes)      AS keys,
@@ -58,45 +60,39 @@ def spark_series():
                 app_name
             FROM daily_stats
             WHERE date >= date('now', ? || ' days')
-            GROUP BY date, main_category, app_name
+            GROUP BY date, main_category, sub_category, app_name
             ORDER BY date DESC
         """, (str(-days),))
 
         rows = cursor.fetchall()
 
         # Group into per-date buckets, respecting ignored apps
-        by_date = {}
-        for date, category, active, idle, keys, clicks, sessions, app in rows:
+        by_date: dict[str, list[dict]] = {}
+        for date, category, sub_cat, active, idle, keys, clicks, sessions, app in rows:
             if is_ignored(app):
                 continue
             if date not in by_date:
-                by_date[date] = {
-                    "total_active": 0,
-                    "total_idle":   0,
-                    "total_keys":   0,
-                    "total_clicks": 0,
-                    "prod_active":  0,
-                }
-            d = by_date[date]
-            a = safe(active)
-            d["total_active"]  += a
-            d["total_idle"]    += safe(idle)
-            d["total_keys"]    += safe(keys)
-            d["total_clicks"]  += safe(clicks)
-            if category == "productive":
-                d["prod_active"] += a
+                by_date[date] = []
+            by_date[date].append({
+                "app_name":      app,
+                "main_category": category,
+                "sub_category":  sub_cat or "other",
+                "active_seconds": safe(active),
+                "idle":          safe(idle),
+                "keystrokes":    safe(keys),
+                "clicks":        safe(clicks),
+            })
 
         # Keep only the most-recent N days that have any data
         sorted_dates = sorted(by_date.keys())[-days:]
 
         result = {}
         for date in sorted_dates:
-            d = by_date[date]
-            total_active = d["total_active"]
-            total_idle   = d["total_idle"]
-            prod_active  = d["prod_active"]
-            total_keys   = d["total_keys"]
-            total_clicks = d["total_clicks"]
+            app_rows     = by_date[date]
+            total_active = sum(r["active_seconds"] for r in app_rows)
+            total_idle   = sum(r["idle"]           for r in app_rows)
+            total_keys   = sum(r["keystrokes"]     for r in app_rows)
+            total_clicks = sum(r["clicks"]         for r in app_rows)
 
             if total_active <= 0:
                 result[date] = {
@@ -106,15 +102,24 @@ def spark_series():
                 }
                 continue
 
-            # Productivity %
-            productivity_pct = round((prod_active / total_active) * 100)
+            # Engagement-weighted Productivity % (Ideas 2, 3, 4)
+            productivity_pct = compute_productivity_score(app_rows)
 
-            # Lightweight focus score (no per-log pass needed)
+            # Lightweight focus score — deep_work now uses engagement-weighted seconds
+            effective_productive = sum(
+                compute_app_weighted_seconds(
+                    active_seconds=r["active_seconds"],
+                    keystrokes=r["keystrokes"],
+                    clicks=r["clicks"],
+                    sub_category=r["sub_category"],
+                    main_category=r["main_category"],
+                )
+                for r in app_rows
+            )
             minutes_active   = total_active / 60
             kpm              = total_keys / minutes_active if minutes_active > 0 else 0
             engagement       = min(1.0, kpm / 35.0)
-            eff_productive   = prod_active * engagement
-            deep_work_score  = min(40.0, (eff_productive / 3600.0) * 20.0)
+            deep_work_score  = min(40.0, (effective_productive / 3600.0) * 20.0)
             engagement_score = engagement * 15.0
             idle_ratio       = total_idle / total_active
             idle_penalty     = min(20.0, idle_ratio * 25.0)

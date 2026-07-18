@@ -91,7 +91,7 @@ All data is stored locally in a SQLite database at `%LOCALAPPDATA%\Stasis\data\s
 | **60-Day Heatmap** | Calendar view colour-coded by relative usage intensity and productivity percentage. |
 | **Session Timeline** | Chronological list of every focus window with timestamps, durations, and categories. |
 | **Focus Score (0–100)** | Weighted formula: deep-work seconds + flow bonus (≥20-min streaks) + engagement score − switch penalty − idle penalty. |
-| **Productivity %** | Percentage of active time spent in `productive`-category apps, weighted by keystroke intensity. |
+| **Productivity %** | Percentage of active time spent in `productive`-category apps, heavily weighted by engagement (keystrokes and clicks per minute) normalized against app-specific expected baselines. |
 | **14-Day Weekly Trend** | Line chart of daily screen time and productivity over the past two weeks. |
 | **Goals Correlation** | Weekly insight layer showing productivity on goal-met vs non-met days with drift alerts. |
 | **Website Statistics** | Top domains visited, ranked by time spent, filterable by browser. |

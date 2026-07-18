@@ -4,6 +4,7 @@ import time
 from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date, get_active_user_id, user_filter_sql
 from src.database.database import get_connection
 from src.config.ignored_apps_manager import is_ignored
+from src.core.engagement_scorer import compute_productivity_score, compute_app_weighted_seconds
 
 # ── Focus score cache ─────────────────────────────────────────────────────────
 # Today's date is cached for up to _TTL seconds; historical dates are cached
@@ -40,39 +41,65 @@ def focus():
             SELECT
                 app_name,
                 main_category,
+                sub_category,
                 SUM(active_seconds),
-                SUM(sessions)
+                SUM(sessions),
+                SUM(keystrokes),
+                SUM(clicks)
             FROM daily_stats
             WHERE date = ? AND {uid_sql}
-            GROUP BY app_name, main_category
+            GROUP BY app_name, main_category, sub_category
         """, (selected_date, *uid_params))
 
-        productive_seconds = 0
+        app_rows        = []   # for engagement_scorer
         productive_sessions = 0
-        total_sessions = 0
-        total_active = 0
+        total_sessions  = 0
+        total_active    = 0
+        app_category    = {}
 
-        app_category = {}
-
-        for app, category, active, sessions in cursor.fetchall():
+        for app, category, sub_cat, active, sessions, keys, clicks in cursor.fetchall():
 
             if is_ignored(app):
                 continue
 
-            active = safe(active)
+            active   = safe(active)
             sessions = safe(sessions)
 
             app_category[app] = category
-
-            total_active += active
+            total_active  += active
             total_sessions += sessions
 
             if category == "productive":
-                productive_seconds += active
                 productive_sessions += sessions
+
+            app_rows.append({
+                "app_name":      app,
+                "main_category": category,
+                "sub_category":  sub_cat or "other",
+                "active_seconds": active,
+                "keystrokes":    safe(keys),
+                "clicks":        safe(clicks),
+            })
 
         if total_active <= 0:
             return jsonify({"score": 0})
+
+        # Engagement-weighted productive seconds (Ideas 2, 3, 4)
+        effective_productive = sum(
+            compute_app_weighted_seconds(
+                active_seconds=r["active_seconds"],
+                keystrokes=r["keystrokes"],
+                clicks=r["clicks"],
+                sub_category=r["sub_category"],
+                main_category=r["main_category"],
+            )
+            for r in app_rows
+        )
+        # Raw productive seconds still needed for deepWorkSeconds reporting
+        productive_seconds = sum(
+            r["active_seconds"] for r in app_rows
+            if r["main_category"] == "productive"
+        )
 
         cursor.execute(f"""
             SELECT timestamp, app_name
@@ -146,33 +173,33 @@ def focus():
         flow_bonus = min(15, flow_bonus)
 
         cursor.execute(f"""
-            SELECT SUM(keystrokes), SUM(idle_seconds), app_name
+            SELECT SUM(keystrokes), SUM(clicks), SUM(idle_seconds), app_name
             FROM daily_stats
             WHERE date = ? AND {uid_sql}
             GROUP BY app_name
         """, (selected_date, *uid_params))
 
-        total_keys = 0
+        total_keys   = 0
+        total_clicks = 0
         idle_seconds = 0
 
-        for keys, idle, app in cursor.fetchall():
+        for keys, clicks_val, idle, app in cursor.fetchall():
 
             if is_ignored(app):
                 continue
 
-            total_keys += safe(keys)
+            total_keys   += safe(keys)
+            total_clicks += safe(clicks_val)
             idle_seconds += safe(idle)
 
         minutes_active = total_active / 60
 
+        # Global KPM still used for the engagement_score component of focus
         kpm = total_keys / minutes_active if minutes_active > 0 else 0
-
         engagement_factor = min(1.0, kpm / BASELINE_KPM)
+        engagement_score  = engagement_factor * 15
 
-        effective_productive = productive_seconds * engagement_factor
-
-        engagement_score = engagement_factor * 15
-
+        # deep_work uses the per-app engagement-weighted productive seconds
         deep_work_score = min(40, (effective_productive / 3600) * 20)
 
         idle_ratio = idle_seconds / total_active

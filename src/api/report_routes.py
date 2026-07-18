@@ -1,16 +1,18 @@
 from flask import jsonify, request
-from src.api.wellbeing_routes import wellbeing_bp, get_active_user_id
+from src.api.wellbeing_routes import wellbeing_bp, get_active_user_id, safe, user_filter_sql
 from src.database.database import (
     get_connection, get_all_goals, get_all_goal_logs_range,
     get_limit_events_range, get_limit_events_summary
 )
 from src.config.ignored_apps_manager import is_ignored
 from src.config.settings_manager import SettingsManager
+from src.core.engagement_scorer import compute_productivity_score
 from datetime import datetime, timedelta
 import math
 import time
 import os
 import json
+from collections import defaultdict
 from src.utils.logger import setup_logger
 from src.config.storage import get_reports_cache_dir
 
@@ -166,44 +168,54 @@ def _weekly_trend_series(conn, week_of, weeks=6, user_id=None):
         cursor = conn.cursor()
         if user_id is not None:
             cursor.execute("""
-                SELECT date, app_name, main_category, SUM(active_seconds)
+                SELECT date, app_name, main_category, sub_category, SUM(active_seconds), SUM(keystrokes), SUM(clicks)
                 FROM daily_stats
                 WHERE date >= ? AND date <= ? AND (user_id = ? OR user_id IS NULL)
-                GROUP BY date, app_name, main_category
+                GROUP BY date, app_name, main_category, sub_category
                 ORDER BY date
             """, (mon.isoformat(), sun.isoformat(), user_id))
         else:
             cursor.execute("""
-                SELECT date, app_name, main_category, SUM(active_seconds)
+                SELECT date, app_name, main_category, sub_category, SUM(active_seconds), SUM(keystrokes), SUM(clicks)
                 FROM daily_stats
                 WHERE date >= ? AND date <= ? AND user_id IS NULL
-                GROUP BY date, app_name, main_category
+                GROUP BY date, app_name, main_category, sub_category
                 ORDER BY date
             """, (mon.isoformat(), sun.isoformat()))
         rows = cursor.fetchall()
 
-        total = 0
-        productive = 0
+        app_rows_week = []
+        total        = 0
         daily_totals = {}
-        for date, app_name, main_category, active in rows:
+
+        for date, app_name, main_category, sub_category, active, keys, clicks in rows:
             if is_ignored(app_name):
                 continue
-            total += active
-            daily_totals[date] = daily_totals.get(date, 0) + active
-            if main_category == "productive":
-                productive += active
+            a = safe(active)
+            k = safe(keys)
+            c = safe(clicks)
+            total += a
+            daily_totals[date] = daily_totals.get(date, 0) + a
+            app_rows_week.append({
+                "app_name":       app_name,
+                "main_category":  main_category,
+                "sub_category":   sub_category or "other",
+                "active_seconds": a,
+                "keystrokes":     k,
+                "clicks":         c,
+            })
 
         active_days = len(daily_totals) if daily_totals else 1
-        avg_daily = round(total / active_days)
-        prod_pct = round((productive / total) * 100, 1) if total > 0 else 0
+        avg_daily   = round(total / active_days)
+        prod_pct    = compute_productivity_score(app_rows_week)
         focus_score = round((max(daily_totals.values()) / total) * 100, 1) if total > 0 and daily_totals else 0
 
         series.append({
-            "week_start": mon.isoformat(),
-            "screen_time": total,
-            "avg_daily": avg_daily,
-            "productivity_pct": prod_pct,
-            "focus_score": focus_score,
+            "week_start":        mon.isoformat(),
+            "screen_time":       total,
+            "avg_daily":         avg_daily,
+            "productivity_pct":  prod_pct,
+            "focus_score":       focus_score,
         })
 
     return series
@@ -237,49 +249,64 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True, user_i
         # 1. Daily breakdown
         if user_id is not None:
             cursor.execute("""
-                SELECT date, app_name, main_category, SUM(active_seconds), SUM(keystrokes), SUM(clicks)
+                SELECT date, app_name, main_category, sub_category, SUM(active_seconds), SUM(keystrokes), SUM(clicks)
                 FROM daily_stats
                 WHERE date >= ? AND date <= ? AND (user_id = ? OR user_id IS NULL)
-                GROUP BY date, app_name, main_category
+                GROUP BY date, app_name, main_category, sub_category
                 ORDER BY date
             """, (monday, sunday, user_id))
         else:
             cursor.execute("""
-                SELECT date, app_name, main_category, SUM(active_seconds), SUM(keystrokes), SUM(clicks)
+                SELECT date, app_name, main_category, sub_category, SUM(active_seconds), SUM(keystrokes), SUM(clicks)
                 FROM daily_stats
                 WHERE date >= ? AND date <= ? AND user_id IS NULL
-                GROUP BY date, app_name, main_category
+                GROUP BY date, app_name, main_category, sub_category
                 ORDER BY date
             """, (monday, sunday))
         rows = cursor.fetchall()
 
-        daily = {}
-        app_totals = {}
-        cat_totals = {"productive": 0, "neutral": 0, "unproductive": 0, "other": 0}
+        daily       = {}
+        app_totals  = {}
+        cat_totals  = {"productive": 0, "neutral": 0, "unproductive": 0, "other": 0}
         total_screen = 0
-        total_keys = 0
+        total_keys   = 0
         total_clicks = 0
 
-        for date, app_name, main_cat, active, keys, clicks in rows:
+        # Per-app rows for the full week (for engagement scorer)
+        week_app_rows: list[dict] = []
+
+        for date, app_name, main_cat, sub_cat, active, keys, clicks in rows:
             if is_ignored(app_name):
                 continue
+            a     = safe(active)
+            k     = safe(keys)
+            c     = safe(clicks)
             if date not in daily:
                 daily[date] = {"screen_time": 0, "productive": 0, "neutral": 0, "unproductive": 0, "keys": 0, "clicks": 0}
-            daily[date]["screen_time"] += active
-            daily[date]["keys"] += keys or 0
-            daily[date]["clicks"] += clicks or 0
+            daily[date]["screen_time"] += a
+            daily[date]["keys"]   += k
+            daily[date]["clicks"] += c
             if main_cat in ("productive",):
-                daily[date]["productive"] += active
+                daily[date]["productive"] += a
             elif main_cat in ("neutral", "other"):
-                daily[date]["neutral"] += active
+                daily[date]["neutral"] += a
             else:
-                daily[date]["unproductive"] += active
+                daily[date]["unproductive"] += a
 
-            app_totals[app_name] = app_totals.get(app_name, 0) + active
-            cat_totals[main_cat] = cat_totals.get(main_cat, 0) + active
-            total_screen += active
-            total_keys += keys or 0
-            total_clicks += clicks or 0
+            app_totals[app_name] = app_totals.get(app_name, 0) + a
+            cat_totals[main_cat] = cat_totals.get(main_cat, 0) + a
+            total_screen += a
+            total_keys   += k
+            total_clicks += c
+
+            week_app_rows.append({
+                "app_name":      app_name,
+                "main_category": main_cat,
+                "sub_category":  sub_cat or "other",
+                "active_seconds": a,
+                "keystrokes":    k,
+                "clicks":        c,
+            })
 
         # Top apps
         top_apps = sorted(app_totals.items(), key=lambda x: -x[1])[:8]
@@ -288,11 +315,11 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True, user_i
 
         # Average daily screen time
         active_days = len(daily) if daily else 1
-        avg_daily = total_screen / active_days
+        avg_daily   = total_screen / active_days
 
-        # Productivity %
+        # Engagement-weighted Productivity % (Ideas 2, 3, 4)
         if total_screen > 0:
-            prod_pct = round(cat_totals.get("productive", 0) / total_screen * 100, 1)
+            prod_pct = compute_productivity_score(week_app_rows)
         else:
             prod_pct = 0
 

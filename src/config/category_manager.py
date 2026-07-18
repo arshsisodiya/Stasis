@@ -63,9 +63,16 @@ def _url_matches_rule(url_lower: str, domain_rule: str) -> bool:
     if "/" in r_norm or "?" in r_norm:
         return r_norm in u_norm
 
-    # Domain/subdomain rule
+    # Domain/subdomain rule or IP prefix rule
     host = _hostname(u_norm)
-    return host == r_norm or host.endswith("." + r_norm)
+    if host == r_norm or host.endswith("." + r_norm):
+        return True
+        
+    # Local IP prefix matching (e.g. 192.168., 10.0.)
+    if r_norm in ("192.168.", "10.", "10.0.") and host.startswith(r_norm):
+        return True
+        
+    return False
 
 
 def get_app_category(app_name: str) -> str:
@@ -86,7 +93,18 @@ def get_category(app_name: str, url: str = None, exe_path: str = None):
             if _url_matches_rule(url_lower, domain):
                 return cat["main"], cat["sub"]
 
-        # URL present but no rule matched → browser default = neutral
+        # URL present but no rule matched
+        
+        # Apply strict heuristics for development sites before defaulting
+        dev_keywords = [".dev", "dev.", "/dev/", "developer.", "developers."]
+        if any(kw in url_lower for kw in dev_keywords):
+            return "productive", "coding"
+            
+        doc_keywords = [".doc", "doc.", "docs.", "/doc/", "/docs/"]
+        if any(kw in url_lower for kw in doc_keywords):
+            return "productive", "learning"
+            
+        # Browser default = neutral
         if app_name in BROWSER_EXES or app_name.replace(".exe", "") in BROWSER_EXES:
             return "neutral", "browser"
 

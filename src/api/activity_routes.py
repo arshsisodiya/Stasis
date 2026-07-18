@@ -8,6 +8,7 @@ from src.database.database import get_connection
 from src.config.category_manager import get_category
 from src.config.ignored_apps_manager import is_ignored
 from src.core.activity_logger import get_active_window_info, get_current_session_duration
+from src.core.engagement_scorer import compute_productivity_score
 
 
 def _week_bounds(date_str=None):
@@ -38,54 +39,62 @@ def live_status():
     try:
         # 1. Total usage from Daily Stats
         cursor.execute(f"""
-            SELECT app_name, main_category, SUM(active_seconds), SUM(keystrokes), SUM(sessions)
+            SELECT app_name, main_category, sub_category,
+                   SUM(active_seconds), SUM(keystrokes), SUM(clicks), SUM(sessions)
             FROM daily_stats
             WHERE date = ? AND {uid_sql}
-            GROUP BY app_name, main_category
+            GROUP BY app_name, main_category, sub_category
         """, (selected_date, *uid_params))
         rows = cursor.fetchall()
 
-        usage = {}
-        category_data = defaultdict(int)
-        total_keys = 0
+        usage       = {}
+        app_rows    = []   # for engagement_scorer
         total_sessions = 0
 
-        for app, cat, act, keys, sessions in rows:
+        for app, cat, sub_cat, act, keys, clicks, sessions in rows:
             if is_ignored(app): continue
-            usage[app] = usage.get(app, 0) + safe(act)
-            category_data[cat] += safe(act)
-            total_keys += safe(keys)
+            a = safe(act)
+            usage[app] = usage.get(app, 0) + a
             total_sessions += safe(sessions)
+            app_rows.append({
+                "app_name":      app,
+                "main_category": cat,
+                "sub_category":  sub_cat or "other",
+                "active_seconds": a,
+                "keystrokes":    safe(keys),
+                "clicks":        safe(clicks),
+            })
 
         # 2. Factor in the current ongoing session
         active_app = info.get("app_name") if info else None
         if active_app and not is_ignored(active_app):
             # Update usage map
             usage[active_app] = usage.get(active_app, 0) + session_duration
-            
-            # Update category aggregation for score
-            curr_cat, _ = get_category(active_app, info.get("url"), info.get("exe_path"))
-            category_data[curr_cat] += session_duration
-            
+
+            # Find and update existing row for live app, or create a synthetic one
+            curr_cat, curr_sub = get_category(active_app, info.get("url"), info.get("exe_path"))
+            live_row = next((r for r in app_rows if r["app_name"] == active_app), None)
+            if live_row:
+                live_row["active_seconds"] += session_duration
+            else:
+                app_rows.append({
+                    "app_name":      active_app,
+                    "main_category": curr_cat,
+                    "sub_category":  curr_sub or "other",
+                    "active_seconds": session_duration,
+                    "keystrokes":    0,
+                    "clicks":        0,
+                })
+
             # Inject duration into info for frontend
             info["duration_seconds"] = usage[active_app]
 
         total_active = sum(usage.values())
 
-        # 3. Calculate Productivity Score (Simplified version of wellbeing logic)
+        # 3. Calculate Productivity Score using engagement scorer (Ideas 2, 3, 4)
         score = None
         if total_active > 0:
-            productive = category_data.get("productive", 0)
-            neutral = category_data.get("neutral", 0) + category_data.get("other", 0)
-            unproductive = category_data.get("unproductive", 0) + category_data.get("distraction", 0)
-            
-            # Engagement factor based on KPM
-            minutes_active = total_active / 60
-            kpm = total_keys / minutes_active if minutes_active > 0 else 0
-            engagement = min(1.0, kpm / 35.0) 
-            
-            weighted_time = (productive * engagement * 1.0) + (neutral * 0.4)
-            score = round((weighted_time / total_active) * 100)
+            score = round(compute_productivity_score(app_rows))
 
         # 4. Find Peak Hour
         cursor.execute(f"""

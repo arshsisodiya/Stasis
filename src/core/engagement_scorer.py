@@ -208,3 +208,84 @@ def compute_productivity_score(app_rows: list[dict]) -> float:
 
     raw = (total_weighted / total_active) * 100.0
     return round(min(100.0, max(0.0, raw)), 1)
+
+
+def compute_focus_score(app_rows: list[dict]) -> float:
+    """
+    Computes a daily Focus Score (0-100) based on three pillars:
+    1. Deep Work Density (40%): Concentration of time in your top 3 productive apps.
+    2. Context Switching Penalty (40%): Distracting switches per hour (ignoring core apps).
+    3. Sustained Engagement (20%): Low idle ratio during productive time.
+    """
+    if not app_rows:
+        return 0.0
+
+    total_active = 0.0
+    productive_apps = []
+
+    for row in app_rows:
+        active = float(row.get("active_seconds") or 0)
+        total_active += active
+        
+        if row.get("main_category") == "productive":
+            productive_apps.append({
+                "app_name": row.get("app_name"),
+                "active_seconds": active,
+                "idle_seconds": float(row.get("idle_seconds") or 0),
+                "sessions": float(row.get("sessions") or 0),
+            })
+
+    if total_active <= 0:
+        return 0.0
+
+    # Sort productive apps by active time descending to find the Core Workflow (Top 3)
+    productive_apps.sort(key=lambda x: x["active_seconds"], reverse=True)
+    core_apps = productive_apps[:3]
+    core_app_names = {app["app_name"] for app in core_apps}
+
+    # Pillar 1: Deep Work Density (40 points)
+    # Goal: 66% of your day spent in your core top 3 tools
+    core_active_time = sum(app["active_seconds"] for app in core_apps)
+    deep_work_ratio = core_active_time / total_active
+    # If ratio >= 0.66 -> 40 pts. Scale linearly up to 0.66.
+    p1_score = min(40.0, (deep_work_ratio / 0.66) * 40.0)
+
+    # Pillar 2: Context Switching Penalty (40 points)
+    # We only count sessions (switches) for apps OUTSIDE the Core Workflow.
+    distracting_sessions = 0.0
+    for row in app_rows:
+        if row.get("app_name") not in core_app_names:
+            distracting_sessions += float(row.get("sessions") or 0)
+
+    total_active_hours = total_active / 3600.0
+    switches_per_hour = distracting_sessions / total_active_hours
+
+    if switches_per_hour <= 5:
+        p2_score = 40.0
+    elif switches_per_hour >= 20:
+        p2_score = 0.0
+    else:
+        # Scale linearly between 5 and 20 switches
+        p2_score = 40.0 - ((switches_per_hour - 5) / 15.0) * 40.0
+
+    # Pillar 3: Sustained Engagement / Low Idle (20 points)
+    # Calculate idle ratio only for productive apps
+    prod_active = sum(app["active_seconds"] for app in productive_apps)
+    prod_idle = sum(app["idle_seconds"] for app in productive_apps)
+    
+    if (prod_active + prod_idle) > 0:
+        idle_ratio = prod_idle / (prod_active + prod_idle)
+    else:
+        idle_ratio = 1.0
+
+    if idle_ratio <= 0.20:
+        p3_score = 20.0
+    elif idle_ratio >= 0.50:
+        p3_score = 0.0
+    else:
+        # Scale linearly between 20% and 50% idle
+        p3_score = 20.0 - ((idle_ratio - 0.20) / 0.30) * 20.0
+
+    final_score = p1_score + p2_score + p3_score
+    return round(min(100.0, max(0.0, final_score)), 1)
+

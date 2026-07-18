@@ -6,7 +6,7 @@ from src.database.database import (
 )
 from src.config.ignored_apps_manager import is_ignored
 from src.config.settings_manager import SettingsManager
-from src.core.engagement_scorer import compute_productivity_score
+from src.core.engagement_scorer import compute_productivity_score, compute_focus_score
 from datetime import datetime, timedelta
 import math
 import time
@@ -168,7 +168,7 @@ def _weekly_trend_series(conn, week_of, weeks=6, user_id=None):
         cursor = conn.cursor()
         if user_id is not None:
             cursor.execute("""
-                SELECT date, app_name, main_category, sub_category, SUM(active_seconds), SUM(keystrokes), SUM(clicks)
+                SELECT date, app_name, main_category, sub_category, SUM(active_seconds), SUM(idle_seconds), SUM(keystrokes), SUM(clicks), SUM(sessions)
                 FROM daily_stats
                 WHERE date >= ? AND date <= ? AND (user_id = ? OR user_id IS NULL)
                 GROUP BY date, app_name, main_category, sub_category
@@ -176,7 +176,7 @@ def _weekly_trend_series(conn, week_of, weeks=6, user_id=None):
             """, (mon.isoformat(), sun.isoformat(), user_id))
         else:
             cursor.execute("""
-                SELECT date, app_name, main_category, sub_category, SUM(active_seconds), SUM(keystrokes), SUM(clicks)
+                SELECT date, app_name, main_category, sub_category, SUM(active_seconds), SUM(idle_seconds), SUM(keystrokes), SUM(clicks), SUM(sessions)
                 FROM daily_stats
                 WHERE date >= ? AND date <= ? AND user_id IS NULL
                 GROUP BY date, app_name, main_category, sub_category
@@ -188,12 +188,14 @@ def _weekly_trend_series(conn, week_of, weeks=6, user_id=None):
         total        = 0
         daily_totals = {}
 
-        for date, app_name, main_category, sub_category, active, keys, clicks in rows:
+        for date, app_name, main_category, sub_category, active, idle, keys, clicks, sessions in rows:
             if is_ignored(app_name):
                 continue
             a = safe(active)
+            i = safe(idle)
             k = safe(keys)
             c = safe(clicks)
+            s = safe(sessions)
             total += a
             daily_totals[date] = daily_totals.get(date, 0) + a
             app_rows_week.append({
@@ -201,14 +203,18 @@ def _weekly_trend_series(conn, week_of, weeks=6, user_id=None):
                 "main_category":  main_category,
                 "sub_category":   sub_category or "other",
                 "active_seconds": a,
+                "idle_seconds":   i,
                 "keystrokes":     k,
                 "clicks":         c,
+                "sessions":       s,
             })
 
         active_days = len(daily_totals) if daily_totals else 1
         avg_daily   = round(total / active_days)
         prod_pct    = compute_productivity_score(app_rows_week)
-        focus_score = round((max(daily_totals.values()) / total) * 100, 1) if total > 0 and daily_totals else 0
+        
+        # Calculate Focus Score accurately
+        focus_score = compute_focus_score(app_rows_week)
 
         series.append({
             "week_start":        mon.isoformat(),
@@ -364,30 +370,9 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True, user_i
         prev_cat_totals = _range_category_totals(conn, prev_monday, prev_sunday, user_id=user_id)
         category_insights = _build_category_insights(cat_totals, prev_cat_totals)
 
-        # 5. Focus score average (from daily_stats)
-        if user_id is not None:
-            cursor.execute("""
-                SELECT AVG(focus_score) FROM (
-                    SELECT date, CASE WHEN SUM(active_seconds) > 0
-                        THEN ROUND(100.0 * MAX(active_seconds) / SUM(active_seconds))
-                        ELSE 0 END as focus_score
-                    FROM daily_stats
-                    WHERE date >= ? AND date <= ? AND (user_id = ? OR user_id IS NULL)
-                    GROUP BY date
-                )
-            """, (monday, sunday, user_id))
-        else:
-            cursor.execute("""
-                SELECT AVG(focus_score) FROM (
-                    SELECT date, CASE WHEN SUM(active_seconds) > 0
-                        THEN ROUND(100.0 * MAX(active_seconds) / SUM(active_seconds))
-                        ELSE 0 END as focus_score
-                    FROM daily_stats
-                    WHERE date >= ? AND date <= ? AND user_id IS NULL
-                    GROUP BY date
-                )
-            """, (monday, sunday))
-        avg_focus = cursor.fetchone()[0] or 0
+        trends = _weekly_trend_series(conn, week_of, weeks=6, user_id=user_id)
+        current_week_trend = trends[-1] if trends else {}
+        avg_focus = current_week_trend.get("focus_score", 0)
 
         # Build daily breakdown array (always Mon-Sun, including empty days)
         daily_breakdown = []
@@ -404,7 +389,6 @@ def _generate_report(week_of=None, verbosity=None, include_previous=True, user_i
                 "productive_pct": ppct,
             })
 
-        trends = _weekly_trend_series(conn, week_of, weeks=6, user_id=user_id)
 
         # Goal drift alerts + goal impact correlation
         date_goal_met = {}

@@ -43,6 +43,7 @@ def focus():
                 main_category,
                 sub_category,
                 SUM(active_seconds),
+                SUM(idle_seconds),
                 SUM(sessions),
                 SUM(keystrokes),
                 SUM(clicks)
@@ -57,7 +58,7 @@ def focus():
         total_active    = 0
         app_category    = {}
 
-        for app, category, sub_cat, active, sessions, keys, clicks in cursor.fetchall():
+        for app, category, sub_cat, active, idle, sessions, keys, clicks in cursor.fetchall():
 
             if is_ignored(app):
                 continue
@@ -77,6 +78,8 @@ def focus():
                 "main_category": category,
                 "sub_category":  sub_cat or "other",
                 "active_seconds": active,
+                "idle_seconds":  safe(idle),
+                "sessions":      sessions,
                 "keystrokes":    safe(keys),
                 "clicks":        safe(clicks),
             })

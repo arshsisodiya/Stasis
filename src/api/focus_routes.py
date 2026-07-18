@@ -4,7 +4,7 @@ import time
 from src.api.wellbeing_routes import wellbeing_bp, safe, get_selected_date, get_active_user_id, user_filter_sql
 from src.database.database import get_connection
 from src.config.ignored_apps_manager import is_ignored
-from src.core.engagement_scorer import compute_productivity_score, compute_app_weighted_seconds
+from src.core.engagement_scorer import compute_productivity_score, compute_focus_score
 
 # ── Focus score cache ─────────────────────────────────────────────────────────
 # Today's date is cached for up to _TTL seconds; historical dates are cached
@@ -84,145 +84,28 @@ def focus():
         if total_active <= 0:
             return jsonify({"score": 0})
 
-        # Engagement-weighted productive seconds (Ideas 2, 3, 4)
-        effective_productive = sum(
-            compute_app_weighted_seconds(
-                active_seconds=r["active_seconds"],
-                keystrokes=r["keystrokes"],
-                clicks=r["clicks"],
-                sub_category=r["sub_category"],
-                main_category=r["main_category"],
-            )
-            for r in app_rows
-        )
         # Raw productive seconds still needed for deepWorkSeconds reporting
         productive_seconds = sum(
             r["active_seconds"] for r in app_rows
             if r["main_category"] == "productive"
         )
 
-        cursor.execute(f"""
-            SELECT timestamp, app_name
-            FROM activity_logs
-            WHERE timestamp >= ? AND timestamp < date(?, '+1 day') AND {uid_sql}
-            ORDER BY timestamp ASC
-        """, (selected_date, selected_date, *uid_params))
+        # Calculate the centralized global Focus Score
+        score = compute_focus_score(app_rows)
 
-        logs = [
-            (ts, app)
-            for ts, app in cursor.fetchall()
-            if not is_ignored(app)
-        ]
-
-        switch_penalty = 0
-        prev = None
-
-        for _, app in logs:
-
-            if prev is None:
-                prev = app
-                continue
-
-            if app != prev:
-
-                prev_cat = app_category.get(prev, "neutral")
-                curr_cat = app_category.get(app, "neutral")
-
-                if prev_cat == "productive":
-
-                    if curr_cat == "productive":
-                        switch_penalty += 0.2
-
-                    elif curr_cat == "neutral":
-                        switch_penalty += 1.0
-
-                    elif curr_cat == "unproductive":
-                        switch_penalty += 5.0
-
-            prev = app
-
-        switch_penalty = min(30, switch_penalty)
-
-        flow_bonus = 0
-        streak = 0
-        prev_app = None
-
-        for _, app in logs:
-
-            category = app_category.get(app, "neutral")
-
-            if category == "productive":
-
-                if prev_app == app:
-                    streak += 60
-                else:
-                    streak = 60
-
-            else:
-
-                if streak >= 1200:
-                    flow_bonus += 5
-
-                streak = 0
-
-            prev_app = app
-
-        if streak >= 1200:
-            flow_bonus += 5
-
-        flow_bonus = min(15, flow_bonus)
-
-        cursor.execute(f"""
-            SELECT SUM(keystrokes), SUM(clicks), SUM(idle_seconds), app_name
-            FROM daily_stats
-            WHERE date = ? AND {uid_sql}
-            GROUP BY app_name
-        """, (selected_date, *uid_params))
-
-        total_keys   = 0
-        total_clicks = 0
-        idle_seconds = 0
-
-        for keys, clicks_val, idle, app in cursor.fetchall():
-
-            if is_ignored(app):
-                continue
-
-            total_keys   += safe(keys)
-            total_clicks += safe(clicks_val)
-            idle_seconds += safe(idle)
-
-        minutes_active = total_active / 60
-
-        # Global KPM still used for the engagement_score component of focus
-        kpm = total_keys / minutes_active if minutes_active > 0 else 0
-        engagement_factor = min(1.0, kpm / BASELINE_KPM)
-        engagement_score  = engagement_factor * 15
-
-        # deep_work uses the per-app engagement-weighted productive seconds
-        deep_work_score = min(40, (effective_productive / 3600) * 20)
-
-        idle_ratio = idle_seconds / total_active
-
-        idle_penalty = min(20, idle_ratio * 25)
-
-        score = (
-            deep_work_score
-            + flow_bonus
-            + engagement_score
-            - switch_penalty
-            - idle_penalty
-        )
-
-        score = max(0, min(100, round(score)))
+        # Calculate distracting sessions for the frontend insights
+        productive_apps = [r for r in app_rows if r["main_category"] == "productive"]
+        productive_apps.sort(key=lambda x: x["active_seconds"], reverse=True)
+        core_names = {a["app_name"] for a in productive_apps[:3]}
+        distracting_sessions = sum(r["sessions"] for r in app_rows if r["app_name"] not in core_names)
 
         result = {
             "score": score,
             "deepWorkSeconds": productive_seconds,
-            "flowBonus": flow_bonus,
-            "engagementScore": round(engagement_score, 1),
-            "switchPenalty": round(switch_penalty, 1),
-            "idlePenalty": round(idle_penalty, 1)
+            "flowBonus": 0,
+            "engagementScore": 0,
+            "switchPenalty": distracting_sessions * 0.5, # Frontend uses this to estimate context switches
+            "idlePenalty": 0
         }
 
         # Store in cache

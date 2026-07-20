@@ -236,6 +236,13 @@ def main():
 
     except Exception:
         logger.exception("Failed to finalize system lifecycle session")
+    finally:
+        try:
+            from src.core.shutdown import cleanup_complete_event
+            cleanup_complete_event.set()
+            logger.info("Cleanup complete event set.")
+        except Exception:
+            pass
 
     logger.info("Stasis has shut down gracefully.")
 

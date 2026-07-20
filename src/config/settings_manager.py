@@ -212,6 +212,7 @@ class SettingsManager(BaseSettingsManager):
             "mouse_dynamics_logging_enabled": "false",
             "keystroke_dynamics_log_mouse_position": "false",
             "keystroke_dynamics_retention_days": "30",
+            "delay_shutdown_for_digest": "true",
         }
 
         for key, value in defaults.items():

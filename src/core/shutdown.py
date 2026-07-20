@@ -3,6 +3,7 @@ import logging
 
 # Central shutdown event and status shared across all background services
 shutdown_event = threading.Event()
+cleanup_complete_event = threading.Event()
 shutdown_status = "graceful" # default
 
 def trigger_shutdown(status: str = "graceful"):

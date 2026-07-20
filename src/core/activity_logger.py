@@ -169,14 +169,41 @@ class MediaSessionMonitor:
 
 
 # ===============================
-# SLEEP MANAGER
+# SLEEP & SHUTDOWN MANAGER
 # ===============================
+try:
+    import ctypes
+    _user32 = ctypes.windll.user32
+except Exception:
+    _user32 = None
+
+def _block_shutdown(hwnd, reason):
+    if _user32 and hasattr(_user32, "ShutdownBlockReasonCreate"):
+        try:
+            _user32.ShutdownBlockReasonCreate(hwnd, ctypes.c_wchar_p(reason))
+        except Exception:
+            pass
+
+def _unblock_shutdown(hwnd):
+    if _user32 and hasattr(_user32, "ShutdownBlockReasonDestroy"):
+        try:
+            _user32.ShutdownBlockReasonDestroy(hwnd)
+        except Exception:
+            pass
+
 class SleepManager:
     def __init__(self):
         self.is_sleeping = False
+        self._window_created = threading.Event()
         self._create_message_window()
 
     def _create_message_window(self):
+        # Window creation and message loop must be on the same thread to maintain
+        # thread affinity for Win32 handles and block reason registration.
+        threading.Thread(target=self._message_loop, daemon=True, name="SleepDetectorThread").start()
+        self._window_created.wait(timeout=2.0)
+
+    def _message_loop(self):
         CLASS_NAME = "SleepDetectorWindow"
         wc = win32gui.WNDCLASS()
         wc.lpfnWndProc = self._wnd_proc
@@ -185,27 +212,63 @@ class SleepManager:
         try:
             win32gui.RegisterClass(wc)
         except Exception:
-            # Error 1410 = class already registered (e.g. hot-reload / second import).
-            # Safe to ignore — CreateWindow still works with the existing class name.
             pass
 
         self.hwnd = win32gui.CreateWindow(
-            CLASS_NAME,          # pass the string name, not the atom — always valid
+            CLASS_NAME,
             "SleepDetector", 0,
             0, 0, 0, 0, 0, 0, 0, None
         )
-        threading.Thread(target=self._message_loop, daemon=True).start()
-
-    def _message_loop(self):
+        self._window_created.set()
         win32gui.PumpMessages()
 
     def _wnd_proc(self, hwnd, msg, wparam, lparam):
+        import logging
         if msg == win32con.WM_POWERBROADCAST:
             if wparam == win32con.PBT_APMSUSPEND:
                 self.is_sleeping = True
             elif wparam == win32con.PBT_APMRESUMEAUTOMATIC:
                 self.is_sleeping = False
-        return 1
+            return 1
+            
+        elif msg == 0x0011:  # win32con.WM_QUERYENDSESSION
+            logging.info("Windows shutdown query received (WM_QUERYENDSESSION). Approving shutdown.")
+            return 1
+
+        elif msg == 0x0016:  # win32con.WM_ENDSESSION
+            is_ending = bool(wparam)
+            logging.info(f"Windows shutdown event received (WM_ENDSESSION, ending={is_ending}).")
+            if is_ending:
+                from src.config.settings_manager import SettingsManager
+                delay_enabled = SettingsManager.get_bool("delay_shutdown_for_digest", True)
+                
+                if delay_enabled:
+                    # 1. Register a shutdown block reason so Windows doesn't terminate us mid-cleanup
+                    block_reason = "Saving productivity data and sending daily digest..."
+                    _block_shutdown(hwnd, block_reason)
+                    
+                    # 2. Trigger the application shutdown
+                    from src.core.shutdown import trigger_shutdown
+                    trigger_shutdown(status="system_shutdown")
+                    
+                    # 3. Wait for cleanup to complete
+                    from src.core.shutdown import cleanup_complete_event
+                    logging.info("Waiting for main thread cleanup to finish...")
+                    success = cleanup_complete_event.wait(timeout=5.0)
+                    if success:
+                        logging.info("Main thread cleanup completed successfully.")
+                    else:
+                        logging.warning("Main thread cleanup timed out.")
+                    
+                    # 4. Remove the block reason
+                    _unblock_shutdown(hwnd)
+                else:
+                    logging.info("Shutdown delay is disabled. Terminating process immediately.")
+                    import os
+                    os._exit(0)
+            return 0
+
+        return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
 
 
 # ===============================

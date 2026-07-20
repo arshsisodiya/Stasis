@@ -820,7 +820,7 @@ function TelegramSection({ push }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // GENERAL SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
-const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, auto_delete_days: "30", auto_delete_stats_days: "0", database_size_mb: 0.0, database_last_optimized: "", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false, weekly_report_verbosity: "standard", widget_enabled: false, widget_details_hover_enabled: true, widget_theme: "normal" };
+const DEFAULTS = { autostart: true, tray: true, notifications: false, idle: true, auto_delete_days: "30", auto_delete_stats_days: "0", database_size_mb: 0.0, database_last_optimized: "", browser_tracking: true, file_logging_enabled: false, file_logging_essential_only: false, show_yesterday_comparison: true, hardware_acceleration: true, weekly_report_telegram: false, weekly_report_verbosity: "standard", widget_enabled: false, widget_details_hover_enabled: true, widget_theme: "normal", delay_shutdown_for_digest: true };
 
 function GeneralSection({ push }) {
   const [s, setS] = useState({ ...DEFAULTS });
@@ -908,6 +908,7 @@ function GeneralSection({ push }) {
           hardware_acceleration: s.hardware_acceleration,
           weekly_report_telegram: s.weekly_report_telegram,
           weekly_report_verbosity: s.weekly_report_verbosity,
+          delay_shutdown_for_digest: s.delay_shutdown_for_digest,
           // We still send these to backend as a fallback/sync, 
           // but Rust store is now the primary source
           widget_enabled: s.widget_enabled,
@@ -1063,7 +1064,20 @@ function GeneralSection({ push }) {
         <SettingRow label="Run in system tray" desc="Minimise to tray instead of closing" control={<Toggle on={s.tray} onChange={v => set("tray", v)} />} />
         <SettingRow label="Desktop notifications" desc="Alerts for limit warnings and events" control={<Toggle on={s.notifications} onChange={v => set("notifications", v)} />} />
         <SettingRow label="Show yesterday comparison" desc="Show 'vs yesterday' indicators on dashboard" control={<Toggle on={s.show_yesterday_comparison} onChange={v => set("show_yesterday_comparison", v)} />} />
-        <SettingRow borderless label="Hardware Acceleration" desc="Boost performance using GPU, turn off to save RAM (requires restart)" control={<Toggle on={s.hardware_acceleration} onChange={v => set("hardware_acceleration", v)} />} />
+        <SettingRow label="Hardware Acceleration" desc="Boost performance using GPU, turn off to save RAM (requires restart)" control={<Toggle on={s.hardware_acceleration} onChange={v => set("hardware_acceleration", v)} />} />
+        <SettingRow borderless label="Delay shutdown for daily digest" 
+          desc={
+            <div>
+              Intercept Windows shutdown to send daily digest and log session before closing.
+              {s.delay_shutdown_for_digest && (
+                <div style={{ color: C.yellow, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                  ⚠️ Warning: Enabling this may delay Windows shutdown by a few seconds.
+                </div>
+              )}
+            </div>
+          }
+          control={<Toggle on={s.delay_shutdown_for_digest} onChange={v => set("delay_shutdown_for_digest", v)} />}
+        />
       </Card>
 
       <Card>

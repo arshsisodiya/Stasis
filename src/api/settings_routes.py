@@ -59,6 +59,7 @@ def get_settings():
         "mouse_dynamics_logging_enabled": SettingsManager.get_bool("mouse_dynamics_logging_enabled", False, user_id=user_id),
         "keystroke_dynamics_log_mouse_position": SettingsManager.get_bool("keystroke_dynamics_log_mouse_position", False, user_id=user_id),
         "keystroke_dynamics_retention_days": SettingsManager.get("keystroke_dynamics_retention_days", user_id=user_id) or "30",
+        "delay_shutdown_for_digest": SettingsManager.get_bool("delay_shutdown_for_digest", True, user_id=user_id),
     })
 
 
@@ -142,6 +143,10 @@ def update_settings():
     if "show_yesterday_comparison" in data:
         val = "true" if data["show_yesterday_comparison"] else "false"
         SettingsManager.set("show_yesterday_comparison", val, user_id=user_id)
+
+    if "delay_shutdown_for_digest" in data:
+        val = "true" if data["delay_shutdown_for_digest"] else "false"
+        SettingsManager.set("delay_shutdown_for_digest", val, user_id=user_id)
 
     if "keystroke_dynamics_logging_enabled" in data:
         val = "true" if data["keystroke_dynamics_logging_enabled"] else "false"

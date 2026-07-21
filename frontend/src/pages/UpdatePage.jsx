@@ -30,7 +30,7 @@ const UPDATE_CSS = `
   @keyframes up-ping   { 0%{transform:scale(1);opacity:0.7} 70%{transform:scale(2.4);opacity:0} 100%{transform:scale(2.4);opacity:0} }
   @keyframes up-in     { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
   @keyframes up-slide  { from{opacity:0;transform:translateX(-10px)} to{opacity:1;transform:none} }
-  @keyframes up-pop    { from{opacity:0;transform:scale(0.92)} to{opacity:1;transform:scale(1)} }
+  @keyframes up-pop    { from{opacity:0;transform:scale(0.92)} to{opacity:1;transform:none} }
   @keyframes up-bar    { from{width:0} to{width:var(--w)} }
   @keyframes up-shimmer{ 0%{background-position:-200% 0} 100%{background-position:200% 0} }
   @keyframes up-pulse-border {

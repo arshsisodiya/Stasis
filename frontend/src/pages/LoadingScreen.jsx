@@ -80,8 +80,8 @@ const CSS = `
 
   /* ── Wordmark entrance ── */
   @keyframes ls-word-in {
-    from { opacity: 0; transform: translateY(18px) scale(0.96); filter: blur(4px); }
-    to   { opacity: 1; transform: translateY(0)     scale(1);    filter: blur(0);   }
+    from { opacity: 0; transform: translateY(18px) scale(0.96); }
+    to   { opacity: 1; transform: none; }
   }
   @keyframes ls-tag-in {
     from { opacity: 0; transform: translateY(10px); }

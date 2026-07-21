@@ -670,12 +670,12 @@ export const DONUT_CSS = `
         50%       { box-shadow: 0 0 0 6px rgba(74,222,128,0.08); transform: translate(-50%, -4px) scale(1.2); }
       }
       @keyframes center-fade-in {
-        from {opacity: 0; transform: scale(0.88) translateY(4px); }
-      to   {opacity: 1; transform: scale(1) translateY(0); }
+        from {opacity: 0; }
+      to   {opacity: 1; }
   }
       @keyframes legend-slide-in {
         from {opacity: 0; transform: translateX(10px); }
-      to   {opacity: 1; transform: translateX(0); }
+      to   {opacity: 1; transform: none; }
   }
       @keyframes chip-pop-in {
         from {opacity: 0; transform: scale(0.85); }

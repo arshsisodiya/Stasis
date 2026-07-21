@@ -471,7 +471,7 @@ export default function GoalsPage({ selectedDate }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <style>{`
-        @keyframes modal-in { from { opacity:0; transform:scale(0.93) translateY(14px); } to { opacity:1; transform:scale(1) translateY(0); } }
+        @keyframes modal-in { from { opacity:0; transform:scale(0.93) translateY(14px); } to { opacity:1; transform:none; } }
         @keyframes overlay-in { from{opacity:0} to{opacity:1} }
         @keyframes card-fade-in { from { opacity:0; transform:translateY(14px) scale(0.98); } to { opacity:1; transform:none; } }
       `}</style>

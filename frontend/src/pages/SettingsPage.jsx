@@ -53,7 +53,7 @@ const GLOBAL_CSS = `
   @keyframes sp-spin        { to{transform:rotate(360deg)} }
   @keyframes sp-overlay-in  { from{opacity:0} to{opacity:1} }
   @keyframes sp-panel-in    { from{opacity:0;transform:translateY(28px) scale(0.97)} to{opacity:1;transform:none} }
-  @keyframes sp-slide-in    { from{opacity:0;transform:translateX(10px)} to{opacity:1;transform:translateX(0)} }
+  @keyframes sp-slide-in    { from{opacity:0;transform:translateX(10px)} to{opacity:1;transform:none} }
   @keyframes sp-fade-in     { from{opacity:0} to{opacity:1} }
   @keyframes sp-modal-in    { from{opacity:0;transform:scale(0.9) translateY(20px)} to{opacity:1;transform:none} }
   @keyframes sp-banner-in   { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
@@ -159,7 +159,7 @@ function InputField({ label, value, onChange, placeholder, secret, hint, error, 
 
 function Card({ children, style = {}, accent, danger, dashed }) {
   return (
-    <div className="sp-card" style={{ background: C.surface, border: `1px ${dashed ? "dashed" : "solid"} ${danger ? "rgba(248,113,113,0.2)" : accent ? accent + "28" : C.border}`, borderRadius: 18, padding: "20px 22px", backdropFilter: "blur(16px)", boxShadow: "0 1px 12px rgba(0,0,0,0.18)", ...style }}>
+    <div className="sp-card" style={{ background: C.surface, border: `1px ${dashed ? "dashed" : "solid"} ${danger ? "rgba(248,113,113,0.2)" : accent ? accent + "28" : C.border}`, borderRadius: 18, padding: "20px 22px", boxShadow: "0 1px 12px rgba(0,0,0,0.18)", ...style }}>
       {children}
     </div>
   );

@@ -26,6 +26,10 @@ html, body, #root {
 body {
     font-family: 'DM Sans', sans-serif;
     color: #f8fafc;
+    /* Prefer grayscale AA over LCD subpixel at fractional DPR (125/150/175%). */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }
 
 .app-surface {
@@ -118,15 +122,8 @@ body {
 }
 
 @keyframes center-fade-in {
-    from {
-        opacity: 0;
-        transform: translateX(-50%) translateY(10px) scale(0.95);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0) scale(1);
-    }
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 @keyframes slide-down {
@@ -137,7 +134,7 @@ body {
 
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: none;
     }
 }
 

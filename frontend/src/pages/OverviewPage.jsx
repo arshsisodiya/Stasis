@@ -550,9 +550,8 @@ export default function OverviewPage({
 
       {/* ── Hourly activity ── */}
       <div style={{
-        background: "rgba(15,18,30,0.5)", border: "1px solid rgba(255,255,255,0.06)",
+        background: "rgba(15,18,30,0.92)", border: "1px solid rgba(255,255,255,0.06)",
         borderRadius: 20, padding: "20px 20px 16px", marginBottom: 16,
-        backdropFilter: "blur(12px)",
       }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
           <div>
@@ -576,9 +575,8 @@ export default function OverviewPage({
 
       {/* ── Category breakdown ── */}
       <div style={{
-        background: "rgba(15,18,30,0.5)", border: "1px solid rgba(255,255,255,0.06)",
+        background: "rgba(15,18,30,0.92)", border: "1px solid rgba(255,255,255,0.06)",
         borderRadius: 20, padding: "20px 20px 16px",
-        backdropFilter: "blur(12px)",
       }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1", display: "block", marginBottom: 14 }}>
           Category Breakdown

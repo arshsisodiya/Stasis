@@ -4,32 +4,31 @@ import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 const STYLES = `
   @keyframes ds-fadein {
     from { opacity:0; transform:translateY(3px); }
-    to   { opacity:1; transform:translateY(0); }
+    to   { opacity:1; transform:none; }
   }
   @keyframes ds-bar-grow {
     from { transform: scaleY(0); }
-    to   { transform: scaleY(1); }
+    to   { transform: none; }
   }
   @keyframes ds-tick-out {
     to { opacity:0; transform:translateY(-6px); }
   }
   @keyframes ds-tick-in {
     from { opacity:0; transform:translateY(6px); }
-    to   { opacity:1; transform:translateY(0); }
+    to   { opacity:1; transform:none; }
   }
   @keyframes ds-nudge-pulse {
     0%,100% { opacity:.45; } 50% { opacity:1; }
   }
   @keyframes ds-num-count {
     from { opacity:0; transform:translateY(4px); }
-    to   { opacity:1; transform:translateY(0); }
+    to   { opacity:1; transform:none; }
   }
   .ds-root {
     display:flex; align-items:stretch;
-    background:rgba(10,13,24,0.78);
+    background:rgba(10,13,24,0.94);
     border:1px solid rgba(255,255,255,0.07);
     border-radius:14px;
-    backdrop-filter:blur(24px);
     overflow:hidden;
     flex:1; min-width:0; height:100%;
     animation:ds-fadein 0.4s cubic-bezier(0.16,1,0.3,1) both;

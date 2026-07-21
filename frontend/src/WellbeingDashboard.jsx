@@ -558,13 +558,14 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
         ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.14);}
         @keyframes pulse-glow{0%,100%{opacity:0.15;}50%{opacity:0.3;}}
         @keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-10px);}}
-        @keyframes banner-in{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+        @keyframes banner-in{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
         @keyframes shimmer{0%{background-position:-200% 0;}100%{background-position:200% 0;}}
         @keyframes tick{from{opacity:0.55;}to{opacity:1;}}
         @keyframes drawer-fade-in{from{opacity:0}to{opacity:1}}
-        @keyframes drawer-slide-in{from{transform:translateX(100%)}to{transform:translateX(0)}}
+        @keyframes drawer-slide-in{from{transform:translateX(100%)}to{transform:none}}
         @keyframes card-fade-in{from{opacity:0;transform:translateY(14px) scale(0.98);}to{opacity:1;transform:none;}}
-        @keyframes db-enter{from{opacity:0;transform:scale(1.015);filter:blur(3px);}to{opacity:1;transform:scale(1);filter:blur(0);}}
+        /* Avoid leaving filter/transform after fill-mode:both — softens text at fractional DPI (e.g. 175%). */
+        @keyframes db-enter{from{opacity:0;}to{opacity:1;}}
         .orb-float{animation:float 8s ease-in-out infinite;}
         .orb-float-2{animation:float 11s ease-in-out infinite reverse;}
         .tab-btn{padding:7px 14px;border-radius:9px;border:1px solid transparent;background:transparent;

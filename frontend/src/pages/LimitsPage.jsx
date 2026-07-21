@@ -51,12 +51,12 @@ const injectStyles = () => {
   s.textContent = `
     @keyframes modal-in {
       from { opacity:0; transform:scale(0.93) translateY(14px); }
-      to   { opacity:1; transform:scale(1) translateY(0); }
+      to   { opacity:1; transform:none; }
     }
     @keyframes overlay-in { from{opacity:0} to{opacity:1} }
     @keyframes toast-in {
       from { opacity:0; transform:translateX(28px) scale(0.94); }
-      to   { opacity:1; transform:translateX(0) scale(1); }
+      to   { opacity:1; transform:none; }
     }
     @keyframes pulse-dot {
       0%,100% { opacity:1; transform:scale(1); }
@@ -64,7 +64,7 @@ const injectStyles = () => {
     }
     @keyframes card-in {
       from { opacity:0; transform:translateY(18px) scale(0.97); }
-      to   { opacity:1; transform:translateY(0) scale(1); }
+      to   { opacity:1; transform:none; }
     }
     @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
     @keyframes confirm-shake {
@@ -77,7 +77,7 @@ const injectStyles = () => {
     @keyframes offline-pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
     @keyframes log-row-in {
       from { opacity:0; transform:translateX(-8px); }
-      to   { opacity:1; transform:translateX(0); }
+      to   { opacity:1; transform:none; }
     }
 
     input[type=number]::-webkit-inner-spin-button,
@@ -336,7 +336,7 @@ function LimitCard({ limit, onToggle, onEdit, onDelete, onUnblock, todayUsage, i
           animationDelay: `${index * 55}ms`,
           background: hov ? "rgba(22,28,52,0.96)" : "rgba(14,18,36,0.78)",
           border: `1px solid ${isOver ? "rgba(248,113,113,0.22)" : isWarn ? "rgba(251,191,36,0.18)" : hov ? "rgba(255,255,255,0.13)" : "rgba(255,255,255,0.07)"}`,
-          borderRadius: 20, padding: "20px 22px", backdropFilter: "blur(24px)",
+          borderRadius: 20, padding: "20px 22px",
           transition: "all 0.22s cubic-bezier(0.34,1.56,0.64,1)",
           transform: hov ? "translateY(-3px)" : "none",
           boxShadow: hov ? `0 14px 44px rgba(0,0,0,0.38),0 0 0 1px ${isOver ? "rgba(248,113,113,0.1)" : "rgba(255,255,255,0.04)"}` : "0 2px 8px rgba(0,0,0,0.22)"

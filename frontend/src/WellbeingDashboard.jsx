@@ -876,6 +876,7 @@ export default function WellbeingDashboard({ onDisconnect, initialData = null })
               {[
                 { icon: "👤", label: "Account", sub: "User profile & session", section: "account" },
                 { icon: "⚙️", label: "General Settings", sub: "Tracking & app preferences", section: "general" },
+                { icon: "🏷️", label: "Categories", sub: "App & website classification", section: "categories" },
                 { icon: "✈️", label: "Telegram Integration", sub: "Remote control setup", section: "telegram" },
                 { icon: "🔐", label: "Security", sub: "Encryption & access control", section: "security" },
                 { icon: "🚀", label: "Updates", sub: "Version & changelog", section: "updates" },

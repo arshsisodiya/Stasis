@@ -32,3 +32,11 @@ export const BROWSER_EXES = new Set([
   "zen", "chromium", "thorium", "waterfox", "librewolf", "floorp",
   "google chrome", "microsoft edge"
 ]);
+
+export const PREDEFINED_SUBCATEGORIES = [
+  "coding", "development_tools", "office", "writing", "reading", "design", "video_editing", 
+  "content_creation", "communication", "work_chat", "email", "video_calls", "learning", 
+  "ai_tools", "project_management", "networking", "browser", "utility", "file_manager", 
+  "system_tools", "gaming", "streaming", "video", "video_player", "music", "social_media", "other"
+];
+

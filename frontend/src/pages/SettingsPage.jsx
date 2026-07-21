@@ -4,6 +4,7 @@ import { load } from "@tauri-apps/plugin-store";
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import UpdateSection from "./UpdatePage";
 import { useAuth } from "../context/AuthContext";
+import { CATEGORY_COLORS, CATEGORY_EMOJIS, PREDEFINED_SUBCATEGORIES } from "../shared/constants";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const BASE_URL = "http://127.0.0.1:7432";
@@ -3160,6 +3161,7 @@ function ContactSection() {
 const NAV_ITEMS = [
   { id: "account", icon: "👤", label: "Account", sub: "User profile & session" },
   { id: "general", icon: "⚙️", label: "General", sub: "App & tracking" },
+  { id: "categories", icon: "🏷️", label: "Categories", sub: "App classification" },
   { id: "telegram", icon: "✈️", label: "Telegram", sub: "Remote control" },
   { id: "security", icon: "🔐", label: "Security", sub: "Access & encryption" },
   { id: "updates", icon: "🚀", label: "Updates", sub: "Version & changelog" },
@@ -3236,6 +3238,176 @@ function SideNav({ active, onChange, tgStatus, tgConfig, updateState }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// CATEGORIES SECTION
+// ═══════════════════════════════════════════════════════════════════════════════
+function CategoriesSection({ push }) {
+  const [data, setData] = useState({ apps: {}, url_rules: {} });
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("app");
+  
+  const [target, setTarget] = useState("");
+  const [mainCat, setMainCat] = useState("productive");
+  const [subCat, setSubCat] = useState("coding");
+  
+  const [systemApps, setSystemApps] = useState([]);
+  const [query, setQuery] = useState("");
+  const [showD, setShowD] = useState(false);
+  
+  const MAIN_CATS = ["productive", "communication", "entertainment", "system", "other", "neutral", "social"];
+
+  const fetchData = useCallback(async () => {
+    try {
+      const r = await fetch(`${BASE_URL}/api/settings/categories`);
+      const d = await r.json();
+      setData(d);
+      setLoading(false);
+    } catch (e) {
+      console.error(e);
+      if (push) push("Failed to load categories", "error");
+    }
+  }, [push]);
+
+  useEffect(() => {
+    fetchData();
+    fetch(`${BASE_URL}/api/system/apps`).then(r => r.json()).then(d => setSystemApps(d.apps || [])).catch(() => {});
+  }, [fetchData]);
+
+  const handleAdd = async () => {
+    if (!target) return;
+    try {
+      const ep = tab === "app" ? "/api/settings/categories/app" : "/api/settings/categories/url";
+      const res = await fetch(`${BASE_URL}${ep}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [tab === "app" ? "app" : "url"]: target, main: mainCat, sub: subCat })
+      });
+      if (!res.ok) throw new Error("Server error");
+      if (push) push("Rule added successfully", "success");
+      setTarget("");
+      setQuery("");
+      fetchData();
+    } catch (e) {
+      if (push) push("Failed to add rule", "error");
+    }
+  };
+
+  const handleDelete = async (key, isApp) => {
+    try {
+      const ep = isApp ? "/api/settings/categories/app" : "/api/settings/categories/url";
+      const res = await fetch(`${BASE_URL}${ep}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [isApp ? "app" : "url"]: key })
+      });
+      if (!res.ok) throw new Error("Server error");
+      if (push) push("Rule deleted", "success");
+      fetchData();
+    } catch (e) {
+      if (push) push("Failed to delete rule", "error");
+    }
+  };
+
+  const filteredApps = systemApps.filter(a => (a.name || "").toLowerCase().includes(query.toLowerCase()) || (a.exe && a.exe.toLowerCase().includes(query.toLowerCase())));
+
+  if (loading) return <div style={{ color: C.textSub, fontSize: 13, padding: 20 }}>Loading...</div>;
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <button onClick={() => setTab("app")} style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, background: tab === "app" ? "rgba(74,222,128,0.12)" : "rgba(255,255,255,0.05)", color: tab === "app" ? C.green : C.textSub, transition: "all 0.15s" }}>Apps</button>
+        <button onClick={() => setTab("url")} style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, background: tab === "url" ? "rgba(74,222,128,0.12)" : "rgba(255,255,255,0.05)", color: tab === "url" ? C.green : C.textSub, transition: "all 0.15s" }}>Websites / URLs</button>
+      </div>
+
+      <div style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`, borderRadius: 14, padding: 20, marginBottom: 24 }}>
+        <h3 style={{ margin: "0 0 16px 0", fontSize: 14, color: C.text, fontWeight: 600 }}>Add New Rule</h3>
+        
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+          {tab === "app" ? (
+            <div style={{ position: "relative", flex: 1 }}>
+              <label style={{ display: "block", fontSize: 11, color: C.textSub, textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>App Executable</label>
+              <input value={query} onChange={e => { setQuery(e.target.value); setTarget(e.target.value); setShowD(true); }}
+                onFocus={() => setShowD(true)} onBlur={() => setTimeout(() => setShowD(false), 200)}
+                placeholder="e.g. code.exe or search app..."
+                className="sp-input"
+                style={{ width: "100%", boxSizing: "border-box", padding: "10px 14px", background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, borderRadius: 10, outline: "none", color: C.text, fontSize: 13 }} />
+              {showD && filteredApps.length > 0 && (
+                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 110, background: "rgba(10,14,28,0.99)", border: `1px solid ${C.borderHi}`, borderRadius: 12, overflow: "hidden", maxHeight: 200, overflowY: "auto", marginTop: 4 }}>
+                  {filteredApps.map(a => (
+                    <div key={a.appid + a.name} onClick={() => { const exe = a.exe || a.name.toLowerCase().replace(/\s+/g, "") + ".exe"; setQuery(exe); setTarget(exe); setShowD(false); }}
+                      style={{ padding: "10px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", borderBottom: `1px solid ${C.border}` }}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(74,222,128,0.08)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <span style={{ fontSize: 13, color: C.text }}>{a.name}</span>
+                      <span style={{ fontSize: 11, color: C.textSub }}>{a.exe || ""}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", fontSize: 11, color: C.textSub, textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>URL Domain / Path</label>
+              <input value={target} onChange={e => setTarget(e.target.value)} placeholder="e.g. youtube.com or github.com/pulls" className="sp-input"
+                style={{ width: "100%", boxSizing: "border-box", padding: "10px 14px", background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, borderRadius: 10, outline: "none", color: C.text, fontSize: 13 }} />
+            </div>
+          )}
+          
+          <div style={{ width: 140 }}>
+            <label style={{ display: "block", fontSize: 11, color: C.textSub, textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Main Category</label>
+            <select className="sp-select" value={mainCat} onChange={e => setMainCat(e.target.value)} style={{ width: "100%", boxSizing: "border-box", padding: "10px 14px", background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, borderRadius: 10, outline: "none", color: C.text, fontSize: 13 }}>
+              {MAIN_CATS.map(c => <option key={c} value={c}>{CATEGORY_EMOJIS[c] || "📦"} {c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+            </select>
+          </div>
+          
+          <div style={{ width: 140 }}>
+            <label style={{ display: "block", fontSize: 11, color: C.textSub, textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Sub Category</label>
+            <select className="sp-select" value={subCat} onChange={e => setSubCat(e.target.value)} style={{ width: "100%", boxSizing: "border-box", padding: "10px 14px", background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, borderRadius: 10, outline: "none", color: C.text, fontSize: 13 }}>
+              {PREDEFINED_SUBCATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          
+          <div style={{ paddingTop: 21 }}>
+            <button onClick={handleAdd} className="sp-action" style={{ height: 40, padding: "0 20px", borderRadius: 10, border: "none", background: C.green, color: "#000", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Add</button>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: "rgba(255,255,255,0.03)", borderBottom: `1px solid ${C.border}` }}>
+              <th style={{ textAlign: "left", padding: "12px 16px", fontSize: 11, color: C.textSub, fontWeight: 600, textTransform: "uppercase" }}>{tab === "app" ? "Executable" : "URL Rule"}</th>
+              <th style={{ textAlign: "left", padding: "12px 16px", fontSize: 11, color: C.textSub, fontWeight: 600, textTransform: "uppercase" }}>Category</th>
+              <th style={{ textAlign: "right", padding: "12px 16px", fontSize: 11, color: C.textSub, fontWeight: 600, textTransform: "uppercase" }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(tab === "app" ? data.apps : data.url_rules).map(([key, val]) => {
+              if (val.auto_categorized && tab === "app") return null;
+              const th = CATEGORY_COLORS[val.main] || CATEGORY_COLORS.other;
+              return (
+                <tr key={key} style={{ borderBottom: `1px solid ${C.border}` }}>
+                  <td style={{ padding: "12px 16px", fontSize: 13, color: C.text, fontFamily: "monospace" }}>{key}</td>
+                  <td style={{ padding: "12px 16px" }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 8px", background: th.bg, border: `1px solid ${th.glow}`, borderRadius: 6 }}>
+                      <span style={{ fontSize: 12 }}>{CATEGORY_EMOJIS[val.main] || "📦"}</span>
+                      <span style={{ fontSize: 11, color: th.primary, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{val.main}</span>
+                      <span style={{ fontSize: 11, color: C.textSub, opacity: 0.8 }}>/ {val.sub}</span>
+                    </div>
+                  </td>
+                  <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                    <button onClick={() => handleDelete(key, tab === "app")} className="sp-close" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", color: "#f87171", padding: "4px 10px", borderRadius: 6, fontSize: 11, cursor: "pointer", fontWeight: 600 }}>Delete</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ROOT SETTINGS PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function SettingsPage({ onClose, initialSection = "telegram" }) {
@@ -3286,6 +3458,7 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
   const meta = {
     account: { label: "Account", sub: "User profile and session management" },
     general: { label: "General", sub: "App behaviour and tracking" },
+    categories: { label: "Categories", sub: "App and website classification rules" },
     telegram: { label: "Telegram Integration", sub: "Remote control via Telegram bot" },
     security: { label: "Security", sub: "Access control and encryption" },
     updates: { label: "Updates", sub: "Version history and changelog" },
@@ -3358,6 +3531,7 @@ export default function SettingsPage({ onClose, initialSection = "telegram" }) {
                       </div>
                       {id === "account" && <AccountSection push={push} />}
                       {id === "general" && <GeneralSection push={push} />}
+                      {id === "categories" && <CategoriesSection push={push} />}
                       {id === "developer" && <DeveloperSection push={push} />}
                       {id === "telegram" && <TelegramSection push={push} />}
                       {id === "security" && <SecuritySection push={push} />}

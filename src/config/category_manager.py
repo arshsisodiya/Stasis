@@ -1,12 +1,28 @@
-import json
+﻿import json
 import os
 import re
 from functools import lru_cache
+import shutil
+import copy
+from src.config.storage import get_data_dir
 
-CATEGORY_FILE = os.path.join(
+# The base, read-only default categories file shipped with the app
+DEFAULT_CATEGORY_FILE = os.path.join(
     os.path.dirname(__file__),
     "app_categories.json"
 )
+
+# The user-specific categories file in LOCALAPPDATA
+CATEGORY_FILE = os.path.join(get_data_dir(), "app_categories.json")
+
+# Ensure user file exists by copying default if necessary
+if not os.path.exists(CATEGORY_FILE):
+    if os.path.exists(DEFAULT_CATEGORY_FILE):
+        shutil.copy2(DEFAULT_CATEGORY_FILE, CATEGORY_FILE)
+    else:
+        # Fallback empty config
+        with open(CATEGORY_FILE, "w", encoding="utf-8") as f:
+            json.dump({"apps": {}, "url_rules": {}}, f, indent=4)
 
 DEFAULT_CATEGORY = "other"
 
@@ -161,7 +177,7 @@ def _auto_categorize_app(app_name: str, exe_path: str, url: str):
 def _save_auto_category(app_name: str, main_cat: str, sub_cat: str):
     """Saves the auto-categorized app to app_categories.json"""
     try:
-        categories = load_categories()
+        categories = copy.deepcopy(load_categories())
         
         # Ensure 'apps' key exists
         if "apps" not in categories:
@@ -183,3 +199,71 @@ def _save_auto_category(app_name: str, main_cat: str, sub_cat: str):
         load_categories.cache_clear()
     except Exception as e:
         print(f"Failed to save auto-category for {app_name}: {e}")
+
+def add_app_rule(app_name: str, main_cat: str, sub_cat: str):
+    try:
+        categories = copy.deepcopy(load_categories())
+        if "apps" not in categories:
+            categories["apps"] = {}
+        app_key = app_name.lower()
+        if not app_key.endswith(".exe") and "." not in app_key:
+            app_key += ".exe"
+        categories["apps"][app_key] = {
+            "main": main_cat,
+            "sub": sub_cat,
+            "auto_categorized": False
+        }
+        with open(CATEGORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(categories, f, indent=4)
+        load_categories.cache_clear()
+    except Exception as e:
+        print(f"Failed to add app rule for {app_name}: {e}")
+        raise e
+
+def remove_app_rule(app_name: str):
+    try:
+        categories = copy.deepcopy(load_categories())
+        if "apps" not in categories:
+            return
+        app_key = app_name.lower()
+        if not app_key.endswith(".exe") and "." not in app_key:
+            app_key += ".exe"
+        if app_key in categories["apps"]:
+            del categories["apps"][app_key]
+            with open(CATEGORY_FILE, "w", encoding="utf-8") as f:
+                json.dump(categories, f, indent=4)
+            load_categories.cache_clear()
+    except Exception as e:
+        print(f"Failed to remove app rule for {app_name}: {e}")
+        raise e
+
+def add_url_rule(url_pattern: str, main_cat: str, sub_cat: str):
+    try:
+        categories = copy.deepcopy(load_categories())
+        if "url_rules" not in categories:
+            categories["url_rules"] = {}
+        categories["url_rules"][url_pattern.lower()] = {
+            "main": main_cat,
+            "sub": sub_cat
+        }
+        with open(CATEGORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(categories, f, indent=4)
+        load_categories.cache_clear()
+    except Exception as e:
+        print(f"Failed to add URL rule for {url_pattern}: {e}")
+        raise e
+
+def remove_url_rule(url_pattern: str):
+    try:
+        categories = copy.deepcopy(load_categories())
+        if "url_rules" not in categories:
+            return
+        pattern_key = url_pattern.lower()
+        if pattern_key in categories["url_rules"]:
+            del categories["url_rules"][pattern_key]
+            with open(CATEGORY_FILE, "w", encoding="utf-8") as f:
+                json.dump(categories, f, indent=4)
+            load_categories.cache_clear()
+    except Exception as e:
+        print(f"Failed to remove URL rule for {url_pattern}: {e}")
+        raise e

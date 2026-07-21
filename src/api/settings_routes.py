@@ -4,6 +4,7 @@ from flask import jsonify, request
 from src.api.wellbeing_routes import wellbeing_bp, get_active_user_id
 from src.config.settings_manager import SettingsManager
 from src.config.storage import get_base_dir
+from src.config.category_manager import load_categories, add_app_rule, remove_app_rule, add_url_rule, remove_url_rule
 from src.core.desktop_notifications import desktop_notifier
 from src.database.database import get_database_file_info, optimize_database, delete_expired_telemetry
 
@@ -345,3 +346,66 @@ def notification_action(action):
             return f"<p>Failed to keep blocked: {exc}</p>", 500, {"Content-Type": "text/html; charset=utf-8"}
 
     return "<p>Unknown action.</p>", 404, {"Content-Type": "text/html; charset=utf-8"}
+
+@wellbeing_bp.route("/api/settings/categories", methods=["GET"])
+def api_get_categories():
+    try:
+        data = load_categories()
+        return jsonify({
+            "apps": data.get("apps", {}),
+            "url_rules": data.get("url_rules", {})
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@wellbeing_bp.route("/api/settings/categories/app", methods=["POST"])
+def api_add_category_app():
+    data = request.json or {}
+    app_name = data.get("app")
+    main_cat = data.get("main")
+    sub_cat = data.get("sub")
+    if not app_name or not main_cat or not sub_cat:
+        return jsonify({"error": "Missing app, main, or sub"}), 400
+    try:
+        add_app_rule(app_name, main_cat, sub_cat)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@wellbeing_bp.route("/api/settings/categories/app", methods=["DELETE"])
+def api_remove_category_app():
+    data = request.json or {}
+    app_name = data.get("app")
+    if not app_name:
+        return jsonify({"error": "Missing app"}), 400
+    try:
+        remove_app_rule(app_name)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@wellbeing_bp.route("/api/settings/categories/url", methods=["POST"])
+def api_add_category_url():
+    data = request.json or {}
+    url_pattern = data.get("url")
+    main_cat = data.get("main")
+    sub_cat = data.get("sub")
+    if not url_pattern or not main_cat or not sub_cat:
+        return jsonify({"error": "Missing url, main, or sub"}), 400
+    try:
+        add_url_rule(url_pattern, main_cat, sub_cat)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@wellbeing_bp.route("/api/settings/categories/url", methods=["DELETE"])
+def api_remove_category_url():
+    data = request.json or {}
+    url_pattern = data.get("url")
+    if not url_pattern:
+        return jsonify({"error": "Missing url"}), 400
+    try:
+        remove_url_rule(url_pattern)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
